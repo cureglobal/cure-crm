@@ -1,0 +1,492 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import {
+  importCompanies,
+  importPeople,
+  importProductiveDeals,
+  type ImportCompanyRow,
+  type ImportDealRow,
+  type ImportPersonRow,
+} from "@/lib/actions";
+import { parseCsv, findColumn, cell, parseNumber, parseDate } from "@/lib/csv";
+import { STAGES, type StageId } from "@/lib/stages";
+import { formatMoney } from "@/lib/format";
+import {
+  Upload,
+  X,
+  FileSpreadsheet,
+  Columns3,
+  Building2,
+  Contact,
+  Check,
+} from "lucide-react";
+
+type Kind = "deals" | "bedrifter" | "personer";
+
+const TABS: { id: Kind; label: string; icon: React.ReactNode; columns: string }[] = [
+  {
+    id: "deals",
+    label: "Deals",
+    icon: <Columns3 size={14} />,
+    columns: "Selskap, Deal, Verdi, Dato, Kommentar, Fase — eller en Productive-eksport",
+  },
+  {
+    id: "bedrifter",
+    label: "Bedrifter",
+    icon: <Building2 size={14} />,
+    columns: "Navn, Org.nr, Nettside, Telefon",
+  },
+  {
+    id: "personer",
+    label: "Personer",
+    icon: <Contact size={14} />,
+    columns: "Navn, E-post, Telefon, Selskap, Rolle",
+  },
+];
+
+interface Parsed {
+  kind: Kind;
+  fileName: string;
+  deals: (ImportDealRow & { productiveStage: string })[];
+  companies: ImportCompanyRow[];
+  people: ImportPersonRow[];
+  stageMap: Record<string, StageId>;
+  count: number;
+}
+
+function guessStage(value: string): StageId {
+  const s = value.toLowerCase();
+  if (s.includes("vunnet") || s.includes("won") || s.includes("signert")) return "vunnet";
+  if (s.includes("tapt") || s.includes("lost")) return "tapt";
+  if (s.includes("sendt") || s.includes("anbud") || s.includes("kontrakt") || s.includes("signering"))
+    return "tilbud";
+  if (s.includes("møt") || s.includes("dialog") || s.includes("tilbud")) return "dialog";
+  if (s.includes("kontakt")) return "kontaktet";
+  return "ny";
+}
+
+export default function ImportDialog() {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<Kind>("deals");
+  const [parsed, setParsed] = useState<Parsed | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function reset() {
+    setParsed(null);
+    setError(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function close() {
+    setOpen(false);
+    reset();
+    setResult(null);
+  }
+
+  async function onFile(file: File) {
+    setError(null);
+    setResult(null);
+    const rows = parseCsv(await file.text());
+    if (rows.length < 2) {
+      setError("Fant ingen rader i fila.");
+      return;
+    }
+    const header = rows[0];
+    const body = rows.slice(1);
+
+    if (kind === "deals") {
+      const stageIdx = findColumn(header, "stage", "fase");
+      const nameIdx = findColumn(header, "name", "navn", "selskap", "company");
+      const dealIdx = findColumn(header, "deal", "dealnavn", "tittel", "title");
+      const valueIdx = findColumn(header, "budget total", "verdi", "value", "budget", "sum");
+      const dateIdx = findColumn(header, "next action", "dato", "date", "oppfølging");
+      const commentIdx = findColumn(header, "kommentar", "comment", "notat");
+
+      if (nameIdx === -1) {
+        setError("Fant ingen kolonne for selskap. Forventer «Selskap» eller «Name».");
+        return;
+      }
+
+      const deals: (ImportDealRow & { productiveStage: string })[] = [];
+      for (const r of body) {
+        const raw = cell(r, nameIdx);
+        if (!raw) continue; // Productive har gruppelinjer med tomt navn
+        // Productive skriver «Selskap - Dealnavn» i én kolonne når det ikke
+        // finnes en egen dealkolonne.
+        let companyName = raw;
+        let dealTitle = cell(r, dealIdx);
+        if (!dealTitle) {
+          const dash = raw.indexOf(" - ");
+          if (dash > 0) {
+            companyName = raw.slice(0, dash).trim();
+            dealTitle = raw.slice(dash + 3).trim();
+          } else {
+            dealTitle = "Deal";
+          }
+        }
+        const value = parseNumber(cell(r, valueIdx));
+        deals.push({
+          companyName,
+          dealTitle,
+          stage: "ny",
+          value: value && value > 0 ? Math.round(value) : null,
+          followUpAt: parseDate(cell(r, dateIdx)),
+          comment: cell(r, commentIdx) || null,
+          productiveStage: cell(r, stageIdx),
+        });
+      }
+      if (deals.length === 0) {
+        setError("Fant ingen deals i fila.");
+        return;
+      }
+      const stageMap: Record<string, StageId> = {};
+      for (const d of deals) {
+        if (!(d.productiveStage in stageMap)) {
+          stageMap[d.productiveStage] = guessStage(d.productiveStage);
+        }
+      }
+      setParsed({
+        kind,
+        fileName: file.name,
+        deals,
+        companies: [],
+        people: [],
+        stageMap,
+        count: deals.length,
+      });
+      return;
+    }
+
+    if (kind === "bedrifter") {
+      const nameIdx = findColumn(header, "navn", "name", "selskap", "company", "firma");
+      const orgIdx = findColumn(header, "orgnr", "org nr", "organisasjonsnummer", "org number");
+      const siteIdx = findColumn(header, "nettside", "website", "web", "url", "hjemmeside");
+      const phoneIdx = findColumn(header, "telefon", "phone", "tlf", "mobil");
+
+      if (nameIdx === -1) {
+        setError("Fant ingen kolonne for navn. Forventer «Navn» eller «Name».");
+        return;
+      }
+      const list: ImportCompanyRow[] = [];
+      for (const r of body) {
+        const name = cell(r, nameIdx);
+        if (!name) continue;
+        list.push({
+          name,
+          orgNumber: cell(r, orgIdx) || null,
+          website: cell(r, siteIdx) || null,
+          phone: cell(r, phoneIdx) || null,
+        });
+      }
+      if (list.length === 0) {
+        setError("Fant ingen bedrifter i fila.");
+        return;
+      }
+      setParsed({
+        kind,
+        fileName: file.name,
+        deals: [],
+        companies: list,
+        people: [],
+        stageMap: {},
+        count: list.length,
+      });
+      return;
+    }
+
+    const nameIdx = findColumn(header, "navn", "name", "fullt navn", "kontakt");
+    const emailIdx = findColumn(header, "e-post", "epost", "email", "mail");
+    const phoneIdx = findColumn(header, "telefon", "phone", "tlf", "mobil");
+    const companyIdx = findColumn(header, "selskap", "company", "firma", "bedrift");
+    const roleIdx = findColumn(header, "rolle", "role", "tittel", "stilling");
+
+    if (nameIdx === -1 && emailIdx === -1) {
+      setError("Fant verken navn- eller e-postkolonne.");
+      return;
+    }
+    const list: ImportPersonRow[] = [];
+    for (const r of body) {
+      const email = cell(r, emailIdx);
+      const name = cell(r, nameIdx) || email.split("@")[0];
+      if (!name) continue;
+      list.push({
+        name,
+        email: email || null,
+        phone: cell(r, phoneIdx) || null,
+        companyName: cell(r, companyIdx) || null,
+        role: cell(r, roleIdx) || null,
+      });
+    }
+    if (list.length === 0) {
+      setError("Fant ingen personer i fila.");
+      return;
+    }
+    setParsed({
+      kind,
+      fileName: file.name,
+      deals: [],
+      companies: [],
+      people: list,
+      stageMap: {},
+      count: list.length,
+    });
+  }
+
+  function runImport() {
+    if (!parsed) return;
+    startTransition(async () => {
+      if (parsed.kind === "deals") {
+        const res = await importProductiveDeals(
+          parsed.deals.map((d) => ({
+            companyName: d.companyName,
+            dealTitle: d.dealTitle,
+            stage: parsed.stageMap[d.productiveStage] ?? "ny",
+            value: d.value,
+            followUpAt: d.followUpAt,
+            comment: d.comment,
+          }))
+        );
+        setResult(
+          `Importerte ${res.imported} deals og ${res.companiesCreated} nye selskaper.` +
+            (res.skipped > 0 ? ` ${res.skipped} hoppet over som duplikater.` : "")
+        );
+      } else if (parsed.kind === "bedrifter") {
+        const res = await importCompanies(parsed.companies);
+        setResult(
+          `Opprettet ${res.created} bedrifter, ${res.verified} ble bekreftet mot Enhetsregisteret.` +
+            (res.skipped > 0 ? ` ${res.skipped} fantes fra før.` : "")
+        );
+      } else {
+        const res = await importPeople(parsed.people);
+        setResult(
+          `Opprettet ${res.created} personer og ${res.linked} selskapskoblinger.` +
+            (res.companiesCreated > 0 ? ` ${res.companiesCreated} nye selskaper.` : "") +
+            (res.skipped > 0 ? ` ${res.skipped} fantes fra før.` : "")
+        );
+      }
+      reset();
+    });
+  }
+
+  const activeTab = TABS.find((t) => t.id === kind)!;
+
+  // Sidebaren har backdrop-blur, som lager en ny referanseramme for
+  // position: fixed. Modalen må derfor rendres utenfor den, via en portal.
+  // `open` blir bare sann etter et klikk, så dette skjer alltid i nettleseren.
+  const dialog = open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 py-[10vh] backdrop-blur-[2px]"
+          onClick={close}
+        >
+          <div
+            className="card w-full max-w-lg p-6 shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">Importer fra CSV</h2>
+                <p className="mt-0.5 text-[13px] text-ink-soft">
+                  Kolonnenavn gjenkjennes automatisk, på norsk eller engelsk.
+                </p>
+              </div>
+              <button
+                onClick={close}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mb-4 flex rounded-full bg-black/[0.05] p-1">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    setKind(t.id);
+                    reset();
+                    setResult(null);
+                  }}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
+                    kind === t.id ? "bg-white shadow-card" : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  {t.icon}
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {result && (
+              <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-[#1d7a3a]">
+                {result}
+              </p>
+            )}
+            {error && (
+              <p className="mb-3 rounded-xl bg-danger/10 px-4 py-2.5 text-[13px] text-danger">
+                {error}
+              </p>
+            )}
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onFile(f);
+              }}
+            />
+
+            {!parsed ? (
+              <div>
+                <p className="mb-3 rounded-xl bg-black/[0.03] px-4 py-3 text-[12.5px] text-ink-soft">
+                  <span className="font-medium text-ink">Kolonner:</span> {activeTab.columns}
+                </p>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="btn btn-primary w-full py-2.5"
+                >
+                  <Upload size={14} />
+                  Velg CSV-fil …
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2.5 rounded-xl bg-black/[0.03] px-4 py-3">
+                  <FileSpreadsheet size={16} className="shrink-0 text-ink-soft" />
+                  <span className="flex-1 truncate text-[13px] font-medium">
+                    {parsed.fileName}
+                  </span>
+                  <span className="shrink-0 text-[12.5px] text-ink-soft">
+                    {parsed.count} rader
+                  </span>
+                  <button
+                    onClick={reset}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {parsed.kind === "deals" && Object.keys(parsed.stageMap).length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-[13px] font-semibold">Fasemapping</h3>
+                    <div className="flex flex-col gap-1.5">
+                      {Object.keys(parsed.stageMap).map((ps) => (
+                        <div key={ps} className="grid grid-cols-2 items-center gap-3">
+                          <span className="truncate text-[13px] text-ink-soft" title={ps}>
+                            {ps || "(uten fase)"}
+                            <span className="ml-1.5 text-ink-faint">
+                              {parsed.deals.filter((d) => d.productiveStage === ps).length}
+                            </span>
+                          </span>
+                          <select
+                            value={parsed.stageMap[ps]}
+                            onChange={(e) =>
+                              setParsed({
+                                ...parsed,
+                                stageMap: {
+                                  ...parsed.stageMap,
+                                  [ps]: e.target.value as StageId,
+                                },
+                              })
+                            }
+                            className="field !py-1.5 text-[13px]"
+                          >
+                            {STAGES.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="mb-2 text-[13px] font-semibold">Forhåndsvisning</h3>
+                  <ul className="flex flex-col gap-1 rounded-xl border border-line p-3">
+                    {parsed.kind === "deals" &&
+                      parsed.deals.slice(0, 5).map((d, i) => (
+                        <li key={i} className="flex items-baseline gap-2 text-[12.5px]">
+                          <span className="font-medium">{d.companyName}</span>
+                          <span className="truncate text-ink-soft">· {d.dealTitle}</span>
+                          {d.value ? (
+                            <span className="ml-auto shrink-0 tabular-nums text-ink-soft">
+                              {formatMoney(d.value)}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    {parsed.kind === "bedrifter" &&
+                      parsed.companies.slice(0, 5).map((c, i) => (
+                        <li key={i} className="flex items-baseline gap-2 text-[12.5px]">
+                          <span className="font-medium">{c.name}</span>
+                          <span className="truncate text-ink-soft">
+                            {[c.orgNumber, c.website].filter(Boolean).join(" · ")}
+                          </span>
+                        </li>
+                      ))}
+                    {parsed.kind === "personer" &&
+                      parsed.people.slice(0, 5).map((p, i) => (
+                        <li key={i} className="flex items-baseline gap-2 text-[12.5px]">
+                          <span className="font-medium">{p.name}</span>
+                          <span className="truncate text-ink-soft">
+                            {[p.email, p.companyName].filter(Boolean).join(" · ")}
+                          </span>
+                        </li>
+                      ))}
+                    {parsed.count > 5 && (
+                      <li className="text-[12px] text-ink-faint">
+                        … og {parsed.count - 5} til
+                      </li>
+                    )}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={runImport}
+                  disabled={pending}
+                  className="btn btn-primary w-full py-2.5"
+                >
+                  {pending ? (
+                    "Importerer …"
+                  ) : (
+                    <>
+                      <Check size={14} />
+                      Importer {parsed.count} {activeTab.label.toLowerCase()}
+                    </>
+                  )}
+                </button>
+                {parsed.kind === "bedrifter" && (
+                  <p className="-mt-2 text-[12px] text-ink-faint">
+                    Bedrifter slås automatisk opp i Enhetsregisteret etter import.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+  ) : null;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-medium text-ink-soft transition hover:bg-black/[0.04] hover:text-ink"
+      >
+        <Upload size={17} strokeWidth={1.8} />
+        Importer
+      </button>
+      {dialog ? createPortal(dialog, document.body) : null}
+    </>
+  );
+}

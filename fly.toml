@@ -1,0 +1,26 @@
+# Fly.io-oppsett. Valgt fordi SQLite trenger en disk som overlever restart,
+# noe serverless-plattformer (Vercel) ikke gir.
+# Bytt app-navnet til noe ledig før første deploy.
+app = "cure-crm"
+primary_region = "arn"   # Stockholm — nærmeste region til Norge
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[mounts]]
+  source = "crm_data"
+  destination = "/app/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
