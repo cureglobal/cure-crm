@@ -72,7 +72,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </div>
       </aside>
 
-      <main className="ml-60 flex-1 px-10 py-8">{children}</main>
+      {/* min-w-0 overstyrer flex-items' default min-width:auto — uten den nekter
+          denne boksen å bli smalere enn tabellenes fulle innhold, og hele siden
+          blir bredere i stedet for at tabellen scroller for seg selv. */}
+      <main className="ml-60 min-w-0 flex-1 px-10 py-8">{children}</main>
       <WonCelebration />
     </div>
   );

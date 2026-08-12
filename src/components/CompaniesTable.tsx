@@ -166,7 +166,8 @@ export default function CompaniesTable({
         />
       </div>
 
-      <div className="card">
+      <div className="card overflow-auto max-h-[75vh]">
+        <div className="min-w-[820px]">
         <div
           className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-[#fbfbfd]/95 px-5 py-2.5 backdrop-blur-xl`}
         >
@@ -245,6 +246,7 @@ export default function CompaniesTable({
             ))}
           </ul>
         )}
+        </div>
       </div>
     </div>
   );

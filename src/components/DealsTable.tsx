@@ -244,49 +244,56 @@ export default function DealsTable({
 
   if (rows.length === 0) {
     return (
-      <div className="card">
-        {header}
-        <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
-          Ingen deals matcher filtrene.
-        </p>
+      <div className="card overflow-auto max-h-[75vh]">
+        <div className="min-w-[880px]">
+          {header}
+          <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
+            Ingen deals matcher filtrene.
+          </p>
+        </div>
       </div>
     );
   }
 
   // NB: ingen overflow-hidden på kortet — det bryter sticky-posisjonering på kolonneraden.
+  // overflow-x-auto er trygt fordi kortet ikke har en fast høyde: innholdet
+  // overgår aldri boksens egen høyde, så det oppstår aldri vertikal scroll her
+  // — bare horisontal, når skalering/zoom gjør kolonnene trangere enn min-bredden.
   return (
-    <div className="card">
-      {header}
-      {groups ? (
-        groups.map((g) => {
-          const sum = g.items.reduce((acc, r) => acc + (r.value ?? 0), 0);
-          return (
-            <div key={g.stage.id}>
-              <div className="sticky top-[41px] z-10 flex items-center gap-2 border-b border-line bg-[#f2f2f5]/95 px-5 py-2 backdrop-blur-xl">
-                <span className="h-2 w-2 rounded-full" style={{ background: g.stage.dot }} />
-                <span className="text-[12.5px] font-semibold">{g.stage.label}</span>
-                <span className="text-[12px] text-ink-faint">{g.items.length}</span>
-                {sum > 0 && (
-                  <span className="ml-auto text-[12px] tabular-nums text-ink-soft">
-                    {formatMoney(sum)}
-                  </span>
-                )}
+    <div className="card overflow-auto max-h-[75vh]">
+      <div className="min-w-[880px]">
+        {header}
+        {groups ? (
+          groups.map((g) => {
+            const sum = g.items.reduce((acc, r) => acc + (r.value ?? 0), 0);
+            return (
+              <div key={g.stage.id}>
+                <div className="sticky top-[41px] z-10 flex items-center gap-2 border-b border-line bg-[#f2f2f5]/95 px-5 py-2 backdrop-blur-xl">
+                  <span className="h-2 w-2 rounded-full" style={{ background: g.stage.dot }} />
+                  <span className="text-[12.5px] font-semibold">{g.stage.label}</span>
+                  <span className="text-[12px] text-ink-faint">{g.items.length}</span>
+                  {sum > 0 && (
+                    <span className="ml-auto text-[12px] tabular-nums text-ink-soft">
+                      {formatMoney(sum)}
+                    </span>
+                  )}
+                </div>
+                <ul>
+                  {g.items.map((deal) => (
+                    <Row key={deal.id} deal={deal} />
+                  ))}
+                </ul>
               </div>
-              <ul>
-                {g.items.map((deal) => (
-                  <Row key={deal.id} deal={deal} />
-                ))}
-              </ul>
-            </div>
-          );
-        })
-      ) : (
-        <ul>
-          {sorted.map((deal) => (
-            <Row key={deal.id} deal={deal} />
-          ))}
-        </ul>
-      )}
+            );
+          })
+        ) : (
+          <ul>
+            {sorted.map((deal) => (
+              <Row key={deal.id} deal={deal} />
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

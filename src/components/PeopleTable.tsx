@@ -240,33 +240,35 @@ export default function PeopleTable({
         </form>
       )}
 
-      <div className="card">
-        <div
-          className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-[#fbfbfd]/95 px-5 py-2.5 backdrop-blur-xl`}
-        >
-          <HeaderCell label="Navn" sortKey="navn" sort={sort} onSort={onSort} />
-          <span className="px-2">
-            <HeaderCell label="E-post" sortKey="epost" sort={sort} onSort={onSort} />
-          </span>
-          <span className="px-2">
-            <HeaderCell label="Telefon" sortKey="telefon" sort={sort} onSort={onSort} />
-          </span>
-          <HeaderCell label="Selskap" sortKey="selskap" sort={sort} onSort={onSort} />
-        </div>
+      <div className="card overflow-auto max-h-[75vh]">
+        <div className="min-w-[680px]">
+          <div
+            className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-[#fbfbfd]/95 px-5 py-2.5 backdrop-blur-xl`}
+          >
+            <HeaderCell label="Navn" sortKey="navn" sort={sort} onSort={onSort} />
+            <span className="px-2">
+              <HeaderCell label="E-post" sortKey="epost" sort={sort} onSort={onSort} />
+            </span>
+            <span className="px-2">
+              <HeaderCell label="Telefon" sortKey="telefon" sort={sort} onSort={onSort} />
+            </span>
+            <HeaderCell label="Selskap" sortKey="selskap" sort={sort} onSort={onSort} />
+          </div>
 
-        {visible.length === 0 ? (
-          <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
-            {rows.length === 0
-              ? "Ingen personer ennå. Legg til den første med «Ny person»."
-              : "Ingen personer matcher søket."}
-          </p>
-        ) : (
-          <ul>
-            {visible.map((p) => (
-              <PersonRowItem key={p.id} person={p} />
-            ))}
-          </ul>
-        )}
+          {visible.length === 0 ? (
+            <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
+              {rows.length === 0
+                ? "Ingen personer ennå. Legg til den første med «Ny person»."
+                : "Ingen personer matcher søket."}
+            </p>
+          ) : (
+            <ul>
+              {visible.map((p) => (
+                <PersonRowItem key={p.id} person={p} />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

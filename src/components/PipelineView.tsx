@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import KanbanBoard, { type KanbanDeal } from "@/components/KanbanBoard";
 import DealsTable, { type DealRow } from "@/components/DealsTable";
 import { Columns3, List, Search, Layers, CircleDot } from "lucide-react";
@@ -11,6 +11,31 @@ export interface OwnerOption {
 }
 
 type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "egendefinert";
+
+// Husker sist brukte filter i nettleseren, slik at det ligger klart igjen når
+// man kommer tilbake fra en annen fane. Eksplisitte URL-parametre (f.eks. fra
+// "Se alle" på oversikten) vinner ved lasting, og blir da selv det nye
+// "sist valgte" — se applyStored/persist under.
+const STORAGE_KEY = "crm:pipeline-filters";
+
+interface StoredFilters {
+  view?: "kanban" | "liste";
+  ownerId?: "alle" | number;
+  datePreset?: DatePreset;
+  fromDate?: string;
+  toDate?: string;
+  groupByStage?: boolean;
+  onlyActive?: boolean;
+}
+
+function readStored(): StoredFilters | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredFilters) : null;
+  } catch {
+    return null;
+  }
+}
 
 function todayStr() {
   const d = new Date();
@@ -33,28 +58,80 @@ function weekRange(): [string, string] {
 export default function PipelineView({
   rows,
   owners,
+  currentUserId,
   initialView,
-  initialDatePreset = "alle",
-  initialOwnerId = "alle",
-  initialGroupByStage = false,
-  initialOnlyActive = false,
+  initialDatePreset,
+  initialOwnerId,
+  initialGroupByStage,
+  initialOnlyActive,
 }: {
   rows: DealRow[];
   owners: OwnerOption[];
-  initialView: "kanban" | "liste";
+  // Brukes som standardeier ("Eier = meg") første gang, før noe er lagret.
+  currentUserId: number;
+  // Udefinert = ikke satt eksplisitt via URL; da avgjør lagrede preferanser
+  // (eller de faste standardverdiene under, ved aller første besøk).
+  initialView?: "kanban" | "liste";
   initialDatePreset?: DatePreset;
   initialOwnerId?: "alle" | number;
   initialGroupByStage?: boolean;
   initialOnlyActive?: boolean;
 }) {
-  const [view, setView] = useState<"kanban" | "liste">(initialView);
+  // Faste standardverdier ved første besøk noensinne (ingenting lagret ennå):
+  // liste, gruppert på fase, eier = meg.
+  const [view, setView] = useState<"kanban" | "liste">(initialView ?? "liste");
   const [search, setSearch] = useState("");
-  const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId);
-  const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset);
+  const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
+  const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset ?? "alle");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [groupByStage, setGroupByStage] = useState(initialGroupByStage);
-  const [onlyActive, setOnlyActive] = useState(initialOnlyActive);
+  const [groupByStage, setGroupByStage] = useState(initialGroupByStage ?? true);
+  const [onlyActive, setOnlyActive] = useState(initialOnlyActive ?? false);
+
+  // Laster lagrede preferanser etter første render (localStorage finnes bare i
+  // nettleseren, og lesing under selve renderen ville gitt et hydreringsavvik
+  // mot serverens HTML). URL-parametre som eksplisitt ble gitt til komponenten
+  // vinner over det som er lagret — det er slik "Se alle"-lenker fra
+  // oversikten fungerer.
+  //
+  // `hydrated` er bevisst React-state og ikke en ref: en ref er umiddelbart
+  // synlig (også for lagre-effekten under, i samme flush), så den ville
+  // latt lagre-effekten skrive de FØR-innlastede standardverdiene til
+  // localStorage — det overskrev nettopp det vi leste inn. State fanges i
+  // stedet i det faste øyeblikksbildet til hver render, så lagre-effekten
+  // først ser `hydrated=true` i en render der view/eier/osv. allerede
+  // reflekterer det innlastede resultatet.
+  const [hydrated, setHydrated] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- synkroniserer med
+     localStorage (ekstern kilde); må skje etter montering for å unngå
+     SSR/klient-avvik, siden localStorage ikke finnes på serveren. */
+  useEffect(() => {
+    const saved = readStored();
+    if (initialView === undefined) setView(saved?.view ?? "liste");
+    if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? currentUserId);
+    if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
+    if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
+    if (initialOnlyActive === undefined) setOnlyActive(saved?.onlyActive ?? false);
+    if (saved?.fromDate) setFromDate(saved.fromDate);
+    if (saved?.toDate) setToDate(saved.toDate);
+    setHydrated(true);
+    // Kjøres bare ved montering — filtrene selv styrer lagring videre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Lagrer alle endringer (også de som kom fra URL) som "sist valgt".
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ view, ownerId, datePreset, fromDate, toDate, groupByStage, onlyActive })
+      );
+    } catch {
+      // Privat nettlesing e.l. — ikke kritisk, filteret gjelder bare denne sesjonen.
+    }
+  }, [hydrated, view, ownerId, datePreset, fromDate, toDate, groupByStage, onlyActive]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

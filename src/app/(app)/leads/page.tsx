@@ -8,9 +8,12 @@ import NewDealButton from "@/components/NewDealButton";
 import type { DealRow } from "@/components/DealsTable";
 
 export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
-  await requireUser();
+  const me = await requireUser();
   const params = await searchParams;
-  const initialView = params.view === "liste" ? "liste" : "kanban";
+  // Udefinert når parameteret ikke er i URL-en — da bestemmer klientens
+  // lagrede preferanser (eller standardverdiene) i stedet. Se PipelineView.
+  const initialView =
+    params.view === "liste" ? "liste" : params.view === "kanban" ? "kanban" : undefined;
 
   const rows = await db
     .select({
@@ -73,14 +76,19 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       <PipelineView
         rows={dealRows}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+        currentUserId={me.id}
         initialView={initialView}
         initialDatePreset={
           params.dato === "uke" || params.dato === "forfalt" || params.dato === "idag"
             ? params.dato
-            : "alle"
+            : undefined
         }
-        initialOnlyActive={params.aktive === "1"}
-        initialGroupByStage={params.gruppe === "fase"}
+        initialOnlyActive={
+          params.aktive === "1" ? true : params.aktive === "0" ? false : undefined
+        }
+        initialGroupByStage={
+          params.gruppe === "fase" ? true : params.gruppe === "flat" ? false : undefined
+        }
       />
     </div>
   );
