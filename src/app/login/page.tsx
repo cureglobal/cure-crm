@@ -52,7 +52,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           />
           {error && (
             <p className="text-[13px] text-danger">
-              {error === "1" ? "Feil e-post eller passord." : "Kunne ikke opprette bruker."}
+              {error === "1"
+                ? "Feil e-post eller passord."
+                : error === "locked"
+                  ? "For mange mislykkede forsøk. Prøv igjen om litt."
+                  : "Kunne ikke opprette bruker."}
             </p>
           )}
           <button type="submit" className="btn btn-primary mt-1 w-full py-2.5">

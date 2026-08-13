@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
 import {
   db,
@@ -20,6 +21,7 @@ import {
   dealOwners,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
+import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
 import { encrypt } from "@/lib/crypto";
 import { domainFromEmail, enrichFromEmail, fallbackNameFromDomain } from "@/lib/enrich";
 import {
@@ -69,10 +71,20 @@ export async function setupFirstUser(formData: FormData) {
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  if (perEmailLoginLimiter.isLocked(email) || perIpLoginLimiter.isLocked(ip)) {
+    redirect("/login?error=locked");
+  }
+
   const user = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    perEmailLoginLimiter.recordFailure(email);
+    perIpLoginLimiter.recordFailure(ip);
     redirect("/login?error=1");
   }
+  perEmailLoginLimiter.recordSuccess(email);
+  perIpLoginLimiter.recordSuccess(ip);
   await createSession(user.id);
   redirect("/");
 }
