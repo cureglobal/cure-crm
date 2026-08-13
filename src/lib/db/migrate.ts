@@ -78,6 +78,13 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(company_id, person_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS deal_owners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    UNIQUE(deal_id, user_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS email_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
@@ -128,6 +135,15 @@ const CREATE_STATEMENTS = [
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS reference_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT,
+    notes TEXT,
+    screenshot TEXT,
+    phase_hours TEXT,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -141,6 +157,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_deal_lines_deal ON deal_lines(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_activities_deal ON activities(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_contact_events_company ON contact_events(company_id)",
+  "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
+  "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -167,6 +185,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   },
   people: { notes: "TEXT" },
   deals: { comment: "TEXT" },
+  users: { signature: "TEXT" },
 };
 
 async function addMissingColumns(client: Client) {

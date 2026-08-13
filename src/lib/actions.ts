@@ -16,6 +16,8 @@ import {
   emailAccounts,
   emailAccessGrants,
   dealLines,
+  referenceProjects,
+  dealOwners,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
@@ -28,6 +30,12 @@ import {
 } from "@/lib/brreg";
 import { stageLabel, type StageId } from "@/lib/stages";
 import { syncAccount } from "@/lib/imap";
+import { scanWebsite, type SiteScanResult } from "@/lib/siteScan";
+import { PHASES } from "@/lib/estimator";
+import * as companyInsight from "@/lib/companyInsight";
+import { generateQuotePdf } from "@/lib/pdf";
+import { sendMailFromAccount } from "@/lib/mailer";
+import { formatDateShort } from "@/lib/format";
 
 function revalidateDealViews(dealId?: number) {
   revalidatePath("/");
@@ -384,6 +392,129 @@ export async function deleteDealLine(lineId: number, dealId: number) {
   revalidateDealViews(dealId);
 }
 
+// ---------- Prisverktøy ----------
+
+export async function scanWebsiteForEstimate(
+  url: string
+): Promise<{ ok: true; result: SiteScanResult } | { ok: false; message: string }> {
+  await requireUser();
+  const result = await scanWebsite(url);
+  if (!result) {
+    return {
+      ok: false,
+      message: "Fant ikke siden, eller den svarte ikke innen rimelig tid. Sjekk adressen.",
+    };
+  }
+  return { ok: true, result };
+}
+
+function domainFromUrlInput(url: string): string {
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+export async function lookupCompanyInsight(
+  url: string,
+  companyNameGuess: string,
+  ecommerceDetected: boolean
+) {
+  await requireUser();
+  return companyInsight.lookupCompanyInsight(companyNameGuess, domainFromUrlInput(url), ecommerceDetected);
+}
+
+export async function lookupCompanyInsightByOrgNumber(
+  orgNumber: string,
+  candidates: BrregHit[],
+  ecommerceDetected: boolean
+) {
+  await requireUser();
+  return companyInsight.lookupCompanyInsightByOrgNumber(orgNumber, candidates, ecommerceDetected);
+}
+
+export interface EstimateLineInput {
+  title: string;
+  hours: number;
+  rate: number;
+}
+
+// Erstatter ALLE varelinjer på dealen med det nye estimatet — "lagre" her
+// betyr synkronisere, ikke legge til på toppen av det som var der fra før.
+export async function saveEstimateToDeal(
+  dealId: number,
+  lines: EstimateLineInput[]
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireUser();
+  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  if (!deal) return { ok: false, message: "Fant ikke dealen." };
+
+  const clean = lines
+    .map((l) => ({ title: l.title.trim(), hours: Number(l.hours), rate: Number(l.rate) }))
+    .filter((l) => l.title && Number.isFinite(l.hours) && Number.isFinite(l.rate));
+
+  if (clean.length === 0) {
+    return { ok: false, message: "Ingen gyldige rader å lagre." };
+  }
+
+  await db.delete(dealLines).where(eq(dealLines.dealId, dealId));
+  await db.insert(dealLines).values(clean.map((l) => ({ dealId, ...l })));
+  await recalcDealValue(dealId);
+
+  await db.insert(activities).values({
+    dealId,
+    userId: me.id,
+    type: "estimate",
+    content: "Varelinjer oppdatert fra prisverktøyet",
+  });
+
+  revalidateDealViews(dealId);
+  return { ok: true, message: `Lagret ${clean.length} rader på ${deal.title}.` };
+}
+
+// ---------- Referanseprosjekter ----------
+
+export async function createReferenceProject(formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  const url = String(formData.get("url") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const screenshot = String(formData.get("screenshot") ?? "").trim() || null;
+
+  const phaseHours: Record<string, { estimert?: number; faktisk?: number }> = {};
+  for (const phase of PHASES) {
+    const estRaw = String(formData.get(`est_${phase.key}`) ?? "").replace(",", ".");
+    const actRaw = String(formData.get(`act_${phase.key}`) ?? "").replace(",", ".");
+    const est = estRaw ? Number(estRaw) : null;
+    const act = actRaw ? Number(actRaw) : null;
+    if ((est && est > 0) || (act && act > 0)) {
+      phaseHours[phase.key] = {
+        ...(est && est > 0 ? { estimert: est } : {}),
+        ...(act && act > 0 ? { faktisk: act } : {}),
+      };
+    }
+  }
+
+  await db.insert(referenceProjects).values({
+    name,
+    url,
+    notes,
+    screenshot,
+    phaseHours: Object.keys(phaseHours).length > 0 ? JSON.stringify(phaseHours) : null,
+  });
+
+  revalidatePath("/estimat");
+}
+
+export async function deleteReferenceProject(id: number) {
+  await requireUser();
+  await db.delete(referenceProjects).where(eq(referenceProjects.id, id));
+  revalidatePath("/estimat");
+}
+
 // ---------- Import fra Productive ----------
 
 export interface ImportDealRow {
@@ -716,6 +847,38 @@ export async function unlinkPersonFromCompany(
   revalidatePath(`/people/${personId}`);
 }
 
+// ---------- Med-eiere på deal ----------
+
+export async function addDealOwner(dealId: number, userId: number) {
+  const me = await requireUser();
+  await db.insert(dealOwners).values({ dealId, userId }).onConflictDoNothing();
+  const added = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (added) {
+    await db.insert(activities).values({
+      dealId,
+      userId: me.id,
+      type: "owner",
+      content: `La til ${added.name} som eier`,
+    });
+  }
+  revalidateDealViews(dealId);
+}
+
+export async function removeDealOwner(dealId: number, userId: number) {
+  const me = await requireUser();
+  await db.delete(dealOwners).where(and(eq(dealOwners.dealId, dealId), eq(dealOwners.userId, userId)));
+  const removed = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (removed) {
+    await db.insert(activities).values({
+      dealId,
+      userId: me.id,
+      type: "owner",
+      content: `Fjernet ${removed.name} som eier`,
+    });
+  }
+  revalidateDealViews(dealId);
+}
+
 export async function updatePerson(personId: number, formData: FormData) {
   await requireUser();
   const set: Record<string, unknown> = {};
@@ -953,15 +1116,15 @@ export async function logContact(companyId: number, formData: FormData) {
     occurredAt,
   });
 
-  revalidatePath(`/companies/${companyId}`);
-  revalidatePath("/companies");
+  revalidateDealViews();
 }
 
 export async function deleteContactEvent(eventId: number, companyId: number) {
   await requireUser();
-  await db.delete(contactEvents).where(eq(contactEvents.id, eventId));
-  revalidatePath(`/companies/${companyId}`);
-  revalidatePath("/companies");
+  await db
+    .delete(contactEvents)
+    .where(and(eq(contactEvents.id, eventId), eq(contactEvents.companyId, companyId)));
+  revalidateDealViews();
 }
 
 // ---------- Notater ----------
@@ -1009,6 +1172,16 @@ export async function disconnectEmailAccount() {
   revalidatePath("/settings");
 }
 
+export async function updateSignature(formData: FormData) {
+  const me = await requireUser();
+  const signature = String(formData.get("signature") ?? "");
+  await db
+    .update(users)
+    .set({ signature: signature.trim() ? signature : null })
+    .where(eq(users.id, me.id));
+  revalidatePath("/settings");
+}
+
 export async function syncEmailsNow(): Promise<{ ok: boolean; message: string }> {
   const me = await requireUser();
   const account = await db.query.emailAccounts.findFirst({
@@ -1029,6 +1202,80 @@ export async function syncEmailsNow(): Promise<{ ok: boolean; message: string }>
     ok: true,
     message: `Synk ferdig — ${result.matched} nye e-poster koblet til selskaper (${result.scanned} gjennomgått).`,
   };
+}
+
+// ---------- Pristilbud på e-post ----------
+
+export async function sendQuoteEmail(
+  dealId: number,
+  recipients: string[]
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireUser();
+  const clean = [...new Set(recipients.map((r) => r.trim().toLowerCase()).filter(Boolean))];
+  if (clean.length === 0) return { ok: false, message: "Velg minst én mottaker." };
+
+  const account = await db.query.emailAccounts.findFirst({
+    where: eq(emailAccounts.userId, me.id),
+  });
+  if (!account) {
+    return { ok: false, message: "Du må koble til e-postkontoen din i Innstillinger først." };
+  }
+
+  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  if (!deal) return { ok: false, message: "Fant ikke dealen." };
+  const company = await db.query.companies.findFirst({ where: eq(companies.id, deal.companyId) });
+  if (!company) return { ok: false, message: "Fant ikke selskapet." };
+
+  const lines = await db.query.dealLines.findMany({ where: eq(dealLines.dealId, dealId) });
+  if (lines.length === 0) {
+    return { ok: false, message: "Ingen varelinjer å sende — legg til priser under Prisverktøy først." };
+  }
+
+  const dateLabel = formatDateShort(new Date());
+  const pdfBuffer = await generateQuotePdf({
+    companyName: company.name,
+    dealTitle: deal.title,
+    dateLabel,
+    lines: lines.map((l) => ({ title: l.title, sum: l.hours * l.rate })),
+  });
+
+  const filename = `${company.name} - ${deal.title}, ${dateLabel}.pdf`;
+  const subject = `Cure for ${company.name} - Pristilbud: ${deal.title}, ${dateLabel}`;
+  const text = [`Hei,`, ``, `Se vedlagt PDF for estimat på pris for «${deal.title}».`]
+    .concat(me.signature ? ["", me.signature] : [])
+    .join("\n");
+
+  try {
+    await sendMailFromAccount(account, {
+      fromName: me.name,
+      to: clean,
+      subject,
+      text,
+      attachment: { filename, content: pdfBuffer },
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      message: `Sending feilet: ${err instanceof Error ? err.message : "ukjent feil"}`,
+    };
+  }
+
+  await db.insert(activities).values({
+    dealId,
+    userId: me.id,
+    type: "contact",
+    content: `Pristilbud sendt til ${clean.join(", ")}`,
+  });
+  await db.insert(contactEvents).values({
+    companyId: company.id,
+    userId: me.id,
+    kind: "tilbud",
+    note: `Pristilbud: ${deal.title}`,
+    occurredAt: new Date(),
+  });
+  revalidateDealViews(dealId);
+
+  return { ok: true, message: `Pristilbud sendt til ${clean.join(", ")}.` };
 }
 
 // ---------- Tilgang til e-postdialog ----------

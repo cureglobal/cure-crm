@@ -64,7 +64,7 @@ async function fetchHtml(url: string): Promise<string | null> {
   }
 }
 
-function cleanTitle(title: string): string {
+export function cleanTitle(title: string): string {
   // "Forside – Firma AS" / "Firma AS | Vi leverer x" → velg segmentet som ligner mest på et firmanavn
   const segments = title
     .split(/\s*[|–—·«»]\s*|\s+-\s+/)

@@ -15,10 +15,12 @@ export interface DealRow {
   logoUrl: string | null;
   ownerId: number;
   ownerName: string;
+  coOwnerIds: number[];
   title: string;
   stage: string;
   value: number | null;
   hasLines: boolean;
+  updatedAt: number;
   followUpAt: number | null;
   followUpInput: string; // yyyy-mm-dd
   comment: string;
@@ -104,8 +106,16 @@ function Row({ deal }: { deal: DealRow }) {
           </span>
         </Link>
 
-        <span className="flex justify-center">
+        <span className="relative flex justify-center">
           <Avatar name={deal.ownerName} size={28} />
+          {deal.coOwnerIds.length > 0 && (
+            <span
+              title={`${deal.coOwnerIds.length} med-eier${deal.coOwnerIds.length === 1 ? "" : "e"}`}
+              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/[0.08] text-[9px] font-semibold text-ink-soft"
+            >
+              +{deal.coOwnerIds.length}
+            </span>
+          )}
         </span>
 
         <input

@@ -19,6 +19,7 @@ export interface KanbanDeal {
   value: number | null;
   followUpAt: number | null;
   ownerName: string;
+  coOwnerCount: number;
 }
 
 export default function KanbanBoard({ deals }: { deals: KanbanDeal[] }) {
@@ -122,7 +123,19 @@ export default function KanbanBoard({ deals }: { deals: KanbanDeal[] }) {
                             {formatMoney(deal.value)}
                           </span>
                         ) : null}
-                        {deal.ownerName && <Avatar name={deal.ownerName} size={20} />}
+                        {deal.ownerName && (
+                          <span className="relative">
+                            <Avatar name={deal.ownerName} size={20} />
+                            {deal.coOwnerCount > 0 && (
+                              <span
+                                title={`${deal.coOwnerCount} med-eier${deal.coOwnerCount === 1 ? "" : "e"}`}
+                                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/[0.08] text-[8px] font-semibold text-ink-soft"
+                              >
+                                +{deal.coOwnerCount}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </span>
                     </div>
                   </Link>

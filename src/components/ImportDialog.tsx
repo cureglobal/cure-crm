@@ -67,7 +67,7 @@ function guessStage(value: string): StageId {
   return "ny";
 }
 
-export default function ImportDialog() {
+export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("deals");
   const [parsed, setParsed] = useState<Parsed | null>(null);
@@ -481,10 +481,17 @@ export default function ImportDialog() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-medium text-ink-soft transition hover:bg-black/[0.04] hover:text-ink"
+        className={`group relative flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-medium text-ink-soft transition hover:bg-black/[0.04] hover:text-ink ${
+          collapsed ? "justify-center" : "w-full"
+        }`}
       >
         <Upload size={17} strokeWidth={1.8} />
-        Importer
+        {!collapsed && "Importer"}
+        {collapsed && (
+          <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[12px] font-medium text-white opacity-0 shadow-card transition-opacity duration-100 group-hover:opacity-100">
+            Importer
+          </span>
+        )}
       </button>
       {dialog ? createPortal(dialog, document.body) : null}
     </>

@@ -6,6 +6,8 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
+  // Vises på slutten av e-poster sendt fra appen, f.eks. pristilbud til kunde.
+  signature: text("signature"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -80,6 +82,21 @@ export const deals = sqliteTable("deals", {
     .notNull()
     .$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// Med-eiere på en deal, i tillegg til hoved-eieren (deals.ownerId). Speilet
+// etter company_people — selve UNIQUE-constrainten ligger i migrate.ts.
+export const dealOwners = sqliteTable("deal_owners", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dealId: integer("deal_id")
+    .notNull()
+    .references(() => deals.id, { onDelete: "cascade" }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
 });
@@ -181,6 +198,23 @@ export const contactEvents = sqliteTable("contact_events", {
     .$defaultFn(() => new Date()),
 });
 
+// Referanseprosjekt for prisverktøyet: et kjent, tidligere prosjekt man kan
+// sammenligne et nytt estimat mot. `phaseHours` er en JSON-blob
+// ({[faseNøkkel]: {estimert, faktisk}}) — egen tabell per fase er unødvendig
+// siden dette bare leses i sin helhet på prisverktøy-siden, aldri filtreres
+// i SQL.
+export const referenceProjects = sqliteTable("reference_projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  url: text("url"),
+  notes: text("notes"),
+  screenshot: text("screenshot"), // data-URL (base64), valgfritt
+  phaseHours: text("phase_hours"), // JSON: Record<PhaseKey, {estimert?, faktisk?}>
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dealId: integer("deal_id")
@@ -199,9 +233,11 @@ export type Company = typeof companies.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;
+export type DealOwner = typeof dealOwners.$inferSelect;
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type EmailMessage = typeof emailMessages.$inferSelect;
 export type EmailAccessGrant = typeof emailAccessGrants.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
 export type DealLine = typeof dealLines.$inferSelect;
 export type ContactEvent = typeof contactEvents.$inferSelect;
+export type ReferenceProject = typeof referenceProjects.$inferSelect;

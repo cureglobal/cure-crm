@@ -17,6 +17,7 @@ type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "egendefinert";
 // "Se alle" på oversikten) vinner ved lasting, og blir da selv det nye
 // "sist valgte" — se applyStored/persist under.
 const STORAGE_KEY = "crm:pipeline-filters";
+const ACTIVE_DAYS = 45;
 
 interface StoredFilters {
   view?: "kanban" | "liste";
@@ -41,6 +42,10 @@ function todayStr() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function activeCutoffTs(days: number) {
+  return Date.now() - days * 24 * 60 * 60 * 1000;
 }
 
 function weekRange(): [string, string] {
@@ -137,10 +142,14 @@ export default function PipelineView({
     const q = search.trim().toLowerCase();
     const today = todayStr();
     const [monday, sunday] = weekRange();
+    const activeCutoff = activeCutoffTs(ACTIVE_DAYS);
 
     return rows.filter((r) => {
-      if (ownerId !== "alle" && r.ownerId !== ownerId) return false;
-      if (onlyActive && (r.stage === "vunnet" || r.stage === "tapt")) return false;
+      // En deal regnes som "eid" av en bruker enten som hoved-eier eller som med-eier.
+      if (ownerId !== "alle" && r.ownerId !== ownerId && !r.coOwnerIds.includes(ownerId)) {
+        return false;
+      }
+      if (onlyActive && r.updatedAt < activeCutoff) return false;
 
       if (q) {
         const haystack = `${r.companyName} ${r.title} ${r.comment} ${r.ownerName}`.toLowerCase();
@@ -173,6 +182,7 @@ export default function PipelineView({
         value: r.value,
         followUpAt: r.followUpAt,
         ownerName: r.ownerName,
+        coOwnerCount: r.coOwnerIds.length,
       })),
     [filtered]
   );
@@ -263,7 +273,7 @@ export default function PipelineView({
 
         <button
           onClick={() => setOnlyActive((v) => !v)}
-          title="Skjul vunne og tapte deals"
+          title={`Skjul deals uten oppdatering de siste ${ACTIVE_DAYS} dagene`}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
             onlyActive
               ? "bg-accent-soft text-accent"

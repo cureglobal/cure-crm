@@ -11,6 +11,12 @@ export function formatDate(d: Date | null | undefined) {
   return d.toLocaleDateString("nb-NO", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// dd.mm.åååå — trygt i filnavn (ingen skråstreker/kolon), brukt for PDF-vedlegg og e-post.
+export function formatDateShort(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+}
+
 export function formatDateTime(d: Date | null | undefined) {
   if (!d) return "";
   return d.toLocaleString("nb-NO", {

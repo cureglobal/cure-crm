@@ -5,11 +5,12 @@ import {
   addUser,
   connectEmailAccount,
   disconnectEmailAccount,
+  updateSignature,
 } from "@/lib/actions";
 import { formatDateTime, initials } from "@/lib/format";
 import SyncButton from "@/components/SyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
-import { Mail, ShieldCheck, TriangleAlert, Building2 } from "lucide-react";
+import { Mail, ShieldCheck, TriangleAlert, Building2, Signature } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
 // Krever Vercel Pro (eller Fluid Compute) for å faktisk få mer enn 10–15 sek;
@@ -127,6 +128,32 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             )}
           </form>
         )}
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Signature size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">E-postsignatur</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Legges til under pristilbud og andre e-poster som sendes fra appen.
+            </p>
+          </div>
+        </div>
+        <form action={updateSignature} className="flex flex-col gap-2.5">
+          <textarea
+            name="signature"
+            rows={4}
+            defaultValue={me.signature ?? ""}
+            placeholder={"Med vennlig hilsen\nOdd-Erik\nCure"}
+            className="field resize-none"
+          />
+          <button type="submit" className="btn btn-secondary self-start">
+            Lagre signatur
+          </button>
+        </form>
       </section>
 
       <section className="card mb-6 p-6">

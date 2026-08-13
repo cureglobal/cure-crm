@@ -21,6 +21,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       title: dealsTable.title,
       stage: dealsTable.stage,
       value: dealsTable.value,
+      updatedAt: dealsTable.updatedAt,
       followUpAt: dealsTable.followUpAt,
       comment: dealsTable.comment,
       ownerId: dealsTable.ownerId,
@@ -34,6 +35,14 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
+
+  const coOwnerRows = await db.query.dealOwners.findMany();
+  const coOwnerIdsByDeal = new Map<number, number[]>();
+  for (const r of coOwnerRows) {
+    const list = coOwnerIdsByDeal.get(r.dealId) ?? [];
+    list.push(r.userId);
+    coOwnerIdsByDeal.set(r.dealId, list);
+  }
 
   const companyOptions = (
     await db.query.companies.findMany({ orderBy: [asc(companies.name)] })
@@ -52,10 +61,12 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       logoUrl: d.logoUrl,
       ownerId: d.ownerId,
       ownerName: ownerNames.get(d.ownerId) ?? "",
+      coOwnerIds: coOwnerIdsByDeal.get(d.id) ?? [],
       title: d.title,
       stage: d.stage,
       value: d.value,
       hasLines: lineDealIds.has(d.id),
+      updatedAt: d.updatedAt.getTime(),
       followUpAt: d.followUpAt ? d.followUpAt.getTime() : null,
       followUpInput: toDateInputValue(d.followUpAt),
       comment: d.comment ?? "",

@@ -13,6 +13,8 @@ import {
   emailAccounts,
   emailAccessGrants,
   dealLines as dealLinesTable,
+  contactEvents,
+  dealOwners,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
@@ -36,7 +38,10 @@ import DeleteDealButton from "@/components/DeleteDealButton";
 import EmailThread from "@/components/EmailThread";
 import RequestAccessButton from "@/components/RequestAccessButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
-import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock } from "lucide-react";
+import SendQuoteButton from "@/components/SendQuoteButton";
+import DialogLog from "@/components/DialogLog";
+import DealOwners from "@/components/DealOwners";
+import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
 import { stageDot, stageLabel } from "@/lib/stages";
 
 export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
@@ -53,6 +58,15 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
   if (!company) notFound();
 
   const owner = await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
+
+  const coOwnerRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(dealOwners)
+    .innerJoin(users, eq(dealOwners.userId, users.id))
+    .where(eq(dealOwners.dealId, dealId))
+    .orderBy(asc(dealOwners.createdAt));
+
+  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
 
   const otherDeals = await db.query.deals.findMany({
     where: and(eq(deals.companyId, company.id), ne(deals.id, deal.id)),
@@ -107,6 +121,22 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
     .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
     .where(eq(emailMessages.companyId, company.id))
     .orderBy(desc(emailMessages.sentAt));
+
+  // Manuelt loggede kontaktpunkter (møte/mail/telefon/tilbud) — selskapsbredt,
+  // vises i "Dialog med X" sammen med den ekte e-postdialogen under.
+  const dialogEvents = await db
+    .select({
+      id: contactEvents.id,
+      kind: contactEvents.kind,
+      note: contactEvents.note,
+      occurredAt: contactEvents.occurredAt,
+      userName: users.name,
+    })
+    .from(contactEvents)
+    .leftJoin(users, eq(contactEvents.userId, users.id))
+    .where(eq(contactEvents.companyId, company.id))
+    .orderBy(desc(contactEvents.occurredAt))
+    .limit(15);
 
   const dialogOwners = [...new Set(messages.map((m) => m.ownerUserId))];
   const grants = dialogOwners.length
@@ -179,7 +209,12 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                   {company.website.replace(/^https?:\/\//, "")}
                 </a>
               )}
-              <span>Eier: {owner?.name ?? "Ukjent"}</span>
+              <DealOwners
+                dealId={deal.id}
+                primaryOwner={{ id: deal.ownerId, name: owner?.name ?? "Ukjent" }}
+                coOwners={coOwnerRows}
+                allUsers={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+              />
               <span>Opprettet {formatDate(deal.createdAt)}</span>
             </div>
           </div>
@@ -387,13 +422,22 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
         {/* Høyre kolonne */}
         <div className="flex flex-col gap-6">
           <section className="card p-6">
-            <div className="mb-3 flex items-baseline justify-between">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
               <h2 className="text-[15px] font-semibold tracking-tight">Varelinjer</h2>
-              {deal.value != null && lines.length > 0 && (
-                <span className="text-[12.5px] text-ink-soft">
-                  Dealverdi: {formatMoney(deal.value)}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {deal.value != null && lines.length > 0 && (
+                  <span className="text-[12.5px] text-ink-soft">
+                    Dealverdi: {formatMoney(deal.value)}
+                  </span>
+                )}
+                <Link
+                  href={`/estimat?dealId=${deal.id}`}
+                  className="flex items-center gap-1.5 text-[12.5px] font-medium text-accent hover:underline"
+                >
+                  <Calculator size={13} />
+                  Prisverktøy
+                </Link>
+              </div>
             </div>
             {lines.length === 0 && (
               <p className="mb-3 text-[13px] text-ink-faint">
@@ -410,21 +454,45 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                 rate: l.rate,
               }))}
             />
+            {lines.length > 0 && (
+              <div className="mt-3">
+                <SendQuoteButton
+                  dealId={deal.id}
+                  dealTitle={deal.title}
+                  contacts={contacts
+                    .filter((c): c is typeof c & { email: string } => !!c.email)
+                    .map((c) => ({ id: c.id, name: c.name, email: c.email }))}
+                />
+              </div>
+            )}
           </section>
 
           <section className="card p-6">
-            <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-              <Mail size={15} className="text-ink-soft" />
-              E-postdialog med {company.name}
-            </h2>
-            {messages.length === 0 ? (
-              <p className="py-4 text-[13px] text-ink-faint">
-                Ingen e-poster logget ennå. Koble til e-postkontoen din under Innstillinger,
-                så matches dialog med kontaktene automatisk.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-5">
-                {dialogOwners.map((ownerId) => {
+            <DialogLog
+              companyId={company.id}
+              companyName={company.name}
+              items={dialogEvents.map((e) => ({
+                id: e.id,
+                kind: e.kind,
+                note: e.note,
+                occurredAt: e.occurredAt.getTime(),
+                userName: e.userName,
+              }))}
+            />
+
+            <div className="mt-5 border-t border-line pt-5">
+              <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink-soft">
+                <Mail size={14} />
+                E-post
+              </h3>
+              {messages.length === 0 ? (
+                <p className="py-2 text-[13px] text-ink-faint">
+                  Ingen e-poster logget ennå. Koble til e-postkontoen din under Innstillinger,
+                  så matches dialog med kontaktene automatisk.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {dialogOwners.map((ownerId) => {
                   const ownerMessages = messages.filter((m) => m.ownerUserId === ownerId);
                   const isMine = ownerId === me.id;
                   const grant = grants.find((g) => g.ownerUserId === ownerId);
@@ -476,9 +544,10 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                       )}
                     </div>
                   );
-                })}
-              </div>
-            )}
+                  })}
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="card p-6">
