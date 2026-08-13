@@ -201,7 +201,15 @@ async function addMissingColumns(client: Client) {
 
     for (const [column, type] of Object.entries(columns)) {
       if (!present.has(column)) {
-        await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        try {
+          await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        } catch (err) {
+          // ALTER TABLE har ingen "IF NOT EXISTS". Flere byggeprosesser kan
+          // begge se kolonnen som fraværende og forsøke å legge den til
+          // samtidig — vinnertapernes feil er harmløs og skal ignoreres.
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("duplicate column name")) throw err;
+        }
       }
     }
   }
