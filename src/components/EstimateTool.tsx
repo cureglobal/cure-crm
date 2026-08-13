@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   scanWebsiteForEstimate,
   saveEstimateToDeal,
+  createDealFromEstimate,
   lookupCompanyInsight,
   lookupCompanyInsightByOrgNumber,
+  searchBrregAction,
 } from "@/lib/actions";
 import { PHASES, DEFAULT_HOURLY_RATE, recalcProjectManagement, type PhaseKey } from "@/lib/estimator";
 import type { ScanSignals } from "@/lib/estimator";
@@ -14,6 +16,7 @@ import type { BrregHit } from "@/lib/brreg";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import ReferenceProjects, { type ReferenceProjectData } from "@/components/ReferenceProjects";
+import SendQuoteButton from "@/components/SendQuoteButton";
 import { Search, TriangleAlert, Check, Plus, Trash2, Globe, Layers, Building2 } from "lucide-react";
 
 interface CompanyInsight {
@@ -105,6 +108,39 @@ export default function EstimateTool({
   const [dealSearch, setDealSearch] = useState("");
   const [savePending, startSave] = useTransition();
   const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // "Ny deal" rett fra prisverktøyet, uten å måtte gå via Pipeline først.
+  const [saveMode, setSaveMode] = useState<"eksisterende" | "ny">("eksisterende");
+  const [newCompanyMode, setNewCompanyMode] = useState<"brreg" | "manuelt">("brreg");
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newOrgNumber, setNewOrgNumber] = useState("");
+  const [newDealTitle, setNewDealTitle] = useState("");
+  const [brregHits, setBrregHits] = useState<BrregHit[]>([]);
+  const [brregSelected, setBrregSelected] = useState<BrregHit | null>(null);
+  const [searchingBrreg, startBrregSearch] = useTransition();
+  const [createPending, startCreate] = useTransition();
+  const [createdDeal, setCreatedDeal] = useState<{
+    id: number;
+    companyName: string;
+    logoUrl: string | null;
+  } | null>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- rydder søketreff momentant når input blir for kort */
+  useEffect(() => {
+    if (saveMode !== "ny" || newCompanyMode !== "brreg" || brregSelected) return;
+    const q = newCompanyName.trim();
+    if (q.length < 2) {
+      setBrregHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      startBrregSearch(async () => {
+        setBrregHits(await searchBrregAction(q));
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newCompanyName, saveMode, newCompanyMode, brregSelected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function runScan() {
     if (!url.trim()) return;
@@ -220,6 +256,27 @@ export default function EstimateTool({
     });
   }
 
+  function createDeal() {
+    setSaveMessage(null);
+    const fd = new FormData();
+    if (brregSelected) {
+      fd.set("companyName", brregSelected.name);
+      fd.set("orgNumber", brregSelected.orgNumber);
+    } else {
+      fd.set("companyName", newCompanyName);
+      fd.set("orgNumber", newOrgNumber);
+    }
+    fd.set("dealTitle", newDealTitle);
+    startCreate(async () => {
+      const res = await createDealFromEstimate(fd, buildLines());
+      if (res.ok) {
+        setCreatedDeal({ id: res.dealId, companyName: res.companyName, logoUrl: res.logoUrl });
+      } else {
+        setSaveMessage({ ok: false, text: res.message });
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* URL-skann */}
@@ -253,7 +310,7 @@ export default function EstimateTool({
         </div>
 
         {scanError && (
-          <p className="mt-3 rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] text-[#8a5a00]">
+          <p className="mt-3 rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] text-warning-ink">
             {scanError}
           </p>
         )}
@@ -263,7 +320,7 @@ export default function EstimateTool({
             {scanSummary && (
               <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">{scanSummary}</p>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-black/[0.03] px-4 py-3">
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-mist/[0.03] px-4 py-3">
               <span className="flex items-center gap-1.5 text-[12.5px] font-medium">
                 <Layers size={13} className="text-ink-soft" />
                 {signals.pageCount}{" "}
@@ -278,8 +335,8 @@ export default function EstimateTool({
                   signals.complexityTier === "avansert"
                     ? "bg-danger/10 text-danger"
                     : signals.complexityTier === "middels"
-                      ? "bg-warning/15 text-[#8a5a00]"
-                      : "bg-success/10 text-[#1d7a3a]"
+                      ? "bg-warning/15 text-warning-ink"
+                      : "bg-success/10 text-success-ink"
                 }`}
               >
                 {signals.complexityTier === "avansert"
@@ -289,14 +346,14 @@ export default function EstimateTool({
                     : "Enkel"}
               </span>
               {signals.cms && (
-                <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11.5px] text-ink-soft">
+                <span className="rounded-full bg-mist/[0.06] px-2 py-0.5 text-[11.5px] text-ink-soft">
                   {signals.cms}
                 </span>
               )}
               {scanTags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[11.5px] text-ink-soft"
+                  className="rounded-full bg-mist/[0.06] px-2 py-0.5 text-[11.5px] text-ink-soft"
                 >
                   {tag}
                 </span>
@@ -330,7 +387,7 @@ export default function EstimateTool({
                     <button
                       key={c.orgNumber}
                       onClick={() => pickCompanyCandidate(c)}
-                      className="rounded-full bg-black/[0.05] px-2.5 py-1 text-[12px] text-ink-soft transition hover:bg-black/[0.08] hover:text-ink"
+                      className="rounded-full bg-mist/[0.05] px-2.5 py-1 text-[12px] text-ink-soft transition hover:bg-mist/[0.08] hover:text-ink"
                     >
                       {c.name}
                       {c.city ? ` · ${c.city}` : ""}
@@ -364,7 +421,7 @@ export default function EstimateTool({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 rounded-xl bg-black/[0.03] p-4 text-[13px]">
+              <div className="grid grid-cols-2 gap-3 rounded-xl bg-mist/[0.03] p-4 text-[13px]">
                 <div>
                   <span className="text-[11px] uppercase tracking-wide text-ink-faint">Bransje</span>
                   <p className="mt-0.5">{companyInsight.matched.industry ?? "Ukjent"}</p>
@@ -426,7 +483,7 @@ export default function EstimateTool({
           <button
             onClick={() => setShowDays((v) => !v)}
             className={`rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-              showDays ? "bg-accent-soft text-accent" : "bg-black/[0.05] text-ink-soft hover:text-ink"
+              showDays ? "bg-accent-soft text-accent" : "bg-mist/[0.05] text-ink-soft hover:text-ink"
             }`}
           >
             {showDays ? "Skjul dager" : "Vis dager"}
@@ -458,7 +515,7 @@ export default function EstimateTool({
                     {p.label}
                     {warning && (
                       <span title={`${warning.name}: ${warning.estimert}t estimert → ${warning.faktisk}t brukt`}>
-                        <TriangleAlert size={13} className="text-[#b06a00]" />
+                        <TriangleAlert size={13} className="text-warning-ink" />
                       </span>
                     )}
                   </span>
@@ -495,7 +552,7 @@ export default function EstimateTool({
                   <p className="mt-1 text-[11.5px] text-ink-faint">= 10 % av de andre fasene</p>
                 )}
                 {warning && (
-                  <p className="mt-1 text-[11.5px] text-[#8a5a00]">
+                  <p className="mt-1 text-[11.5px] text-warning-ink">
                     ⚠ {warning.name} brukte {Math.round((warning.pct - 1) * 100)} % mer tid enn
                     estimert her ({warning.estimert}t → {warning.faktisk}t)
                   </p>
@@ -566,11 +623,11 @@ export default function EstimateTool({
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold tracking-tight">Rabatt</h2>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-full bg-black/[0.05] p-1">
+            <div className="flex rounded-full bg-mist/[0.05] p-1">
               <button
                 onClick={() => setDiscountType("percent")}
                 className={`rounded-full px-3 py-1 text-[12.5px] font-medium transition ${
-                  discountType === "percent" ? "bg-white shadow-card" : "text-ink-soft"
+                  discountType === "percent" ? "bg-surface shadow-card" : "text-ink-soft"
                 }`}
               >
                 %
@@ -578,7 +635,7 @@ export default function EstimateTool({
               <button
                 onClick={() => setDiscountType("fixed")}
                 className={`rounded-full px-3 py-1 text-[12.5px] font-medium transition ${
-                  discountType === "fixed" ? "bg-white shadow-card" : "text-ink-soft"
+                  discountType === "fixed" ? "bg-surface shadow-card" : "text-ink-soft"
                 }`}
               >
                 kr
@@ -622,93 +679,254 @@ export default function EstimateTool({
         {saveMessage && (
           <p
             className={`mb-3 rounded-xl px-4 py-2.5 text-[13px] font-medium ${
-              saveMessage.ok ? "bg-success/10 text-[#1d7a3a]" : "bg-danger/10 text-danger"
+              saveMessage.ok ? "bg-success/10 text-success-ink" : "bg-danger/10 text-danger"
             }`}
           >
             {saveMessage.text}
           </p>
         )}
 
-        {selectedDeal ? (
-          <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-accent-soft/60 px-3 py-2.5">
-            <CompanyLogo logoUrl={selectedDeal.logoUrl} name={selectedDeal.companyName} size={28} radius={8} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13.5px] font-medium">{selectedDeal.companyName}</p>
-              <p className="truncate text-[12px] text-ink-soft">{selectedDeal.title}</p>
+        {createdDeal ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2.5 rounded-xl bg-success/10 px-3 py-2.5">
+              <CompanyLogo logoUrl={createdDeal.logoUrl} name={createdDeal.companyName} size={28} radius={8} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-medium">{createdDeal.companyName}</p>
+                <p className="text-[12px] text-success-ink">
+                  Deal opprettet og estimat lagret.
+                </p>
+              </div>
+              <Link
+                href={`/leads/${createdDeal.id}`}
+                className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
+              >
+                Åpne deal
+              </Link>
             </div>
-            <Link
-              href={`/leads/${selectedDeal.id}`}
-              className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
-            >
-              Åpne deal
-            </Link>
-            <button
-              onClick={() => setSelectedDealId("")}
-              className="shrink-0 text-[12.5px] font-medium text-ink-soft hover:text-ink"
-            >
-              Bytt
-            </button>
+            <SendQuoteButton dealId={createdDeal.id} dealTitle={newDealTitle || "Ny deal"} contacts={[]} />
           </div>
         ) : (
-          <div className="mb-3">
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-              />
-              <input
-                value={dealSearch}
-                onChange={(e) => setDealSearch(e.target.value)}
-                placeholder="Søk etter deal eller selskap …"
-                className="field !pl-8"
-              />
-            </div>
-            <ul className="mt-1.5 flex flex-col gap-0.5">
-              {filteredDeals.map((d) => (
-                <li key={d.id}>
-                  <button
-                    onClick={() => setSelectedDealId(d.id)}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-black/[0.04]"
-                  >
-                    <CompanyLogo logoUrl={d.logoUrl} name={d.companyName} size={24} radius={7} />
-                    <span className="min-w-0 flex-1 truncate text-[13px]">
-                      <span className="font-medium">{d.companyName}</span>{" "}
-                      <span className="text-ink-soft">· {d.title}</span>
-                    </span>
-                    <Check size={13} className="shrink-0 text-ink-faint opacity-0" />
-                  </button>
-                </li>
+          <>
+            <div className="mb-4 flex rounded-full bg-mist/[0.05] p-1">
+              {(["eksisterende", "ny"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setSaveMode(m)}
+                  className={`flex-1 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
+                    saveMode === m ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  {m === "eksisterende" ? "Eksisterende deal" : "Ny deal"}
+                </button>
               ))}
-              {filteredDeals.length === 0 && (
-                <li className="px-2.5 py-2 text-[12.5px] text-ink-faint">Ingen treff.</li>
-              )}
-            </ul>
-          </div>
-        )}
-
-        {confirmingSave ? (
-          <div className="rounded-xl bg-warning/10 p-4">
-            <p className="mb-3 text-[13px] text-[#8a5a00]">
-              Dette erstatter eksisterende varelinjer på {selectedDeal?.title ?? "dealen"} med
-              de {buildLines().length} radene over. Fortsette?
-            </p>
-            <div className="flex gap-2">
-              <button onClick={confirmSave} disabled={savePending} className="btn btn-primary">
-                {savePending ? "Lagrer …" : "Ja, erstatt varelinjene"}
-              </button>
-              <button onClick={() => setConfirmingSave(false)} className="btn btn-secondary">
-                Avbryt
-              </button>
             </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmingSave(true)}
-            disabled={!selectedDealId || buildLines().length === 0}
-            className="btn btn-primary"
-          >
-            Lagre {formatMoney(Math.round(total))} til dealen
-          </button>
+
+            {saveMode === "eksisterende" ? (
+              <>
+                {selectedDeal ? (
+                  <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-accent-soft/60 px-3 py-2.5">
+                    <CompanyLogo logoUrl={selectedDeal.logoUrl} name={selectedDeal.companyName} size={28} radius={8} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13.5px] font-medium">{selectedDeal.companyName}</p>
+                      <p className="truncate text-[12px] text-ink-soft">{selectedDeal.title}</p>
+                    </div>
+                    <Link
+                      href={`/leads/${selectedDeal.id}`}
+                      className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
+                    >
+                      Åpne deal
+                    </Link>
+                    <button
+                      onClick={() => setSelectedDealId("")}
+                      className="shrink-0 text-[12.5px] font-medium text-ink-soft hover:text-ink"
+                    >
+                      Bytt
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mb-3">
+                    <div className="relative">
+                      <Search
+                        size={13}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+                      />
+                      <input
+                        value={dealSearch}
+                        onChange={(e) => setDealSearch(e.target.value)}
+                        placeholder="Søk etter deal eller selskap …"
+                        className="field !pl-8"
+                      />
+                    </div>
+                    <ul className="mt-1.5 flex flex-col gap-0.5">
+                      {filteredDeals.map((d) => (
+                        <li key={d.id}>
+                          <button
+                            onClick={() => setSelectedDealId(d.id)}
+                            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-mist/[0.04]"
+                          >
+                            <CompanyLogo logoUrl={d.logoUrl} name={d.companyName} size={24} radius={7} />
+                            <span className="min-w-0 flex-1 truncate text-[13px]">
+                              <span className="font-medium">{d.companyName}</span>{" "}
+                              <span className="text-ink-soft">· {d.title}</span>
+                            </span>
+                            <Check size={13} className="shrink-0 text-ink-faint opacity-0" />
+                          </button>
+                        </li>
+                      ))}
+                      {filteredDeals.length === 0 && (
+                        <li className="px-2.5 py-2 text-[12.5px] text-ink-faint">Ingen treff.</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+
+                {confirmingSave ? (
+                  <div className="rounded-xl bg-warning/10 p-4">
+                    <p className="mb-3 text-[13px] text-warning-ink">
+                      Dette erstatter eksisterende varelinjer på {selectedDeal?.title ?? "dealen"} med
+                      de {buildLines().length} radene over. Fortsette?
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={confirmSave} disabled={savePending} className="btn btn-primary">
+                        {savePending ? "Lagrer …" : "Ja, erstatt varelinjene"}
+                      </button>
+                      <button onClick={() => setConfirmingSave(false)} className="btn btn-secondary">
+                        Avbryt
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingSave(true)}
+                    disabled={!selectedDealId || buildLines().length === 0}
+                    className="btn btn-primary"
+                  >
+                    Lagre {formatMoney(Math.round(total))} til dealen
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 rounded-xl bg-mist/[0.03] px-3 py-2 text-[12px] text-ink-soft">
+                  <Building2 size={13} className="shrink-0" />
+                  Søk i Brønnøysundregisteret, eller fyll inn manuelt.
+                </div>
+
+                <div className="flex rounded-full bg-mist/[0.05] p-1">
+                  {(["brreg", "manuelt"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => {
+                        setNewCompanyMode(m);
+                        setBrregSelected(null);
+                      }}
+                      className={`flex-1 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
+                        newCompanyMode === m ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
+                      }`}
+                    >
+                      {m === "brreg" ? "Søk i Brreg" : "Manuelt"}
+                    </button>
+                  ))}
+                </div>
+
+                {newCompanyMode === "brreg" ? (
+                  brregSelected ? (
+                    <div className="flex items-center gap-2.5 rounded-xl bg-accent-soft/60 px-3 py-2.5">
+                      <Building2 size={16} className="shrink-0 text-accent" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13.5px] font-medium">
+                          {brregSelected.name}
+                        </span>
+                        <span className="block text-[11.5px] text-ink-soft">
+                          {brregSelected.orgNumber}
+                          {brregSelected.city ? ` · ${brregSelected.city}` : ""}
+                        </span>
+                      </span>
+                      <button
+                        onClick={() => setBrregSelected(null)}
+                        className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
+                      >
+                        Bytt
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="relative">
+                        <Search
+                          size={13}
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+                        />
+                        <input
+                          value={newCompanyName}
+                          onChange={(e) => setNewCompanyName(e.target.value)}
+                          placeholder="Selskapsnavn"
+                          className="field !pl-8"
+                        />
+                      </div>
+                      {newCompanyName.trim().length >= 2 && (
+                        <ul className="mt-1.5 flex max-h-40 flex-col gap-0.5 overflow-y-auto">
+                          {brregHits.map((h) => (
+                            <li key={h.orgNumber}>
+                              <button
+                                onClick={() => setBrregSelected(h)}
+                                className="flex w-full flex-col items-start rounded-xl px-2.5 py-2 text-left transition hover:bg-mist/[0.04]"
+                              >
+                                <span className="text-[13px]">{h.name}</span>
+                                <span className="text-[11.5px] text-ink-faint">
+                                  {h.orgNumber}
+                                  {h.city ? ` · ${h.city}` : ""}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                          {searchingBrreg && (
+                            <li className="px-2.5 py-2 text-[12.5px] text-ink-faint">Søker i Brreg …</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <>
+                    <input
+                      value={newCompanyName}
+                      onChange={(e) => setNewCompanyName(e.target.value)}
+                      placeholder="Selskapsnavn"
+                      className="field"
+                    />
+                    <input
+                      value={newOrgNumber}
+                      onChange={(e) => setNewOrgNumber(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="Organisasjonsnummer (valgfritt)"
+                      className="field"
+                    />
+                  </>
+                )}
+
+                <input
+                  value={newDealTitle}
+                  onChange={(e) => setNewDealTitle(e.target.value)}
+                  placeholder="Hva gjelder dealen? (f.eks. Nettsider)"
+                  className="field"
+                />
+
+                <button
+                  onClick={createDeal}
+                  disabled={
+                    createPending ||
+                    buildLines().length === 0 ||
+                    (newCompanyMode === "brreg" ? !brregSelected : !newCompanyName.trim())
+                  }
+                  className="btn btn-primary"
+                >
+                  {createPending
+                    ? "Oppretter …"
+                    : `Opprett deal og lagre ${formatMoney(Math.round(total))}`}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { createDeal } from "@/lib/actions";
+import { createDeal, searchBrregAction } from "@/lib/actions";
+import type { BrregHit } from "@/lib/brreg";
 import CompanyLogo from "@/components/CompanyLogo";
 import { Plus, Sparkles, X, Search, Check, Building2 } from "lucide-react";
 
@@ -40,6 +41,11 @@ export default function NewDealButton({
   const [companySearch, setCompanySearch] = useState("");
   const [selected, setSelected] = useState<CompanyOption | null>(null);
 
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [brregHits, setBrregHits] = useState<BrregHit[]>([]);
+  const [brregSelected, setBrregSelected] = useState<BrregHit | null>(null);
+  const [searchingBrreg, startBrregSearch] = useTransition();
+
   const matches = useMemo(() => {
     const q = companySearch.trim().toLowerCase();
     const list = q
@@ -48,10 +54,32 @@ export default function NewDealButton({
     return list.slice(0, 6);
   }, [companies, companySearch]);
 
+  // Live søk mot Brønnøysundregisteret mens man skriver inn navnet på et
+  // selskap som ikke finnes i CRM-et fra før.
+  /* eslint-disable react-hooks/set-state-in-effect -- rydder søketreff momentant når input blir for kort */
+  useEffect(() => {
+    if (mode !== "nytt" || brregSelected) return;
+    const q = newCompanyName.trim();
+    if (q.length < 2) {
+      setBrregHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      startBrregSearch(async () => {
+        setBrregHits(await searchBrregAction(q));
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newCompanyName, mode, brregSelected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   function close() {
     setOpen(false);
     setSelected(null);
     setCompanySearch("");
+    setNewCompanyName("");
+    setBrregHits([]);
+    setBrregSelected(null);
     setMode(companies.length > 0 ? "eksisterende" : "nytt");
   }
 
@@ -75,23 +103,25 @@ export default function NewDealButton({
               <h2 className="text-lg font-semibold tracking-tight">Ny deal</h2>
               <button
                 onClick={close}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
               >
                 <X size={16} />
               </button>
             </div>
 
             {companies.length > 0 && (
-              <div className="mb-4 flex rounded-full bg-black/[0.05] p-1">
+              <div className="mb-4 flex rounded-full bg-mist/[0.05] p-1">
                 {(["eksisterende", "nytt"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => {
                       setMode(m);
                       setSelected(null);
+                      setBrregSelected(null);
+                      if (m === "nytt") setNewCompanyName((v) => v || companySearch);
                     }}
                     className={`flex-1 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-                      mode === m ? "bg-white shadow-card" : "text-ink-soft hover:text-ink"
+                      mode === m ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
                     }`}
                   >
                     {m === "eksisterende" ? "Eksisterende selskap" : "Nytt selskap"}
@@ -144,7 +174,7 @@ export default function NewDealButton({
                             <button
                               type="button"
                               onClick={() => setSelected(c)}
-                              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-black/[0.04]"
+                              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-mist/[0.04]"
                             >
                               <CompanyLogo
                                 logoUrl={c.logoUrl}
@@ -169,24 +199,84 @@ export default function NewDealButton({
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 rounded-xl bg-black/[0.03] px-3 py-2 text-[12px] text-ink-soft">
+                  <div className="flex items-center gap-2 rounded-xl bg-mist/[0.03] px-3 py-2 text-[12px] text-ink-soft">
                     <Building2 size={13} className="shrink-0" />
-                    Legg inn orgnummer eller e-post, så henter vi firmainfo og logo automatisk.
+                    Søk i Brønnøysundregisteret mens du skriver, eller fyll inn manuelt.
                   </div>
-                  <input
-                    name="companyName"
-                    required
-                    autoFocus
-                    defaultValue={companySearch}
-                    placeholder="Selskapsnavn"
-                    className="field"
-                  />
-                  <input
-                    name="orgNumber"
-                    inputMode="numeric"
-                    placeholder="Organisasjonsnummer (valgfritt)"
-                    className="field"
-                  />
+
+                  {brregSelected ? (
+                    <>
+                      <input type="hidden" name="companyName" value={brregSelected.name} />
+                      <input type="hidden" name="orgNumber" value={brregSelected.orgNumber} />
+                      <div className="flex items-center gap-2.5 rounded-xl bg-accent-soft/60 px-3 py-2.5">
+                        <Building2 size={16} className="shrink-0 text-accent" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13.5px] font-medium">
+                            {brregSelected.name}
+                          </span>
+                          <span className="block text-[11.5px] text-ink-soft">
+                            {brregSelected.orgNumber}
+                            {brregSelected.city ? ` · ${brregSelected.city}` : ""}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setBrregSelected(null)}
+                          className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
+                        >
+                          Bytt
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <div className="relative">
+                        <Search
+                          size={13}
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+                        />
+                        <input
+                          name="companyName"
+                          value={newCompanyName}
+                          onChange={(e) => setNewCompanyName(e.target.value)}
+                          required
+                          autoFocus
+                          placeholder="Selskapsnavn"
+                          className="field !pl-8"
+                        />
+                      </div>
+                      {newCompanyName.trim().length >= 2 && (
+                        <ul className="mt-1.5 flex max-h-40 flex-col gap-0.5 overflow-y-auto">
+                          {brregHits.map((h) => (
+                            <li key={h.orgNumber}>
+                              <button
+                                type="button"
+                                onClick={() => setBrregSelected(h)}
+                                className="flex w-full flex-col items-start rounded-xl px-2.5 py-2 text-left transition hover:bg-mist/[0.04]"
+                              >
+                                <span className="text-[13px]">{h.name}</span>
+                                <span className="text-[11.5px] text-ink-faint">
+                                  {h.orgNumber}
+                                  {h.city ? ` · ${h.city}` : ""}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                          {searchingBrreg && (
+                            <li className="px-2.5 py-2 text-[12.5px] text-ink-faint">
+                              Søker i Brreg …
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                      <input
+                        name="orgNumber"
+                        inputMode="numeric"
+                        placeholder="Organisasjonsnummer (valgfritt, hvis ikke funnet over)"
+                        className="field mt-2"
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -214,7 +304,9 @@ export default function NewDealButton({
                 label={
                   mode === "eksisterende" && selected
                     ? `Opprett deal på ${selected.name}`
-                    : "Opprett deal"
+                    : mode === "nytt" && brregSelected
+                      ? `Opprett deal på ${brregSelected.name}`
+                      : "Opprett deal"
                 }
               />
             </form>

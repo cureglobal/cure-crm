@@ -76,10 +76,10 @@ export default function DialogLog({
               setOpen(false);
             });
           }}
-          className="mb-4 flex flex-col gap-2.5 rounded-xl bg-black/[0.03] p-4"
+          className="mb-4 flex flex-col gap-2.5 rounded-xl bg-mist/[0.03] p-4"
         >
           <input type="hidden" name="kind" value={kind} />
-          <div className="flex gap-1 rounded-full bg-white p-1">
+          <div className="flex gap-1 rounded-full bg-surface p-1">
             {MANUAL_KINDS.map((k) => (
               <button
                 key={k.id}
@@ -115,7 +115,7 @@ export default function DialogLog({
         <ul className="flex flex-col gap-2.5">
           {items.map((item) => (
             <li key={item.id} className="group flex items-start gap-3">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-ink-soft">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mist/[0.05] text-ink-soft">
                 {iconFor(item.kind)}
               </span>
               <div className="min-w-0 flex-1">

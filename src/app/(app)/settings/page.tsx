@@ -1,16 +1,21 @@
 import { eq } from "drizzle-orm";
 import { db, emailAccounts, companies } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getStages } from "@/lib/stages.server";
 import {
   addUser,
   connectEmailAccount,
   disconnectEmailAccount,
   updateSignature,
 } from "@/lib/actions";
-import { formatDateTime, initials } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import SyncButton from "@/components/SyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
-import { Mail, ShieldCheck, TriangleAlert, Building2, Signature } from "lucide-react";
+import ThemePicker from "@/components/ThemePicker";
+import StagesManager from "@/components/StagesManager";
+import AvatarUpload from "@/components/AvatarUpload";
+import AdminToggle from "@/components/AdminToggle";
+import { Mail, ShieldCheck, TriangleAlert, Building2, Signature, Palette, Layers } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
 // Krever Vercel Pro (eller Fluid Compute) for å faktisk få mer enn 10–15 sek;
@@ -28,6 +33,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const unverifiedCount = (
     await db.query.companies.findMany({ where: eq(companies.brregVerified, false) })
   ).length;
+  const stageRows = await getStages();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -49,14 +55,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </div>
 
         {params.connected && (
-          <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-[#1d7a3a]">
+          <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
             E-postkontoen er koblet til. Kjør en synkronisering for å hente dialogen.
           </p>
         )}
 
         {account ? (
           <div>
-            <div className="mb-4 flex items-center gap-3 rounded-xl bg-black/[0.03] p-4">
+            <div className="mb-4 flex items-center gap-3 rounded-xl bg-mist/[0.03] p-4">
               <ShieldCheck size={18} className="text-success" />
               <div className="flex-1">
                 <p className="text-[13.5px] font-medium">{account.email}</p>
@@ -159,6 +165,45 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       <section className="card mb-6 p-6">
         <div className="mb-4 flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Palette size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Design</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Velg utseendet ditt for appen. Gjelder bare for deg.
+            </p>
+          </div>
+        </div>
+        <ThemePicker current={me.theme} />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Layers size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Faser i pipelinen</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Legg til, rediger, slett eller endre rekkefølgen. Merk fasene som betyr
+              «vunnet» eller «tapt» — det styrer konfetti og nøkkeltallene på oversikten.
+            </p>
+          </div>
+        </div>
+        <StagesManager
+          stages={stageRows.map((s) => ({
+            id: s.id,
+            label: s.label,
+            color: s.color,
+            isWon: s.isWon,
+            isLost: s.isLost,
+          }))}
+        />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
             <Building2 size={16} />
           </span>
           <div>
@@ -181,10 +226,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </p>
         <ul className="mb-5 flex flex-col gap-2">
           {allUsers.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 rounded-xl bg-black/[0.03] px-4 py-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent">
-                {initials(u.name)}
-              </span>
+            <li key={u.id} className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-3">
+              <AvatarUpload
+                userId={u.id}
+                name={u.name}
+                avatarDataUrl={u.avatarDataUrl}
+                size={36}
+                editable={me.isAdmin || u.id === me.id}
+              />
               <div className="flex-1">
                 <p className="text-[13.5px] font-medium">
                   {u.name}
@@ -192,10 +241,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 </p>
                 <p className="text-[12.5px] text-ink-soft">{u.email}</p>
               </div>
-              {u.isAdmin && (
-                <span className="rounded-full bg-black/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
-                  Administrator
-                </span>
+              {me.isAdmin ? (
+                <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
+              ) : (
+                u.isAdmin && (
+                  <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
+                    Administrator
+                  </span>
+                )
               )}
             </li>
           ))}

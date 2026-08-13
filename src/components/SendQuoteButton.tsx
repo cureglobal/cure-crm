@@ -80,7 +80,7 @@ export default function SendQuoteButton({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-black/[0.02] p-4">
+    <div className="rounded-xl border border-line bg-mist/[0.02] p-4">
       <p className="mb-3 text-[13px] font-medium">
         Send pristilbud for «{dealTitle}»
       </p>
@@ -113,7 +113,7 @@ export default function SendQuoteButton({
           {extraEmails.map((e) => (
             <span
               key={e}
-              className="flex items-center gap-1 rounded-full bg-black/[0.05] px-2.5 py-1 text-[12px] text-ink-soft"
+              className="flex items-center gap-1 rounded-full bg-mist/[0.05] px-2.5 py-1 text-[12px] text-ink-soft"
             >
               {e}
               <button onClick={() => removeExtra(e)} className="text-ink-faint hover:text-ink">

@@ -2,7 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
-import { STAGES, type StageId } from "@/lib/stages";
+import type { Stage } from "@/lib/stages";
 import { updateDealStage } from "@/lib/actions";
 import { relativeDay, formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
@@ -22,53 +22,59 @@ export interface KanbanDeal {
   coOwnerCount: number;
 }
 
-export default function KanbanBoard({ deals }: { deals: KanbanDeal[] }) {
+export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; stages: Stage[] }) {
   const [, startTransition] = useTransition();
   const [optimistic, applyMove] = useOptimistic(
     deals,
-    (state, move: { id: number; stage: StageId }) =>
+    (state, move: { id: number; stage: string }) =>
       state.map((d) => (d.id === move.id ? { ...d, stage: move.stage } : d))
   );
-  const [dragOver, setDragOver] = useState<StageId | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
-  function onDrop(stage: StageId, e: React.DragEvent) {
+  function onDrop(stage: Stage, e: React.DragEvent) {
     e.preventDefault();
     setDragOver(null);
     const id = Number(e.dataTransfer.getData("text/deal-id"));
     if (!id) return;
     const deal = optimistic.find((d) => d.id === id);
-    if (!deal || deal.stage === stage) return;
-    if (stage === "vunnet") celebrateWin(`${deal.companyName} · ${deal.title}`);
+    const stageId = String(stage.id);
+    if (!deal || deal.stage === stageId) return;
+    if (stage.isWon) celebrateWin(`${deal.companyName} · ${deal.title}`);
     startTransition(async () => {
-      applyMove({ id, stage });
-      await updateDealStage(id, stage);
+      applyMove({ id, stage: stageId });
+      await updateDealStage(id, stageId);
     });
   }
 
+  // Bare fasene som faktisk har en deal i seg vises som kolonner.
+  const visibleStages = stages.filter((stage) =>
+    optimistic.some((d) => d.stage === String(stage.id))
+  );
+
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
-      {STAGES.map((stage) => {
-        const items = optimistic.filter((d) => d.stage === stage.id);
+      {visibleStages.map((stage) => {
+        const items = optimistic.filter((d) => d.stage === String(stage.id));
         const sum = items.reduce((acc, d) => acc + (d.value ?? 0), 0);
         return (
           <div
             key={stage.id}
             onDragOver={(e) => {
               e.preventDefault();
-              setDragOver(stage.id);
+              setDragOver(String(stage.id));
             }}
-            onDragLeave={() => setDragOver((s) => (s === stage.id ? null : s))}
-            onDrop={(e) => onDrop(stage.id, e)}
+            onDragLeave={() => setDragOver((s) => (s === String(stage.id) ? null : s))}
+            onDrop={(e) => onDrop(stage, e)}
             className={`flex w-[264px] shrink-0 flex-col rounded-2xl border p-2 transition ${
-              dragOver === stage.id
+              dragOver === String(stage.id)
                 ? "border-accent/40 bg-accent-soft/60"
-                : "border-transparent bg-black/[0.03]"
+                : "border-transparent bg-mist/[0.03]"
             }`}
           >
             <div className="flex items-center gap-2 px-2.5 pb-2 pt-1.5">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ background: stage.dot }}
+                style={{ background: stage.color }}
               />
               <span className="text-[13px] font-semibold">{stage.label}</span>
               <span className="text-[12px] text-ink-faint">{items.length}</span>
@@ -109,8 +115,8 @@ export default function KanbanBoard({ deals }: { deals: KanbanDeal[] }) {
                             rel.tone === "overdue"
                               ? "bg-danger/10 text-danger"
                               : rel.tone === "today"
-                                ? "bg-warning/15 text-[#b06a00]"
-                                : "bg-black/[0.05] text-ink-soft"
+                                ? "bg-warning/15 text-warning-ink"
+                                : "bg-mist/[0.05] text-ink-soft"
                           }`}
                         >
                           <CalendarDays size={11} />
@@ -129,7 +135,7 @@ export default function KanbanBoard({ deals }: { deals: KanbanDeal[] }) {
                             {deal.coOwnerCount > 0 && (
                               <span
                                 title={`${deal.coOwnerCount} med-eier${deal.coOwnerCount === 1 ? "" : "e"}`}
-                                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/[0.08] text-[8px] font-semibold text-ink-soft"
+                                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-mist/[0.08] text-[8px] font-semibold text-ink-soft"
                               >
                                 +{deal.coOwnerCount}
                               </span>

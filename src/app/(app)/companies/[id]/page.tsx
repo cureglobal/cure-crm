@@ -20,6 +20,7 @@ import CompanyEditForm from "@/components/CompanyEditForm";
 import NewDealOnCompanyButton from "@/components/NewDealOnCompanyButton";
 import ContactLog from "@/components/ContactLog";
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
+import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
@@ -150,10 +151,16 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const companyOwner = allUsers.find((u) => u.id === company.ownerId);
 
-  const openDeals = companyDeals.filter((d) => d.stage !== "vunnet" && d.stage !== "tapt");
+  const stages = await getStages();
+  const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
+  const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
+
+  const openDeals = companyDeals.filter(
+    (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
+  );
   const openValue = openDeals.reduce((acc, d) => acc + (d.value ?? 0), 0);
   const wonValue = companyDeals
-    .filter((d) => d.stage === "vunnet")
+    .filter((d) => wonStageIds.has(d.stage))
     .reduce((acc, d) => acc + (d.value ?? 0), 0);
 
   const addPersonBound = addPersonToCompany.bind(null, companyId, null);
@@ -177,7 +184,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             {!company.brregVerified && (
               <TriangleAlert
                 size={17}
-                className="shrink-0 text-[#b06a00]"
+                className="shrink-0 text-warning-ink"
                 aria-label="Ikke bekreftet mot Enhetsregisteret"
               />
             )}
@@ -273,18 +280,18 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                     <li key={d.id}>
                       <Link
                         href={`/leads/${d.id}`}
-                        className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-black/[0.03]"
+                        className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-mist/[0.03]"
                       >
                         <span
                           className="h-1.5 w-1.5 shrink-0 rounded-full"
-                          style={{ background: stageDot(d.stage) }}
+                          style={{ background: stageDot(stages, d.stage) }}
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13.5px] font-medium">
                             {d.title}
                           </span>
                           <span className="text-[12px] text-ink-soft">
-                            {stageLabel(d.stage)}
+                            {stageLabel(stages, d.stage)}
                             {d.comment ? ` · ${d.comment}` : ""}
                           </span>
                         </span>
@@ -294,8 +301,8 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                               rel.tone === "overdue"
                                 ? "bg-danger/10 text-danger"
                                 : rel.tone === "today"
-                                  ? "bg-warning/15 text-[#b06a00]"
-                                  : "bg-black/[0.05] text-ink-soft"
+                                  ? "bg-warning/15 text-warning-ink"
+                                  : "bg-mist/[0.05] text-ink-soft"
                             }`}
                           >
                             {rel.label}
@@ -352,9 +359,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   return (
                     <div
                       key={ownerId}
-                      className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-black/[0.02] p-4"
+                      className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-mist/[0.02] p-4"
                     >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.05] text-ink-soft">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-mist/[0.05] text-ink-soft">
                         <Lock size={15} />
                       </span>
                       <div className="flex-1">

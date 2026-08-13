@@ -1,10 +1,15 @@
 import { asc, eq } from "drizzle-orm";
 import { db, companies, deals, people, companyPeople } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getStages } from "@/lib/stages.server";
 import CompaniesTable, { type CompanyRow } from "@/components/CompaniesTable";
+import NewCompanyButton from "@/components/NewCompanyButton";
 
 export default async function CompaniesPage() {
   await requireUser();
+  const stages = await getStages();
+  const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
+  const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
   const allCompanies = await db.query.companies.findMany({
     orderBy: [asc(companies.name)],
@@ -33,7 +38,7 @@ export default async function CompaniesPage() {
 
   const rows: CompanyRow[] = allCompanies.map((c) => {
     const own = allDeals.filter((d) => d.companyId === c.id);
-    const open = own.filter((d) => d.stage !== "vunnet" && d.stage !== "tapt");
+    const open = own.filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage));
     return {
       id: c.id,
       name: c.name,
@@ -46,7 +51,7 @@ export default async function CompaniesPage() {
       openCount: open.length,
       openValue: open.reduce((acc, d) => acc + (d.value ?? 0), 0),
       wonValue: own
-        .filter((d) => d.stage === "vunnet")
+        .filter((d) => wonStageIds.has(d.stage))
         .reduce((acc, d) => acc + (d.value ?? 0), 0),
       people: peopleByCompany.get(c.id) ?? [],
     };
@@ -57,11 +62,14 @@ export default async function CompaniesPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[26px] font-semibold tracking-tight">Bedrifter</h1>
-        <p className="mt-1 text-ink-soft">
-          {rows.length} selskaper · {rows.reduce((a, r) => a + r.dealCount, 0)} deals totalt
-        </p>
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold tracking-tight">Bedrifter</h1>
+          <p className="mt-1 text-ink-soft">
+            {rows.length} selskaper · {rows.reduce((a, r) => a + r.dealCount, 0)} deals totalt
+          </p>
+        </div>
+        <NewCompanyButton />
       </div>
       <CompaniesTable rows={rows} totalOpen={totalOpen} totalWon={totalWon} />
     </div>

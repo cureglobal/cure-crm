@@ -23,14 +23,14 @@ export default function NavLink({
         collapsed ? "justify-center" : ""
       } ${
         active
-          ? "bg-black/[0.06] text-ink"
-          : "text-ink-soft hover:bg-black/[0.04] hover:text-ink"
+          ? "bg-mist/[0.06] text-ink"
+          : "text-ink-soft hover:bg-mist/[0.04] hover:text-ink"
       }`}
     >
       {icon}
       {!collapsed && label}
       {collapsed && (
-        <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[12px] font-medium text-white opacity-0 shadow-card transition-opacity duration-100 group-hover:opacity-100">
+        <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-chip-dark px-2 py-1 text-[12px] font-medium text-white opacity-0 shadow-card transition-opacity duration-100 group-hover:opacity-100">
           {label}
         </span>
       )}

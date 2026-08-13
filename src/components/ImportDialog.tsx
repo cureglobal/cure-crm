@@ -11,7 +11,7 @@ import {
   type ImportPersonRow,
 } from "@/lib/actions";
 import { parseCsv, findColumn, cell, parseNumber, parseDate } from "@/lib/csv";
-import { STAGES, type StageId } from "@/lib/stages";
+import { firstStageId, type Stage } from "@/lib/stages";
 import { formatMoney } from "@/lib/format";
 import {
   Upload,
@@ -52,22 +52,47 @@ interface Parsed {
   deals: (ImportDealRow & { productiveStage: string })[];
   companies: ImportCompanyRow[];
   people: ImportPersonRow[];
-  stageMap: Record<string, StageId>;
+  stageMap: Record<string, string>;
   count: number;
 }
 
-function guessStage(value: string): StageId {
+// Fasene er nå fritt redigerbare, så vi kan ikke lenger matche på faste
+// nøkler — forsøker først å matche direkte mot fasenavnet, så noen vanlige
+// nøkkelord, og faller ellers tilbake på den første fasen i rekkefølgen.
+function guessStage(value: string, stages: Stage[]): string {
   const s = value.toLowerCase();
-  if (s.includes("vunnet") || s.includes("won") || s.includes("signert")) return "vunnet";
-  if (s.includes("tapt") || s.includes("lost")) return "tapt";
-  if (s.includes("sendt") || s.includes("anbud") || s.includes("kontrakt") || s.includes("signering"))
-    return "tilbud";
-  if (s.includes("møt") || s.includes("dialog") || s.includes("tilbud")) return "dialog";
-  if (s.includes("kontakt")) return "kontaktet";
-  return "ny";
+  if (stages.length === 0) return "";
+
+  const direct = stages.find(
+    (st) => s.includes(st.label.toLowerCase()) || st.label.toLowerCase().includes(s)
+  );
+  if (direct) return String(direct.id);
+
+  const byKeyword = (...kws: string[]) =>
+    stages.find((st) => kws.some((k) => st.label.toLowerCase().includes(k)));
+
+  const won = stages.find((st) => st.isWon);
+  if (won && (s.includes("vunnet") || s.includes("won") || s.includes("signert"))) {
+    return String(won.id);
+  }
+  const lost = stages.find((st) => st.isLost);
+  if (lost && (s.includes("tapt") || s.includes("lost"))) return String(lost.id);
+
+  const sendt = byKeyword("tilbud sendt", "anbud", "kontrakt", "signering");
+  if (sendt && (s.includes("sendt") || s.includes("anbud") || s.includes("kontrakt") || s.includes("signering"))) {
+    return String(sendt.id);
+  }
+  const dialog = byKeyword("møt", "dialog", "oppfølging", "tilbud");
+  if (dialog && (s.includes("møt") || s.includes("dialog") || s.includes("tilbud"))) {
+    return String(dialog.id);
+  }
+  const kontakt = byKeyword("kontakt");
+  if (kontakt && s.includes("kontakt")) return String(kontakt.id);
+
+  return firstStageId(stages);
 }
 
-export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
+export default function ImportDialog({ collapsed, stages }: { collapsed?: boolean; stages: Stage[] }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("deals");
   const [parsed, setParsed] = useState<Parsed | null>(null);
@@ -133,7 +158,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
         deals.push({
           companyName,
           dealTitle,
-          stage: "ny",
+          stage: firstStageId(stages),
           value: value && value > 0 ? Math.round(value) : null,
           followUpAt: parseDate(cell(r, dateIdx)),
           comment: cell(r, commentIdx) || null,
@@ -144,10 +169,10 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
         setError("Fant ingen deals i fila.");
         return;
       }
-      const stageMap: Record<string, StageId> = {};
+      const stageMap: Record<string, string> = {};
       for (const d of deals) {
         if (!(d.productiveStage in stageMap)) {
-          stageMap[d.productiveStage] = guessStage(d.productiveStage);
+          stageMap[d.productiveStage] = guessStage(d.productiveStage, stages);
         }
       }
       setParsed({
@@ -245,7 +270,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
           parsed.deals.map((d) => ({
             companyName: d.companyName,
             dealTitle: d.dealTitle,
-            stage: parsed.stageMap[d.productiveStage] ?? "ny",
+            stage: parsed.stageMap[d.productiveStage] ?? firstStageId(stages),
             value: d.value,
             followUpAt: d.followUpAt,
             comment: d.comment,
@@ -296,13 +321,13 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
               </div>
               <button
                 onClick={close}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="mb-4 flex rounded-full bg-black/[0.05] p-1">
+            <div className="mb-4 flex rounded-full bg-mist/[0.05] p-1">
               {TABS.map((t) => (
                 <button
                   key={t.id}
@@ -312,7 +337,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
                     setResult(null);
                   }}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-                    kind === t.id ? "bg-white shadow-card" : "text-ink-soft hover:text-ink"
+                    kind === t.id ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
                   }`}
                 >
                   {t.icon}
@@ -322,7 +347,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
             </div>
 
             {result && (
-              <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-[#1d7a3a]">
+              <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
                 {result}
               </p>
             )}
@@ -345,7 +370,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
 
             {!parsed ? (
               <div>
-                <p className="mb-3 rounded-xl bg-black/[0.03] px-4 py-3 text-[12.5px] text-ink-soft">
+                <p className="mb-3 rounded-xl bg-mist/[0.03] px-4 py-3 text-[12.5px] text-ink-soft">
                   <span className="font-medium text-ink">Kolonner:</span> {activeTab.columns}
                 </p>
                 <button
@@ -358,7 +383,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2.5 rounded-xl bg-black/[0.03] px-4 py-3">
+                <div className="flex items-center gap-2.5 rounded-xl bg-mist/[0.03] px-4 py-3">
                   <FileSpreadsheet size={16} className="shrink-0 text-ink-soft" />
                   <span className="flex-1 truncate text-[13px] font-medium">
                     {parsed.fileName}
@@ -368,7 +393,7 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
                   </span>
                   <button
                     onClick={reset}
-                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
                   >
                     <X size={14} />
                   </button>
@@ -393,14 +418,14 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
                                 ...parsed,
                                 stageMap: {
                                   ...parsed.stageMap,
-                                  [ps]: e.target.value as StageId,
+                                  [ps]: e.target.value,
                                 },
                               })
                             }
                             className="field !py-1.5 text-[13px]"
                           >
-                            {STAGES.map((s) => (
-                              <option key={s.id} value={s.id}>
+                            {stages.map((s) => (
+                              <option key={s.id} value={String(s.id)}>
                                 {s.label}
                               </option>
                             ))}
@@ -481,14 +506,14 @@ export default function ImportDialog({ collapsed }: { collapsed?: boolean }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className={`group relative flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-medium text-ink-soft transition hover:bg-black/[0.04] hover:text-ink ${
+        className={`group relative flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-medium text-ink-soft transition hover:bg-mist/[0.04] hover:text-ink ${
           collapsed ? "justify-center" : "w-full"
         }`}
       >
         <Upload size={17} strokeWidth={1.8} />
         {!collapsed && "Importer"}
         {collapsed && (
-          <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[12px] font-medium text-white opacity-0 shadow-card transition-opacity duration-100 group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-chip-dark px-2 py-1 text-[12px] font-medium text-white opacity-0 shadow-card transition-opacity duration-100 group-hover:opacity-100">
             Importer
           </span>
         )}

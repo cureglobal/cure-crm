@@ -138,7 +138,7 @@ export default function CompanyEditForm({
             {pending ? "Lagrer …" : "Lagre endringer"}
           </button>
           {saved && !pending && (
-            <span className="text-[12.5px] font-medium text-[#1d7a3a]">Lagret</span>
+            <span className="text-[12.5px] font-medium text-success-ink">Lagret</span>
           )}
         </div>
       </form>

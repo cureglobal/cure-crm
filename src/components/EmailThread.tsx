@@ -19,14 +19,14 @@ function MessageRow({ message }: { message: ThreadMessage }) {
   const [open, setOpen] = useState(false);
   const outgoing = message.direction === "out";
   return (
-    <li className="rounded-xl border border-line bg-white">
+    <li className="rounded-xl border border-line bg-surface">
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-3 p-3 text-left"
       >
         <span
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-            outgoing ? "bg-accent-soft text-accent" : "bg-black/[0.05] text-ink-soft"
+            outgoing ? "bg-accent-soft text-accent" : "bg-mist/[0.05] text-ink-soft"
           }`}
         >
           {outgoing ? <ArrowUpRight size={14} /> : <ArrowDownLeft size={14} />}

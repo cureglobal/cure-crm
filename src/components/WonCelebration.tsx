@@ -150,7 +150,7 @@ export default function WonCelebration() {
         <span className="dancer select-none text-[86px] leading-none drop-shadow-lg">
           🕺
         </span>
-        <div className="won-banner rounded-full bg-white/90 px-5 py-2.5 shadow-pop backdrop-blur-xl">
+        <div className="won-banner rounded-full bg-surface/90 px-5 py-2.5 shadow-pop backdrop-blur-xl">
           <p className="text-[15px] font-semibold tracking-tight">
             Vunnet! {dealName && <span className="text-ink-soft">{dealName}</span>}
           </p>

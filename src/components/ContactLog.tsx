@@ -65,10 +65,10 @@ export default function ContactLog({
               setOpen(false);
             });
           }}
-          className="mb-4 flex flex-col gap-2.5 rounded-xl bg-black/[0.03] p-4"
+          className="mb-4 flex flex-col gap-2.5 rounded-xl bg-mist/[0.03] p-4"
         >
           <input type="hidden" name="kind" value={kind} />
-          <div className="flex gap-1 rounded-full bg-white p-1">
+          <div className="flex gap-1 rounded-full bg-surface p-1">
             {KINDS.map((k) => (
               <button
                 key={k.id}
@@ -108,7 +108,7 @@ export default function ContactLog({
         <ul className="flex flex-col gap-2.5">
           {items.map((item) => (
             <li key={`${item.source}-${item.id}`} className="group flex items-start gap-3">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-ink-soft">
+              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mist/[0.05] text-ink-soft">
                 {kindIcon(item.kind)}
               </span>
               <div className="min-w-0 flex-1">
@@ -116,7 +116,7 @@ export default function ContactLog({
                   <span className="font-medium">{kindLabel(item.kind)}</span>
                   <span className="text-ink-soft"> · {formatDate(new Date(item.occurredAt))}</span>
                   {item.source === "epost" && (
-                    <span className="ml-1.5 rounded-full bg-black/[0.05] px-1.5 py-0.5 text-[10.5px] font-medium text-ink-soft">
+                    <span className="ml-1.5 rounded-full bg-mist/[0.05] px-1.5 py-0.5 text-[10.5px] font-medium text-ink-soft">
                       automatisk
                     </span>
                   )}

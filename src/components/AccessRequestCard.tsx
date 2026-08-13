@@ -19,7 +19,7 @@ export default function AccessRequestCard({
   const [pending, startTransition] = useTransition();
   return (
     <div className="card flex items-center gap-3 border-accent/20 bg-accent-soft/50 p-4">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-accent shadow-card">
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-accent shadow-card">
         <Mail size={16} />
       </span>
       <p className="flex-1 text-[13.5px]">

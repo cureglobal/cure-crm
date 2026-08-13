@@ -67,11 +67,11 @@ function PersonRowItem({ person }: { person: PersonRow }) {
   }
 
   const inputClass =
-    "field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] hover:!border-line focus:!border-accent focus:!bg-white";
+    "field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] hover:!border-line focus:!border-accent focus:!bg-surface";
 
   return (
     <li className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
-      <div className={`${GRID} px-5 py-2.5 transition hover:bg-black/[0.015]`}>
+      <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <Link href={`/people/${person.id}`} className="flex min-w-0 items-center gap-3">
           <Avatar name={person.name} size={32} />
           <span className="truncate text-[13.5px] font-medium hover:text-accent">
@@ -114,7 +114,7 @@ function PersonRowItem({ person }: { person: PersonRow }) {
                 key={c.id}
                 href={`/companies/${c.id}`}
                 title={c.role ?? undefined}
-                className="flex max-w-full items-center gap-1.5 rounded-full bg-black/[0.05] py-0.5 pl-0.5 pr-2.5 text-[12px] font-medium transition hover:bg-accent-soft hover:text-accent"
+                className="flex max-w-full items-center gap-1.5 rounded-full bg-mist/[0.05] py-0.5 pl-0.5 pr-2.5 text-[12px] font-medium transition hover:bg-accent-soft hover:text-accent"
               >
                 <CompanyLogo logoUrl={c.logoUrl} name={c.name} size={18} radius={9} />
                 <span className="truncate">{c.name}</span>
@@ -213,7 +213,7 @@ export default function PeopleTable({
             <button
               type="button"
               onClick={() => setShowNew(false)}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
             >
               <X size={15} />
             </button>
@@ -243,7 +243,7 @@ export default function PeopleTable({
       <div className="card overflow-auto max-h-[75vh]">
         <div className="min-w-[680px]">
           <div
-            className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-[#fbfbfd]/95 px-5 py-2.5 backdrop-blur-xl`}
+            className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
           >
             <HeaderCell label="Navn" sortKey="navn" sort={sort} onSort={onSort} />
             <span className="px-2">

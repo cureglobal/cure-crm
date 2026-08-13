@@ -47,7 +47,7 @@ export default function NewDealOnCompanyButton({
               </div>
               <button
                 onClick={() => setOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-black/5"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
               >
                 <X size={16} />
               </button>

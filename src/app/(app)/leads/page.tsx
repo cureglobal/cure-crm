@@ -2,7 +2,7 @@ import { desc, eq, asc } from "drizzle-orm";
 import { db, deals as dealsTable, companies, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
-import { STAGES } from "@/lib/stages";
+import { getStages } from "@/lib/stages.server";
 import PipelineView from "@/components/PipelineView";
 import NewDealButton from "@/components/NewDealButton";
 import type { DealRow } from "@/components/DealsTable";
@@ -52,7 +52,8 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
     (await db.query.dealLines.findMany()).map((l) => l.dealId)
   );
 
-  const stageOrder = new Map(STAGES.map((s, i) => [s.id as string, i]));
+  const stages = await getStages();
+  const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
   const dealRows: DealRow[] = [...rows]
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99))
     .map((d) => ({
@@ -86,6 +87,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
 
       <PipelineView
         rows={dealRows}
+        stages={stages}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
         currentUserId={me.id}
         initialView={initialView}

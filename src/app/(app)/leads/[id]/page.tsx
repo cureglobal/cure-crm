@@ -42,6 +42,7 @@ import SendQuoteButton from "@/components/SendQuoteButton";
 import DialogLog from "@/components/DialogLog";
 import DealOwners from "@/components/DealOwners";
 import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
+import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 
 export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
@@ -67,6 +68,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
     .orderBy(asc(dealOwners.createdAt));
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
+  const stages = await getStages();
 
   const otherDeals = await db.query.deals.findMany({
     where: and(eq(deals.companyId, company.id), ne(deals.id, deal.id)),
@@ -226,6 +228,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
           dealId={deal.id}
           stage={deal.stage}
           dealName={`${company.name} · ${deal.title}`}
+          stages={stages}
         />
       </div>
 
@@ -262,7 +265,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                   rel.tone === "overdue"
                     ? "text-danger"
                     : rel.tone === "today"
-                      ? "text-[#b06a00]"
+                      ? "text-warning-ink"
                       : "text-ink-soft"
                 }`}
               >
@@ -282,16 +285,16 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                   <li key={d.id}>
                     <Link
                       href={`/leads/${d.id}`}
-                      className="-mx-2 flex items-center gap-2.5 rounded-xl px-2 py-2 transition hover:bg-black/[0.03]"
+                      className="-mx-2 flex items-center gap-2.5 rounded-xl px-2 py-2 transition hover:bg-mist/[0.03]"
                     >
                       <span
                         className="h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ background: stageDot(d.stage) }}
+                        style={{ background: stageDot(stages, d.stage) }}
                       />
                       <span className="flex-1 truncate text-[13.5px] font-medium">
                         {d.title}
                       </span>
-                      <span className="text-[12px] text-ink-soft">{stageLabel(d.stage)}</span>
+                      <span className="text-[12px] text-ink-soft">{stageLabel(stages, d.stage)}</span>
                       {d.value ? (
                         <span className="text-[12px] font-medium text-ink-soft">
                           {formatMoney(d.value)}
@@ -309,7 +312,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
             <ul className="mb-4 flex flex-col gap-3">
               {contacts.map((c) => (
                 <li key={c.id} className="group flex items-start gap-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-[12px] font-semibold text-ink-soft">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mist/[0.05] text-[12px] font-semibold text-ink-soft">
                     {c.name.charAt(0).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -396,7 +399,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
               <label className="text-[12px] font-medium text-ink-soft">
                 Estimert verdi (kr)
                 {lines.length > 0 ? (
-                  <span className="field mt-1 block bg-black/[0.03] text-ink-soft">
+                  <span className="field mt-1 block bg-mist/[0.03] text-ink-soft">
                     {formatMoney(deal.value)} — beregnes fra varelinjene
                   </span>
                 ) : (
@@ -521,9 +524,9 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                   return (
                     <div
                       key={ownerId}
-                      className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-black/[0.02] p-4"
+                      className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-mist/[0.02] p-4"
                     >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.05] text-ink-soft">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-mist/[0.05] text-ink-soft">
                         <Lock size={15} />
                       </span>
                       <div className="flex-1">

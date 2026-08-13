@@ -169,7 +169,7 @@ export default function CompaniesTable({
       <div className="card overflow-auto max-h-[75vh]">
         <div className="min-w-[820px]">
         <div
-          className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-[#fbfbfd]/95 px-5 py-2.5 backdrop-blur-xl`}
+          className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
         >
           <HeaderCell label="Selskap" sortKey="navn" sort={sort} onSort={onSort} />
           <HeaderCell label="Org nr" sortKey="orgnr" sort={sort} onSort={onSort} />
@@ -195,7 +195,7 @@ export default function CompaniesTable({
               <li key={c.id} className="border-b border-line last:border-b-0">
                 <Link
                   href={`/companies/${c.id}`}
-                  className={`${GRID} px-5 py-3 transition hover:bg-black/[0.02]`}
+                  className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <CompanyLogo logoUrl={c.logoUrl} name={c.name} size={32} radius={9} />
@@ -205,7 +205,7 @@ export default function CompaniesTable({
                         {!c.brregVerified && (
                           <TriangleAlert
                             size={12}
-                            className="shrink-0 text-[#b06a00]"
+                            className="shrink-0 text-warning-ink"
                             aria-label="Ikke bekreftet"
                           />
                         )}

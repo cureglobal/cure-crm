@@ -11,6 +11,7 @@ const CREATE_STATEMENTS = [
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    theme TEXT NOT NULL DEFAULT 'lys',
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS email_accounts (
@@ -48,6 +49,15 @@ const CREATE_STATEMENTS = [
     fiscal_year TEXT,
     brreg_synced_at INTEGER,
     primary_contact_id INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS stages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#8e8e93',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_won INTEGER NOT NULL DEFAULT 0,
+    is_lost INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS deals (
@@ -159,6 +169,7 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_contact_events_company ON contact_events(company_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_stages_sort_order ON stages(sort_order)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -185,8 +196,69 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   },
   people: { notes: "TEXT" },
   deals: { comment: "TEXT" },
-  users: { signature: "TEXT" },
+  users: {
+    signature: "TEXT",
+    theme: "TEXT NOT NULL DEFAULT 'lys'",
+    avatar_data_url: "TEXT",
+    onboarding_seen_at: "INTEGER",
+  },
 };
+
+// De 12 fasene brukeren har definert, i den rekkefølgen de ble oppgitt —
+// rekkefølgen kan endres fritt fra Innstillinger etterpå.
+const DEFAULT_STAGES: { label: string; color: string; isWon?: boolean; isLost?: boolean }[] = [
+  { label: "Tapt", color: "#ff453a", isLost: true },
+  { label: "Vunnet", color: "#30d158", isWon: true },
+  { label: "Anbud", color: "#ff9f0a" },
+  { label: "Har sendt kontrakt til signering", color: "#5e5ce6" },
+  { label: "Send kontrakt", color: "#bf5af2" },
+  { label: "Aktiv oppfølging", color: "#64d2ff" },
+  { label: "Tilbud sendt", color: "#ff9f0a" },
+  { label: "Har møtt, skal sende tilbud", color: "#5ac8fa" },
+  { label: "Møte avtalt", color: "#0071e3" },
+  { label: "Kontaktfase", color: "#0071e3" },
+  { label: "Prospect", color: "#8e8e93" },
+  { label: "Mulighet", color: "#8e8e93" },
+];
+
+// Gamle, hardkodede fase-nøkler fra før faser ble redigerbare, mappet til
+// den nye fasen med nærmest tilsvarende betydning — kjøres kun for deals som
+// fortsatt har en av disse nøklene (se seedStagesAndMigrateLegacy under).
+const LEGACY_STAGE_MAP: Record<string, string> = {
+  ny: "Prospect",
+  kontaktet: "Kontaktfase",
+  dialog: "Aktiv oppfølging",
+  tilbud: "Tilbud sendt",
+  vunnet: "Vunnet",
+  tapt: "Tapt",
+};
+
+// Kjøres én gang: seeder standardfasene og migrerer eksisterende deals fra de
+// gamle hardkodede nøklene til de nye fase-id-ene. Idempotent — hopper over
+// seedingen (og dermed også migreringen) hvis stages-tabellen ikke er tom.
+async function seedStagesAndMigrateLegacy(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM stages");
+  if (Number(existing.rows[0].c) > 0) return;
+
+  const idByLabel: Record<string, number> = {};
+  for (let i = 0; i < DEFAULT_STAGES.length; i++) {
+    const s = DEFAULT_STAGES[i];
+    const res = await client.execute({
+      sql: "INSERT INTO stages (label, color, sort_order, is_won, is_lost, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [s.label, s.color, i, s.isWon ? 1 : 0, s.isLost ? 1 : 0, Date.now()],
+    });
+    idByLabel[s.label] = Number(res.lastInsertRowid);
+  }
+
+  for (const [legacyKey, newLabel] of Object.entries(LEGACY_STAGE_MAP)) {
+    const newId = idByLabel[newLabel];
+    if (!newId) continue;
+    await client.execute({
+      sql: "UPDATE deals SET stage = ? WHERE stage = ?",
+      args: [String(newId), legacyKey],
+    });
+  }
+}
 
 async function addMissingColumns(client: Client) {
   for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
@@ -226,4 +298,6 @@ export async function migrate(client: Client) {
   // Må kjøre før indeksene, som kan peke på kolonner lagt til her.
   await addMissingColumns(client);
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
+  // Må kjøre etter at både stages- og deals-tabellen finnes.
+  await seedStagesAndMigrateLegacy(client);
 }

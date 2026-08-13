@@ -13,11 +13,25 @@ export default function Avatar({
   name,
   size = 26,
   title,
+  imageUrl,
 }: {
   name: string;
   size?: number;
   title?: string;
+  imageUrl?: string | null;
 }) {
+  if (imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- data-URL, ikke en Next-håndtert ekstern ressurs
+      <img
+        src={imageUrl}
+        alt={name}
+        title={title ?? name}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
   const [bg, fg] = PALETTE[Math.abs(hash) % PALETTE.length];

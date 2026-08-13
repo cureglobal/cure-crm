@@ -148,7 +148,7 @@ export default function CompanyFacts({
       {message && (
         <p
           className={`mb-4 rounded-xl px-4 py-2.5 text-[13px] font-medium ${
-            message.ok ? "bg-success/10 text-[#1d7a3a]" : "bg-warning/10 text-[#8a5a00]"
+            message.ok ? "bg-success/10 text-success-ink" : "bg-warning/10 text-warning-ink"
           }`}
         >
           {message.text}
@@ -157,13 +157,13 @@ export default function CompanyFacts({
 
       {!company.brregVerified && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 px-4 py-3">
-          <TriangleAlert size={16} className="shrink-0 text-[#b06a00]" />
-          <p className="flex-1 text-[13px] font-medium text-[#8a5a00]">
+          <TriangleAlert size={16} className="shrink-0 text-warning-ink" />
+          <p className="flex-1 text-[13px] font-medium text-warning-ink">
             Selskapet er ikke bekreftet mot Enhetsregisteret.
           </p>
           <button
             onClick={() => setShowFix((v) => !v)}
-            className="shrink-0 text-[12.5px] font-semibold text-[#8a5a00] underline hover:no-underline"
+            className="shrink-0 text-[12.5px] font-semibold text-warning-ink underline hover:no-underline"
           >
             {showFix ? "Skjul" : "Finn riktig selskap"}
           </button>
@@ -177,7 +177,7 @@ export default function CompanyFacts({
             <dt className="text-ink-soft">Sist kontakt</dt>
             <dd
               className={`flex items-center gap-1.5 font-medium ${
-                rel.tone === "overdue" ? "" : "text-[#1d7a3a]"
+                rel.tone === "overdue" ? "" : "text-success-ink"
               }`}
             >
               {rel.label}
@@ -229,7 +229,7 @@ export default function CompanyFacts({
         )}
       </dl>
 
-      <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl bg-black/[0.03] px-5 py-4 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl bg-mist/[0.03] px-5 py-4 sm:grid-cols-4">
         <div className="min-w-0">
           <p className="text-[10.5px] font-medium uppercase tracking-wide text-ink-soft">
             Driftsinntekter {year}
@@ -244,7 +244,7 @@ export default function CompanyFacts({
           </p>
           <p
             className={`mt-0.5 flex items-center gap-1 text-[17px] font-semibold tabular-nums tracking-tight ${
-              company.profit == null ? "" : profitPositive ? "text-[#1d7a3a]" : "text-danger"
+              company.profit == null ? "" : profitPositive ? "text-success-ink" : "text-danger"
             }`}
           >
             {company.profit != null &&

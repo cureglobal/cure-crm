@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
     <main className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-ink text-xl font-semibold text-white shadow-pop">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-chip-dark text-xl font-semibold text-white shadow-pop">
             C
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">

@@ -9,6 +9,7 @@ import {
   emailAccessGrants,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getStages } from "@/lib/stages.server";
 import { formatDateTime, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
@@ -63,8 +64,14 @@ export default async function Dashboard() {
     .innerJoin(companies, eq(deals.companyId, companies.id))
     .leftJoin(users, eq(deals.ownerId, users.id));
 
-  const activeDeals = allDeals.filter((d) => d.stage !== "vunnet" && d.stage !== "tapt");
-  const wonCount = allDeals.filter((d) => d.stage === "vunnet").length;
+  const stages = await getStages();
+  const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
+  const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
+
+  const activeDeals = allDeals.filter(
+    (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
+  );
+  const wonCount = allDeals.filter((d) => wonStageIds.has(d.stage)).length;
 
   const withFollowUp = activeDeals
     .filter((d) => d.followUpAt)
@@ -183,6 +190,7 @@ export default async function Dashboard() {
           items={thisWeek.map(toFollowUpItem)}
           seeAllHref="/leads?view=liste&dato=uke&aktive=1"
           emptyText="Ingen oppfølginger igjen denne uken."
+          stages={stages}
         />
         <FollowUpList
           heading="Oppfølginger, forfalt"
@@ -190,6 +198,7 @@ export default async function Dashboard() {
           seeAllHref="/leads?view=liste&dato=forfalt&aktive=1"
           emptyText="Ingenting er forfalt. Godt jobbet."
           tone="danger"
+          stages={stages}
         />
       </div>
 

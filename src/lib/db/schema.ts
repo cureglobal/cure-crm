@@ -8,6 +8,12 @@ export const users = sqliteTable("users", {
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   // Vises på slutten av e-poster sendt fra appen, f.eks. pristilbud til kunde.
   signature: text("signature"),
+  // Design brukeren har valgt for grensesnittet sitt: 'lys' | 'dark' | 'elguide'.
+  theme: text("theme").notNull().default("lys"),
+  // Profilbilde som data-URL (samme mønster som referanseprosjektenes screenshot).
+  avatarDataUrl: text("avatar_data_url"),
+  // Satt når brukeren har fullført (eller lukket) onboarding-gjennomgangen.
+  onboardingSeenAt: integer("onboarding_seen_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -64,6 +70,21 @@ export const companies = sqliteTable("companies", {
     .$defaultFn(() => new Date()),
 });
 
+// Fasene i pipelinen — fritt redigerbare av admin (navn, farge, rekkefølge).
+// `deals.stage` lagrer denne radens `id` (som tekst, se kommentar der).
+export const stages = sqliteTable("stages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  label: text("label").notNull(),
+  color: text("color").notNull().default("#8e8e93"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  // Styrer konfetti/vunnet-/tapt-logikk som før var hardkodet på stage-id.
+  isWon: integer("is_won", { mode: "boolean" }).notNull().default(false),
+  isLost: integer("is_lost", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // En deal/salgsmulighet under et selskap, f.eks. «Nettsider» eller «Reklame».
 export const deals = sqliteTable("deals", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -71,6 +92,8 @@ export const deals = sqliteTable("deals", {
     .notNull()
     .references(() => companies.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  // Fritekstkolonne av historiske grunner, men lagrer i praksis alltid
+  // `String(stages.id)` — se stages-tabellen over.
   stage: text("stage").notNull().default("ny"),
   value: integer("value"),
   followUpAt: integer("follow_up_at", { mode: "timestamp_ms" }),
@@ -230,6 +253,7 @@ export const activities = sqliteTable("activities", {
 
 export type User = typeof users.$inferSelect;
 export type Company = typeof companies.$inferSelect;
+export type Stage = typeof stages.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;

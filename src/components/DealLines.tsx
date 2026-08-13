@@ -166,7 +166,7 @@ export default function DealLines({
                     input.focus();
                   }
                 }}
-                className="rounded-full bg-black/[0.05] px-2.5 py-1 text-[11.5px] font-medium text-ink-soft transition hover:bg-black/[0.08] hover:text-ink"
+                className="rounded-full bg-mist/[0.05] px-2.5 py-1 text-[11.5px] font-medium text-ink-soft transition hover:bg-mist/[0.08] hover:text-ink"
               >
                 {s}
               </button>

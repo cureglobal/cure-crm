@@ -2,7 +2,7 @@ import Link from "next/link";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import { relativeDay } from "@/lib/format";
-import { stageDot, stageLabel } from "@/lib/stages";
+import { stageDot, stageLabel, type Stage } from "@/lib/stages";
 import { ArrowRight } from "lucide-react";
 
 export interface FollowUpItem {
@@ -23,12 +23,14 @@ export default function FollowUpList({
   seeAllHref,
   emptyText,
   tone = "neutral",
+  stages,
 }: {
   heading: string;
   items: FollowUpItem[];
   seeAllHref: string;
   emptyText: string;
   tone?: "neutral" | "danger";
+  stages: Stage[];
 }) {
   const visible = items.slice(0, MAX_VISIBLE);
   const hidden = items.length - visible.length;
@@ -41,7 +43,7 @@ export default function FollowUpList({
           {items.length > 0 && (
             <span
               className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[12px] font-medium ${
-                tone === "danger" ? "bg-danger/10 text-danger" : "bg-black/[0.06] text-ink-soft"
+                tone === "danger" ? "bg-danger/10 text-danger" : "bg-mist/[0.06] text-ink-soft"
               }`}
             >
               {items.length}
@@ -70,7 +72,7 @@ export default function FollowUpList({
                 <li key={d.id}>
                   <Link
                     href={`/leads/${d.id}`}
-                    className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-black/[0.03]"
+                    className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-mist/[0.03]"
                   >
                     <CompanyLogo logoUrl={d.logoUrl} name={d.companyName} size={32} radius={9} />
                     <div className="min-w-0 flex-1">
@@ -81,9 +83,9 @@ export default function FollowUpList({
                       <p className="flex items-center gap-1.5 text-[12px] text-ink-soft">
                         <span
                           className="h-1.5 w-1.5 rounded-full"
-                          style={{ background: stageDot(d.stage) }}
+                          style={{ background: stageDot(stages, d.stage) }}
                         />
-                        {stageLabel(d.stage)}
+                        {stageLabel(stages, d.stage)}
                       </p>
                     </div>
                     {d.ownerName && <Avatar name={d.ownerName} size={22} />}
@@ -92,8 +94,8 @@ export default function FollowUpList({
                         rel.tone === "overdue"
                           ? "bg-danger/10 text-danger"
                           : rel.tone === "today"
-                            ? "bg-warning/15 text-[#b06a00]"
-                            : "bg-black/[0.05] text-ink-soft"
+                            ? "bg-warning/15 text-warning-ink"
+                            : "bg-mist/[0.05] text-ink-soft"
                       }`}
                     >
                       {rel.label}

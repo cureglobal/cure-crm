@@ -38,15 +38,15 @@ export default function BrregMatchAll({ unverified }: { unverified: number }) {
 
       {result && (
         <div className="w-full">
-          <p className="rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-[#1d7a3a]">
+          <p className="rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
             {result.matched} av {result.checked} selskaper ble bekreftet.
           </p>
           {result.unresolved.length > 0 && (
             <div className="mt-2 rounded-xl bg-warning/10 px-4 py-2.5">
-              <p className="text-[12.5px] font-medium text-[#8a5a00]">
+              <p className="text-[12.5px] font-medium text-warning-ink">
                 Disse må bekreftes manuelt ({result.unresolved.length}):
               </p>
-              <p className="mt-1 text-[12.5px] text-[#8a5a00]">
+              <p className="mt-1 text-[12.5px] text-warning-ink">
                 {result.unresolved.join(", ")}
               </p>
             </div>

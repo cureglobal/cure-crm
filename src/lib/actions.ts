@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import {
   db,
   users,
@@ -19,6 +19,7 @@ import {
   dealLines,
   referenceProjects,
   dealOwners,
+  stages,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -30,7 +31,8 @@ import {
   searchBrreg,
   type BrregHit,
 } from "@/lib/brreg";
-import { stageLabel, type StageId } from "@/lib/stages";
+import { getStages } from "@/lib/stages.server";
+import { firstStageId } from "@/lib/stages";
 import { syncAccount } from "@/lib/imap";
 import { scanWebsite, type SiteScanResult } from "@/lib/siteScan";
 import { PHASES } from "@/lib/estimator";
@@ -106,6 +108,25 @@ export async function addUser(formData: FormData) {
   await db
     .insert(users)
     .values({ name, email, passwordHash: await bcrypt.hash(password, 12) });
+  revalidatePath("/settings");
+}
+
+// Admin kan endre bilde på hvem som helst; alle andre kan bare endre sitt eget.
+export async function updateAvatar(userId: number, formData: FormData) {
+  const me = await requireUser();
+  if (me.id !== userId && !me.isAdmin) return;
+  const avatar = String(formData.get("avatar") ?? "");
+  if (!avatar.startsWith("data:image/")) return;
+  await db.update(users).set({ avatarDataUrl: avatar }).where(eq(users.id, userId));
+  revalidatePath("/settings");
+  revalidatePath("/", "layout");
+}
+
+// Kan ikke endre egen admin-status — unngår å låse seg selv ute ved en feilklikk.
+export async function setUserAdmin(userId: number, isAdmin: boolean) {
+  const me = await requireUser();
+  if (!me.isAdmin || userId === me.id) return;
+  await db.update(users).set({ isAdmin }).where(eq(users.id, userId));
   revalidatePath("/settings");
 }
 
@@ -195,7 +216,7 @@ export async function createDeal(formData: FormData) {
       companyId: company.id,
       title: dealTitle || "Ny deal",
       ownerId: me.id,
-      stage: "ny",
+      stage: firstStageId(await getStages()),
     })
     .returning();
 
@@ -228,7 +249,7 @@ export async function createDealForCompany(companyId: number, formData: FormData
       companyId,
       title,
       ownerId: me.id,
-      stage: "ny",
+      stage: firstStageId(await getStages()),
       value: valueRaw ? Number(valueRaw) : null,
       followUpAt: dateStr ? new Date(`${dateStr}T09:00:00`) : null,
     })
@@ -245,8 +266,9 @@ export async function createDealForCompany(companyId: number, formData: FormData
   redirect(`/leads/${deal.id}`);
 }
 
-export async function updateDealStage(dealId: number, stage: StageId) {
+export async function updateDealStage(dealId: number, stage: string) {
   const me = await requireUser();
+  const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });
   await db
     .update(deals)
     .set({ stage, updatedAt: new Date() })
@@ -255,9 +277,72 @@ export async function updateDealStage(dealId: number, stage: StageId) {
     dealId,
     userId: me.id,
     type: "stage",
-    content: `Flyttet til «${stageLabel(stage)}»`,
+    content: `Flyttet til «${stageRow?.label ?? stage}»`,
   });
   revalidateDealViews(dealId);
+}
+
+// ---------- Faser (pipeline-stages) ----------
+
+export async function createStage(formData: FormData) {
+  await requireUser();
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return null;
+  const color = String(formData.get("color") ?? "").trim() || "#8e8e93";
+  const maxOrder = await db.query.stages.findMany({ orderBy: [asc(stages.sortOrder)] });
+  const nextOrder = maxOrder.length > 0 ? maxOrder[maxOrder.length - 1].sortOrder + 1 : 0;
+  const [stage] = await db
+    .insert(stages)
+    .values({ label, color, sortOrder: nextOrder })
+    .returning();
+  revalidatePath("/settings");
+  revalidateDealViews();
+  return stage;
+}
+
+export async function updateStage(stageId: number, formData: FormData) {
+  await requireUser();
+  const set: Record<string, unknown> = {};
+  if (formData.has("label")) {
+    const label = String(formData.get("label") ?? "").trim();
+    if (label) set.label = label;
+  }
+  if (formData.has("color")) {
+    set.color = String(formData.get("color") ?? "").trim() || "#8e8e93";
+  }
+  if (formData.has("isWon")) set.isWon = formData.get("isWon") === "1";
+  if (formData.has("isLost")) set.isLost = formData.get("isLost") === "1";
+  if (Object.keys(set).length === 0) return;
+  await db.update(stages).set(set).where(eq(stages.id, stageId));
+  revalidatePath("/settings");
+  revalidateDealViews();
+}
+
+export async function deleteStage(
+  stageId: number
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const inUse = await db.query.deals.findFirst({ where: eq(deals.stage, String(stageId)) });
+  if (inUse) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — flytt deals ut av fasen først.",
+    };
+  }
+  await db.delete(stages).where(eq(stages.id, stageId));
+  revalidatePath("/settings");
+  revalidateDealViews();
+  return { ok: true, message: "Fasen ble slettet." };
+}
+
+// `orderedIds` er hele fase-listen i sin nye rekkefølge.
+export async function reorderStages(orderedIds: number[]) {
+  await requireUser();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(stages).set({ sortOrder: i }).where(eq(stages.id, orderedIds[i]));
+  }
+  revalidatePath("/settings");
+  revalidateDealViews();
 }
 
 export async function updateDealDetails(dealId: number, formData: FormData) {
@@ -486,6 +571,71 @@ export async function saveEstimateToDeal(
   return { ok: true, message: `Lagret ${clean.length} rader på ${deal.title}.` };
 }
 
+// Oppretter en helt ny deal (og evt. nytt selskap) direkte fra prisverktøyet,
+// og lagrer estimatet på den med det samme — uten å forlate siden, slik at
+// brukeren kan sende tilbudet til kunden rett etterpå.
+export async function createDealFromEstimate(
+  formData: FormData,
+  lines: EstimateLineInput[]
+): Promise<
+  | { ok: true; dealId: number; companyName: string; logoUrl: string | null }
+  | { ok: false; message: string }
+> {
+  const me = await requireUser();
+  const companyIdRaw = String(formData.get("companyId") ?? "").trim();
+  const newCompanyName = String(formData.get("companyName") ?? "").trim();
+  const orgNumber = String(formData.get("orgNumber") ?? "").replace(/\D/g, "");
+  const dealTitle = String(formData.get("dealTitle") ?? "").trim();
+
+  const chosenId = Number(companyIdRaw);
+  let company =
+    companyIdRaw && Number.isFinite(chosenId)
+      ? await db.query.companies.findFirst({ where: eq(companies.id, chosenId) })
+      : undefined;
+
+  if (!company && !newCompanyName) {
+    return { ok: false, message: "Velg eller opprett et selskap først." };
+  }
+
+  if (!company) {
+    [company] = await db
+      .insert(companies)
+      .values({
+        name: newCompanyName,
+        orgNumber: orgNumber.length === 9 ? orgNumber : null,
+      })
+      .returning();
+
+    if (orgNumber.length === 9) {
+      await syncCompanyFromBrreg(company.id, orgNumber, { verified: true });
+    } else {
+      await autoMatchCompany(company.id);
+    }
+  }
+
+  const [deal] = await db
+    .insert(deals)
+    .values({
+      companyId: company.id,
+      title: dealTitle || "Ny deal",
+      ownerId: me.id,
+      stage: firstStageId(await getStages()),
+    })
+    .returning();
+
+  await db.insert(activities).values({
+    dealId: deal.id,
+    userId: me.id,
+    type: "created",
+    content: "Deal opprettet fra prisverktøyet",
+  });
+
+  await saveEstimateToDeal(deal.id, lines);
+
+  revalidateDealViews(deal.id);
+  return { ok: true, dealId: deal.id, companyName: company.name, logoUrl: company.logoUrl };
+}
+
 // ---------- Referanseprosjekter ----------
 
 export async function createReferenceProject(formData: FormData) {
@@ -544,7 +694,9 @@ export async function importProductiveDeals(rows: ImportDealRow[]): Promise<{
   companiesCreated: number;
 }> {
   const me = await requireUser();
-  const validStages = new Set(["ny", "kontaktet", "dialog", "tilbud", "vunnet", "tapt"]);
+  const currentStages = await getStages();
+  const validStageIds = new Set(currentStages.map((s) => String(s.id)));
+  const fallbackStageId = firstStageId(currentStages);
 
   const companyByName = new Map<string, number>();
   for (const c of await db.query.companies.findMany()) {
@@ -595,7 +747,7 @@ export async function importProductiveDeals(rows: ImportDealRow[]): Promise<{
       .values({
         companyId,
         title: dealTitle,
-        stage: validStages.has(row.stage) ? row.stage : "ny",
+        stage: validStageIds.has(row.stage) ? row.stage : fallbackStageId,
         value,
         followUpAt,
         comment: String(row.comment ?? "").trim() || null,
@@ -944,6 +1096,50 @@ export async function deletePerson(personId: number) {
 
 // ---------- Selskap ----------
 
+// Oppretter et selskap direkte fra Bedrifter-siden — enten fra et valgt
+// brreg-treff (orgnummer sendes med, og vi henter full firmainfo rett etter)
+// eller helt manuelt uten noen kobling til Enhetsregisteret.
+export async function createCompany(formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  const orgNumber = String(formData.get("orgNumber") ?? "").replace(/\D/g, "");
+  const website = String(formData.get("website") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+
+  if (!name) {
+    redirect("/companies?error=selskap");
+  }
+
+  let domain: string | null = null;
+  let logoUrl: string | null = null;
+  if (website) {
+    const host = website.replace(/^https?:\/\//, "").split("/")[0].replace(/^www\./, "");
+    if (host.includes(".")) {
+      domain = host;
+      logoUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`;
+    }
+  }
+
+  const [company] = await db
+    .insert(companies)
+    .values({
+      name,
+      website: website || null,
+      domain,
+      logoUrl,
+      phone: phone || null,
+      orgNumber: orgNumber.length === 9 ? orgNumber : null,
+    })
+    .returning();
+
+  if (orgNumber.length === 9) {
+    await syncCompanyFromBrreg(company.id, orgNumber, { verified: true });
+  }
+
+  revalidateDealViews();
+  redirect(`/companies/${company.id}`);
+}
+
 export async function updateCompany(companyId: number, formData: FormData) {
   await requireUser();
   const set: Record<string, unknown> = {};
@@ -1192,6 +1388,25 @@ export async function updateSignature(formData: FormData) {
     .set({ signature: signature.trim() ? signature : null })
     .where(eq(users.id, me.id));
   revalidatePath("/settings");
+}
+
+// Markerer onboarding-gjennomgangen som sett — enten fullført eller lukket
+// underveis — slik at den ikke dukker opp igjen ved neste innlogging.
+export async function completeOnboarding() {
+  const me = await requireUser();
+  await db.update(users).set({ onboardingSeenAt: new Date() }).where(eq(users.id, me.id));
+  revalidatePath("/", "layout");
+}
+
+const THEMES = ["lys", "dark", "elguide"] as const;
+
+export async function updateTheme(formData: FormData) {
+  const me = await requireUser();
+  const theme = String(formData.get("theme") ?? "");
+  if (!THEMES.includes(theme as (typeof THEMES)[number])) return;
+  await db.update(users).set({ theme }).where(eq(users.id, me.id));
+  // Selve <html data-theme> settes i rotlayouten, som ligger over (app)-gruppen.
+  revalidatePath("/", "layout");
 }
 
 export async function syncEmailsNow(): Promise<{ ok: boolean; message: string }> {

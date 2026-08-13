@@ -12,6 +12,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { linkPersonToCompany, unlinkPersonFromCompany, updatePerson } from "@/lib/actions";
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
+import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
@@ -26,6 +27,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
 
   const person = await db.query.people.findFirst({ where: eq(people.id, personId) });
   if (!person) notFound();
+  const stages = await getStages();
 
   const links = await db
     .select({
@@ -224,18 +226,18 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                   <li key={d.id}>
                     <Link
                       href={`/leads/${d.id}`}
-                      className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-black/[0.03]"
+                      className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-mist/[0.03]"
                     >
                       <span
                         className="h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ background: stageDot(d.stage) }}
+                        style={{ background: stageDot(stages, d.stage) }}
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium">
                           {d.title}
                         </span>
                         <span className="text-[12px] text-ink-soft">
-                          {d.companyName} · {stageLabel(d.stage)}
+                          {d.companyName} · {stageLabel(stages, d.stage)}
                         </span>
                       </span>
                       {rel && (
@@ -244,8 +246,8 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                             rel.tone === "overdue"
                               ? "bg-danger/10 text-danger"
                               : rel.tone === "today"
-                                ? "bg-warning/15 text-[#b06a00]"
-                                : "bg-black/[0.05] text-ink-soft"
+                                ? "bg-warning/15 text-warning-ink"
+                                : "bg-mist/[0.05] text-ink-soft"
                           }`}
                         >
                           {rel.label}

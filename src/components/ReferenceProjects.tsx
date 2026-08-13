@@ -75,13 +75,13 @@ function AddForm({ onDone }: { onDone: () => void }) {
             <button
               type="button"
               onClick={() => setScreenshot(null)}
-              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-white shadow-card"
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-chip-dark text-white shadow-card"
             >
               <X size={12} />
             </button>
           </div>
         ) : (
-          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-ink-soft transition hover:bg-black/[0.02]">
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-[12.5px] text-ink-soft transition hover:bg-mist/[0.02]">
             <ImagePlus size={14} />
             Last opp skjermbilde (valgfritt)
             <input
@@ -190,7 +190,7 @@ export default function ReferenceProjects({ items }: { items: ReferenceProjectDa
                     className="h-14 w-20 shrink-0 rounded-lg border border-line object-cover"
                   />
                 ) : (
-                  <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-[11px] text-ink-faint">
+                  <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg bg-mist/[0.04] text-[11px] text-ink-faint">
                     Ingen bilde
                   </div>
                 )}

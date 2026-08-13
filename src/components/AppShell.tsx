@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { initials } from "@/lib/format";
+import Avatar from "@/components/Avatar";
 import {
   House,
   Columns3,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import NavLink from "@/components/NavLink";
 import ImportDialog from "@/components/ImportDialog";
+import type { Stage } from "@/lib/stages";
 
 const STORAGE_KEY = "crm:sidebar-collapsed";
 const WIDTH_OPEN = 240;
@@ -24,10 +25,12 @@ const WIDTH_COLLAPSED = 68;
 export default function AppShell({
   user,
   logoutAction,
+  stages,
   children,
 }: {
-  user: { name: string; email: string };
+  user: { name: string; email: string; avatarDataUrl: string | null };
   logoutAction: () => void | Promise<void>;
+  stages: Stage[];
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -61,7 +64,7 @@ export default function AppShell({
   return (
     <div className="flex min-h-screen">
       <aside
-        className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-line bg-white/70 backdrop-blur-xl transition-[width] duration-150"
+        className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-line bg-surface/70 backdrop-blur-xl transition-[width] duration-150"
         style={{ width }}
       >
         <div
@@ -70,7 +73,7 @@ export default function AppShell({
           }`}
         >
           <Link href="/" className="flex items-center gap-2.5" title={collapsed ? "Cure CRM" : undefined}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-ink text-[15px] font-semibold text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-chip-dark text-[15px] font-semibold text-white">
               C
             </span>
             {!collapsed && (
@@ -82,7 +85,7 @@ export default function AppShell({
           <button
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "Vis sidebar" : "Minimer sidebar"}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-black/[0.06] hover:text-ink"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-faint transition hover:bg-mist/[0.06] hover:text-ink"
           >
             {collapsed ? (
               <PanelLeftOpen size={14} strokeWidth={1.8} />
@@ -132,17 +135,17 @@ export default function AppShell({
         </nav>
 
         <div className="mt-auto px-3 pb-1">
-          <ImportDialog collapsed={collapsed} />
+          <ImportDialog collapsed={collapsed} stages={stages} />
         </div>
 
         <div className="border-t border-line p-3">
           <div className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? "justify-center" : ""}`}>
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent"
-              title={collapsed ? `${user.name} · ${user.email}` : undefined}
-            >
-              {initials(user.name)}
-            </span>
+            <Avatar
+              name={user.name}
+              imageUrl={user.avatarDataUrl}
+              size={32}
+              title={collapsed ? `${user.name} · ${user.email}` : user.name}
+            />
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium">{user.name}</p>
@@ -153,7 +156,7 @@ export default function AppShell({
               <button
                 type="submit"
                 title="Logg ut"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-black/5 hover:text-ink"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
               >
                 <LogOut size={15} strokeWidth={1.8} />
               </button>

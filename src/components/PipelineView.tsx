@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import KanbanBoard, { type KanbanDeal } from "@/components/KanbanBoard";
 import DealsTable, { type DealRow } from "@/components/DealsTable";
+import type { Stage } from "@/lib/stages";
 import { Columns3, List, Search, Layers, CircleDot } from "lucide-react";
 
 export interface OwnerOption {
@@ -62,6 +63,7 @@ function weekRange(): [string, string] {
 
 export default function PipelineView({
   rows,
+  stages,
   owners,
   currentUserId,
   initialView,
@@ -71,6 +73,7 @@ export default function PipelineView({
   initialOnlyActive,
 }: {
   rows: DealRow[];
+  stages: Stage[];
   owners: OwnerOption[];
   // Brukes som standardeier ("Eier = meg") første gang, før noe er lagret.
   currentUserId: number;
@@ -192,11 +195,11 @@ export default function PipelineView({
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-full bg-black/[0.05] p-1">
+        <div className="flex rounded-full bg-mist/[0.05] p-1">
           <button
             onClick={() => setView("kanban")}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-              view === "kanban" ? "bg-white shadow-card" : "text-ink-soft hover:text-ink"
+              view === "kanban" ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
             }`}
           >
             <Columns3 size={13} />
@@ -205,7 +208,7 @@ export default function PipelineView({
           <button
             onClick={() => setView("liste")}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-              view === "liste" ? "bg-white shadow-card" : "text-ink-soft hover:text-ink"
+              view === "liste" ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
             }`}
           >
             <List size={13} />
@@ -277,7 +280,7 @@ export default function PipelineView({
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
             onlyActive
               ? "bg-accent-soft text-accent"
-              : "bg-black/[0.05] text-ink-soft hover:text-ink"
+              : "bg-mist/[0.05] text-ink-soft hover:text-ink"
           }`}
         >
           <CircleDot size={13} />
@@ -290,7 +293,7 @@ export default function PipelineView({
             className={`ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
               groupByStage
                 ? "bg-accent-soft text-accent"
-                : "bg-black/[0.05] text-ink-soft hover:text-ink"
+                : "bg-mist/[0.05] text-ink-soft hover:text-ink"
             }`}
           >
             <Layers size={13} />
@@ -306,9 +309,9 @@ export default function PipelineView({
       )}
 
       {view === "kanban" ? (
-        <KanbanBoard deals={kanbanItems} />
+        <KanbanBoard deals={kanbanItems} stages={stages} />
       ) : (
-        <DealsTable rows={filtered} groupByStage={groupByStage} />
+        <DealsTable rows={filtered} stages={stages} groupByStage={groupByStage} />
       )}
     </div>
   );
