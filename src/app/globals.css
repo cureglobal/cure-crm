@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #f5f5f7;
+  --color-canvas: #f7f4ec;
   --color-ink: #1d1d1f;
   --color-ink-soft: #6e6e73;
   --color-ink-faint: #aeaeb2;
-  --color-accent: #0071e3;
-  --color-accent-soft: #eaf3fe;
+  --color-accent: #171717;
+  --color-accent-soft: #eefac0;
   --color-line: rgba(0, 0, 0, 0.08);
   --color-success: #30d158;
   --color-warning: #ff9f0a;
@@ -51,7 +51,7 @@ body {
 
 .field:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3.5px rgba(0, 113, 227, 0.18);
+  box-shadow: 0 0 0 3.5px rgba(0, 0, 0, 0.12);
 }
 
 .btn {
@@ -78,7 +78,7 @@ body {
 }
 
 .btn-primary:hover {
-  background: #0077ed;
+  background: #333333;
 }
 
 .btn-secondary {
@@ -109,5 +109,5 @@ body {
 }
 
 ::selection {
-  background: rgba(0, 113, 227, 0.2);
+  background: rgba(216, 250, 96, 0.5);
 }
