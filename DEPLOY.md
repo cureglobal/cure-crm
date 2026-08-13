@@ -1,112 +1,79 @@
-# Legge Cure CRM på et domene
+# Drift av Cure CRM
 
-Appen bruker SQLite som en fil på disk. Det betyr at den **ikke** kan kjøre på
-Vercel eller andre serverless-plattformer, som har et filsystem som nullstilles
-mellom forespørsler. Oppsettet her bruker Fly.io med et volum, som gir en disk
-databasen kan bo på.
+Appen kjører **live på Railway**: https://crm.cure.no (også nåbar på
+`cure-crm-production.up.railway.app`). Prosjektet heter `cure-crm` i
+Railway-workspacet «Cure».
 
-Alt av kode og config er klart. Det som gjenstår krever din innlogging.
+Appen bruker SQLite som en fil på disk (`/app/data/crm.db`), derfor et
+Railway-volum montert på `/app/data` i stedet for en serverless-plattform
+(Vercel nullstiller filsystemet mellom forespørsler — se `DEPLOY_VERCEL.md`
+for den varianten, som i så fall krever en ekte ekstern database).
 
-## Steg 1 — installer Fly-CLI og logg inn
+`fly.toml` ligger fortsatt i repoet fra et tidligere Fly.io-oppsett, men er
+ikke i bruk — Railway er nåværende driftsplattform.
 
-```bash
-curl -L https://fly.io/install.sh | sh
-```
+## Autodeploy
 
-Legg den i PATH (én gang):
+Railway-tjenesten er koblet til `cureglobal/cure-crm` på GitHub. **Alt som
+pushes til `main` bygges og deployes automatisk.** Det finnes ikke noe eget
+staging-miljø — kun ett Railway-miljø (`production`), rett mot `main`.
 
-```bash
-echo 'export PATH="$HOME/.fly/bin:$PATH"' >> ~/.zprofile && export PATH="$HOME/.fly/bin:$PATH"
-```
+## Miljøvariabler (satt i Railway, ikke i repoet)
 
-Logg inn (åpner nettleseren — Fly har gratis nivå, men ber om kort for å
-hindre misbruk):
+- `SESSION_SECRET` — signerer innloggingscookies
+- `CRYPTO_KEY` — krypterer lagrede e-postpassord. Byttes den, blir lagrede
+  e-postpassord uleselige og må legges inn på nytt
+- `HOSTNAME=::` — **kritisk**. Railways edge ruter over IPv6; uten denne
+  binder Next.js-serveren seg kun til IPv4 og alt blir 502
+  ("Application failed to respond")
+- `PORT=3000`
 
-```bash
-fly auth login
-```
+## Ting som var vanskelige å få riktig (les før du endrer Dockerfile)
 
-## Steg 2 — opprett appen
+1. **`VOLUME`-direktiv i Dockerfile støttes ikke av Railway** — de bruker
+   egne volumer, ikke Dockers native mekanisme.
+2. **Railway monterer volumet som root ved oppstart**, uansett hva som er
+   `chown`'et i imaget. `entrypoint.sh` retter eierskapet på
+   `/app/data` til `nextjs`-brukeren før appen starter — ikke fjern den uten
+   å løse dette på annen måte.
+3. **`next build` kjører flere parallelle byggeprosesser**, som hver
+   importerer databasemodulen og migrerer mot samme lokale fil samtidig.
+   `PRAGMA busy_timeout` i `migrate.ts` hindrer `SQLITE_BUSY`, og
+   `addMissingColumns` svelger `duplicate column name`-feil av samme grunn
+   (to prosesser kan begge se en kolonne som fraværende og begge forsøke å
+   legge den til).
 
-Kjør fra `crm`-mappen. Velg et ledig navn hvis `cure-crm` er tatt:
+## Sikkerhet
 
-```bash
-fly launch --no-deploy --name cure-crm --region arn
-```
+- Innlogging er rate-limitet (`src/lib/rateLimit.ts`): 5 feil på 10 min låser
+  i 15 min, både per e-post og grovere per IP. In-memory — nullstilles ved
+  hver deploy/restart. Greit nok for én replika, men ikke robust mot flere
+  instanser.
+- Sikkerhetsheadere (CSP, HSTS, X-Frame-Options m.fl.) settes i
+  `next.config.ts`. CSP tillater `unsafe-inline` for script/style fremfor
+  nonces, siden nonces krever at hele appen rendres dynamisk.
+- **Ingen backup av databasen.** Den bor kun på Railway-volumet. Går
+  volumet tapt, er dataene borte. Ikke løst ennå.
+- Ingen selvregistrering etter at første bruker er opprettet — kun admin kan
+  legge til nye brukere (Innstillinger).
 
-Svar **nei** hvis den spør om å endre konfigurasjonen — `fly.toml` er ferdig satt
-opp med volum og region.
-
-## Steg 3 — legg inn hemmeligheter
-
-Disse to må settes, ellers starter ikke appen. Kommandoen genererer nye,
-tilfeldige verdier:
-
-```bash
-fly secrets set SESSION_SECRET="$(openssl rand -hex 32)" CRYPTO_KEY="$(openssl rand -hex 32)"
-```
-
-`SESSION_SECRET` signerer innloggingscookies. `CRYPTO_KEY` krypterer
-e-postpassord. Merk: setter du en **ny** `CRYPTO_KEY` senere, blir lagrede
-e-postpassord uleselige og må legges inn på nytt.
-
-## Steg 4 — opprett volumet og deploy
-
-```bash
-fly volumes create crm_data --region arn --size 1
-fly deploy
-```
-
-Første deploy tar noen minutter fordi `better-sqlite3` kompileres.
-
-## Steg 5 — åpne og opprett første bruker
+## Vanlige CLI-kommandoer
 
 ```bash
-fly open
+railway status                                  # oversikt
+railway logs --deployment                       # runtime-logg
+railway logs --build <deployment-id>             # bygglogg for en spesifikk deploy
+railway variables --service cure-crm             # se miljøvariabler
+railway up --service cure-crm --ci               # manuell deploy fra lokal mappe (bypasser GitHub)
+railway redeploy --service cure-crm --yes        # redeploy siste image på nytt
 ```
-
-Appen starter med tom database og ber deg opprette administratorkontoen.
-Deretter legger du til de andre under Innstillinger → Brukere.
-
-## Eget domene
-
-```bash
-fly certs add crm.cure.no
-```
-
-Fly skriver ut hvilke DNS-poster som skal settes hos den som har cure.no-domenet
-(en CNAME og en AAAA/A). Sertifikatet kommer automatisk når DNS er på plass.
-
----
 
 ## Om dataene
 
-Deploy-en starter med **tom database** — den lokale fila følger ikke med
-(`data/` er i `.dockerignore` og `.gitignore`).
+Databasen starter tom ved førstegangs deploy. Første bruker som oppretter
+konto via `/login` blir admin.
 
-Det er et bevisst valg. Den lokale databasen inneholder hele den reelle
-pipelinen med kommentarer om navngitte personer («Drømmekunde. Kjenner …»,
-«usikker på om der er bad blood»). Skal andre gi tilbakemelding på *verktøyet*,
-trenger de ikke se det. To alternativer:
-
-**A. Start tomt (anbefalt for tilbakemelding).** La dem opprette noen deals
-selv. Da tester de også de delene som betyr mest — å legge inn nye leads.
-
-**B. Ta med de ekte dataene.** Kopier fila opp etter deploy:
-
-```bash
-fly ssh console -C "mkdir -p /app/data"
-fly sftp shell
-# i sftp-skallet:
-put data/crm.db /app/data/crm.db
-```
-
-Velger du B: husk at innloggingen er det eneste som skiller dataene fra
-internett. Bruk sterke passord, og vurder om kommentarfeltene bør ryddes først.
-
-## Tilbakemelding underveis
-
-Alle brukere ser samme pipeline, men **e-postdialog er privat per bruker** — de
-andre ser at det finnes e-poster på et selskap, og må be om innsyn som du
-godkjenner. Det er verdt å si eksplisitt når du deler lenken, ellers tror folk
+Alle brukere ser samme pipeline, men **e-postdialog er privat per bruker** —
+andre ser at det finnes e-poster på et selskap, og må be om innsyn som
+eieren godkjenner. Verdt å si eksplisitt når lenken deles, ellers tror folk
 det er en feil.
