@@ -208,6 +208,11 @@ async function addMissingColumns(client: Client) {
 }
 
 export async function migrate(client: Client) {
+  // next build kjører flere byggeprosesser parallelt, som hver importerer
+  // denne modulen og migrerer samtidig mot samme lokale fil. Uten
+  // busy_timeout feiler samtidige skrivinger momentant med SQLITE_BUSY i
+  // stedet for å vente på hverandre.
+  await client.execute("PRAGMA busy_timeout = 5000");
   await client.execute("PRAGMA foreign_keys = ON");
   for (const stmt of CREATE_STATEMENTS) await client.execute(stmt);
   // Må kjøre før indeksene, som kan peke på kolonner lagt til her.

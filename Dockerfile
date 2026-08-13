@@ -34,13 +34,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Native modul kopieres inn ferdig kompilert fra byggesteget.
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
 # Databasen ligger på et volum montert her, slik at den overlever nye versjoner.
+# Volumet monteres som root ved oppstart uansett hva som chownes i byggesteget,
+# så eierskap må settes på nytt av entrypointet hver gang containeren starter.
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
-VOLUME /app/data
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-USER nextjs
 EXPOSE 3000
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "server.js"]
