@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   db,
   users,
@@ -439,6 +439,48 @@ export async function deleteDeal(dealId: number) {
   }
   revalidateDealViews();
   redirect("/leads");
+}
+
+// Flytter flere deals til samme fase samtidig, fra flervalg i listevisningen.
+export async function bulkSetDealStage(dealIds: number[], stage: string) {
+  const me = await requireUser();
+  if (dealIds.length === 0) return;
+  const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });
+  await db
+    .update(deals)
+    .set({ stage, updatedAt: new Date() })
+    .where(inArray(deals.id, dealIds));
+  await db.insert(activities).values(
+    dealIds.map((dealId) => ({
+      dealId,
+      userId: me.id,
+      type: "stage",
+      content: `Flyttet til «${stageRow?.label ?? stage}»`,
+    }))
+  );
+  revalidateDealViews();
+}
+
+// Sletter flere deals samtidig, med samme selskaps-opprydding som deleteDeal.
+export async function bulkDeleteDeals(dealIds: number[]): Promise<{ deleted: number }> {
+  await requireUser();
+  if (dealIds.length === 0) return { deleted: 0 };
+  const rows = await db.query.deals.findMany({ where: inArray(deals.id, dealIds) });
+  const companyIds = [...new Set(rows.map((d) => d.companyId))];
+
+  await db.delete(deals).where(inArray(deals.id, dealIds));
+
+  for (const companyId of companyIds) {
+    const remaining = await db.query.deals.findFirst({ where: eq(deals.companyId, companyId) });
+    if (remaining) continue;
+    const hasMail = await db.query.emailMessages.findFirst({
+      where: (m, { eq: eqOp }) => eqOp(m.companyId, companyId),
+    });
+    if (!hasMail) await db.delete(companies).where(eq(companies.id, companyId));
+  }
+
+  revalidateDealViews();
+  return { deleted: rows.length };
 }
 
 // ---------- Varelinjer ----------
@@ -1094,6 +1136,28 @@ export async function deletePerson(personId: number) {
   redirect("/people");
 }
 
+// Knytter flere valgte personer til samme selskap samtidig, fra flervalg i listevisningen.
+export async function bulkLinkPeopleToCompany(personIds: number[], companyId: number) {
+  await requireUser();
+  if (personIds.length === 0 || !Number.isFinite(companyId)) return;
+  await db
+    .insert(companyPeople)
+    .values(personIds.map((personId) => ({ companyId, personId })))
+    .onConflictDoNothing();
+  revalidatePath("/people");
+  revalidateDealViews();
+}
+
+// Sletter flere personer samtidig (selskapskoblinger kaskaderer via schema).
+export async function bulkDeletePeople(personIds: number[]): Promise<{ deleted: number }> {
+  await requireUser();
+  if (personIds.length === 0) return { deleted: 0 };
+  await db.delete(people).where(inArray(people.id, personIds));
+  revalidatePath("/people");
+  revalidateDealViews();
+  return { deleted: personIds.length };
+}
+
 // ---------- Selskap ----------
 
 // Oppretter et selskap direkte fra Bedrifter-siden — enten fra et valgt
@@ -1305,6 +1369,45 @@ export async function autoMatchAllCompanies(): Promise<{
 
   revalidateDealViews();
   return { checked: pending.length, matched, unresolved };
+}
+
+// Setter samme ansvarlig (eier) på flere valgte selskaper samtidig.
+export async function bulkSetCompanyOwner(companyIds: number[], ownerId: number | null) {
+  await requireUser();
+  if (companyIds.length === 0) return;
+  await db.update(companies).set({ ownerId }).where(inArray(companies.id, companyIds));
+  revalidateDealViews();
+}
+
+// Kjører Brreg-oppslag for flere valgte selskaper samtidig (samme logikk som
+// enkelt-oppslaget, bare avgrenset til flervalget i stedet for alle ubekreftede).
+export async function bulkMatchCompaniesBrreg(companyIds: number[]): Promise<{
+  checked: number;
+  matched: number;
+  unresolved: string[];
+}> {
+  await requireUser();
+  let matched = 0;
+  const unresolved: string[] = [];
+  for (const companyId of companyIds) {
+    const company = await db.query.companies.findFirst({ where: eq(companies.id, companyId) });
+    if (!company) continue;
+    const res = await autoMatchCompany(companyId);
+    if (res.matched) matched++;
+    else unresolved.push(company.name);
+  }
+  revalidateDealViews();
+  return { checked: companyIds.length, matched, unresolved };
+}
+
+// Sletter flere selskaper samtidig — deals, kontakter og e-postlogg
+// kaskaderer via schema (ON DELETE CASCADE).
+export async function bulkDeleteCompanies(companyIds: number[]): Promise<{ deleted: number }> {
+  await requireUser();
+  if (companyIds.length === 0) return { deleted: 0 };
+  await db.delete(companies).where(inArray(companies.id, companyIds));
+  revalidateDealViews();
+  return { deleted: companyIds.length };
 }
 
 // ---------- Kontakt med selskap ----------

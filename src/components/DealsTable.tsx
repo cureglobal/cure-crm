@@ -2,12 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { updateDealInline } from "@/lib/actions";
+import { updateDealInline, bulkSetDealStage, bulkDeleteDeals } from "@/lib/actions";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import { stageDot, stageLabel, type Stage } from "@/lib/stages";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
 export interface DealRow {
   id: number;
@@ -26,7 +26,7 @@ export interface DealRow {
   comment: string;
 }
 
-const GRID = "grid grid-cols-[1.6fr_60px_1.4fr_0.9fr_150px_1.6fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.6fr_60px_1.4fr_0.9fr_150px_1.6fr] items-center gap-3";
 
 type SortKey = "selskap" | "eier" | "deal" | "verdi" | "dato" | "kommentar";
 interface Sort {
@@ -72,7 +72,17 @@ function todayStr() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function Row({ deal, stages }: { deal: DealRow; stages: Stage[] }) {
+function Row({
+  deal,
+  stages,
+  selected,
+  onToggle,
+}: {
+  deal: DealRow;
+  stages: Stage[];
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const [pending, startTransition] = useTransition();
   const [dateVal, setDateVal] = useState(deal.followUpInput);
   const overdue = dateVal !== "" && dateVal < todayStr();
@@ -90,6 +100,7 @@ function Row({ deal, stages }: { deal: DealRow; stages: Stage[] }) {
       className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}
     >
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
+        <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
         <Link href={`/leads/${deal.id}`} className="flex min-w-0 items-center gap-3">
           <CompanyLogo logoUrl={deal.logoUrl} name={deal.companyName} size={32} radius={9} />
           <span className="min-w-0">
@@ -213,6 +224,11 @@ export default function DealsTable({
   groupByStage?: boolean;
 }) {
   const [sort, setSort] = useState<Sort | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [stageChoice, setStageChoice] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -224,6 +240,52 @@ export default function DealsTable({
     if (!sort) return rows;
     return [...rows].sort((a, b) => compare(a, b, sort));
   }, [rows, sort]);
+
+  const allVisibleSelected = sorted.length > 0 && sorted.every((r) => selected.has(r.id));
+
+  function toggleAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const r of sorted) next.delete(r.id);
+      } else {
+        for (const r of sorted) next.add(r.id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setConfirmingDelete(false);
+    setBulkMessage(null);
+  }
+
+  function applyStage() {
+    if (!stageChoice) return;
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkSetDealStage(ids, stageChoice);
+      setBulkMessage(`Flyttet ${ids.length} deals.`);
+    });
+  }
+
+  function applyDelete() {
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkDeleteDeals(ids);
+      clearSelection();
+    });
+  }
 
   const groups = useMemo(() => {
     if (!groupByStage) return null;
@@ -239,6 +301,12 @@ export default function DealsTable({
     <div
       className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
     >
+      <input
+        type="checkbox"
+        checked={allVisibleSelected}
+        onChange={toggleAll}
+        className="h-3.5 w-3.5"
+      />
       <HeaderCell label="Selskap" sortKey="selskap" sort={sort} onSort={onSort} />
       <HeaderCell label="Eier" sortKey="eier" sort={sort} onSort={onSort} align="center" />
       <span className="px-2">
@@ -274,7 +342,67 @@ export default function DealsTable({
   // overgår aldri boksens egen høyde, så det oppstår aldri vertikal scroll her
   // — bare horisontal, når skalering/zoom gjør kolonnene trangere enn min-bredden.
   return (
-    <div className="card overflow-auto max-h-[75vh]">
+    <div>
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">
+          <span className="text-[13px] font-medium">{selected.size} valgt</span>
+
+          <select
+            value={stageChoice}
+            onChange={(e) => setStageChoice(e.target.value)}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Sett fase …</option>
+            {stages.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyStage}
+            disabled={pending || !stageChoice}
+            className="btn btn-secondary !py-1.5"
+          >
+            Bruk
+          </button>
+
+          {confirmingDelete ? (
+            <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
+              <span className="text-[12.5px] text-danger">Slette {selected.size} deals?</span>
+              <button onClick={applyDelete} disabled={pending} className="btn btn-danger !py-1">
+                Ja, slett
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="text-[12.5px] font-medium text-ink-soft hover:text-ink"
+              >
+                Avbryt
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              disabled={pending}
+              className="btn btn-danger !py-1.5"
+            >
+              <Trash2 size={13} />
+              Slett
+            </button>
+          )}
+
+          {bulkMessage && <span className="text-[12.5px] text-ink-soft">{bulkMessage}</span>}
+
+          <button
+            onClick={clearSelection}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/[0.06]"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      <div className="card overflow-auto max-h-[75vh]">
       <div className="min-w-[880px]">
         {header}
         {groups ? (
@@ -294,7 +422,13 @@ export default function DealsTable({
                 </div>
                 <ul>
                   {g.items.map((deal) => (
-                    <Row key={deal.id} deal={deal} stages={stages} />
+                    <Row
+                      key={deal.id}
+                      deal={deal}
+                      stages={stages}
+                      selected={selected.has(deal.id)}
+                      onToggle={() => toggleOne(deal.id)}
+                    />
                   ))}
                 </ul>
               </div>
@@ -303,10 +437,17 @@ export default function DealsTable({
         ) : (
           <ul>
             {sorted.map((deal) => (
-              <Row key={deal.id} deal={deal} stages={stages} />
+              <Row
+                key={deal.id}
+                deal={deal}
+                stages={stages}
+                selected={selected.has(deal.id)}
+                onToggle={() => toggleOne(deal.id)}
+              />
             ))}
           </ul>
         )}
+      </div>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { db, companies, deals, people, companyPeople } from "@/lib/db";
+import { db, companies, deals, people, companyPeople, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import CompaniesTable, { type CompanyRow } from "@/components/CompaniesTable";
@@ -60,6 +60,8 @@ export default async function CompaniesPage() {
   const totalOpen = rows.reduce((acc, r) => acc + r.openValue, 0);
   const totalWon = rows.reduce((acc, r) => acc + r.wonValue, 0);
 
+  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
+
   return (
     <div>
       <div className="mb-6 flex items-end justify-between">
@@ -71,7 +73,12 @@ export default async function CompaniesPage() {
         </div>
         <NewCompanyButton />
       </div>
-      <CompaniesTable rows={rows} totalOpen={totalOpen} totalWon={totalWon} />
+      <CompaniesTable
+        rows={rows}
+        totalOpen={totalOpen}
+        totalWon={totalWon}
+        owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+      />
     </div>
   );
 }

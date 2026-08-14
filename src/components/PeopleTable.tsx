@@ -2,10 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { createPerson, updatePerson } from "@/lib/actions";
+import {
+  createPerson,
+  updatePerson,
+  bulkLinkPeopleToCompany,
+  bulkDeletePeople,
+} from "@/lib/actions";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
-import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, Trash2, X } from "lucide-react";
 
 export interface PersonRow {
   id: number;
@@ -15,7 +20,7 @@ export interface PersonRow {
   companies: { id: number; name: string; logoUrl: string | null; role: string | null }[];
 }
 
-const GRID = "grid grid-cols-[1.5fr_1.4fr_1fr_1.8fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.5fr_1.4fr_1fr_1.8fr] items-center gap-3";
 
 type SortKey = "navn" | "epost" | "telefon" | "selskap";
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
@@ -55,7 +60,15 @@ function HeaderCell({
   );
 }
 
-function PersonRowItem({ person }: { person: PersonRow }) {
+function PersonRowItem({
+  person,
+  selected,
+  onToggle,
+}: {
+  person: PersonRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const [pending, startTransition] = useTransition();
 
   function save(field: string, value: string) {
@@ -72,6 +85,7 @@ function PersonRowItem({ person }: { person: PersonRow }) {
   return (
     <li className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
+        <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
         <Link href={`/people/${person.id}`} className="flex min-w-0 items-center gap-3">
           <Avatar name={person.name} size={32} />
           <span className="truncate text-[13.5px] font-medium hover:text-accent">
@@ -141,6 +155,10 @@ export default function PeopleTable({
   });
   const [showNew, setShowNew] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [companyChoice, setCompanyChoice] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -176,6 +194,53 @@ export default function PeopleTable({
     }
     return list;
   }, [rows, search, sort]);
+
+  const allVisibleSelected = visible.length > 0 && visible.every((p) => selected.has(p.id));
+
+  function toggleAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const p of visible) next.delete(p.id);
+      } else {
+        for (const p of visible) next.add(p.id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setConfirmingDelete(false);
+    setBulkMessage(null);
+  }
+
+  function applyLinkToCompany() {
+    if (!companyChoice) return;
+    const ids = [...selected];
+    const companyId = Number(companyChoice);
+    startTransition(async () => {
+      await bulkLinkPeopleToCompany(ids, companyId);
+      setBulkMessage(`Knyttet ${ids.length} personer til selskapet.`);
+    });
+  }
+
+  function applyDelete() {
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkDeletePeople(ids);
+      clearSelection();
+    });
+  }
 
   return (
     <div>
@@ -240,11 +305,76 @@ export default function PeopleTable({
         </form>
       )}
 
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">
+          <span className="text-[13px] font-medium">{selected.size} valgt</span>
+
+          <select
+            value={companyChoice}
+            onChange={(e) => setCompanyChoice(e.target.value)}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Knytt til selskap …</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyLinkToCompany}
+            disabled={pending || !companyChoice}
+            className="btn btn-secondary !py-1.5"
+          >
+            Bruk
+          </button>
+
+          {confirmingDelete ? (
+            <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
+              <span className="text-[12.5px] text-danger">Slette {selected.size} personer?</span>
+              <button onClick={applyDelete} disabled={pending} className="btn btn-danger !py-1">
+                Ja, slett
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="text-[12.5px] font-medium text-ink-soft hover:text-ink"
+              >
+                Avbryt
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              disabled={pending}
+              className="btn btn-danger !py-1.5"
+            >
+              <Trash2 size={13} />
+              Slett
+            </button>
+          )}
+
+          {bulkMessage && <span className="text-[12.5px] text-ink-soft">{bulkMessage}</span>}
+
+          <button
+            onClick={clearSelection}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/[0.06]"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-auto max-h-[75vh]">
-        <div className="min-w-[680px]">
+        <div className="min-w-[700px]">
           <div
             className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
           >
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleAll}
+              className="h-3.5 w-3.5"
+            />
             <HeaderCell label="Navn" sortKey="navn" sort={sort} onSort={onSort} />
             <span className="px-2">
               <HeaderCell label="E-post" sortKey="epost" sort={sort} onSort={onSort} />
@@ -264,7 +394,12 @@ export default function PeopleTable({
           ) : (
             <ul>
               {visible.map((p) => (
-                <PersonRowItem key={p.id} person={p} />
+                <PersonRowItem
+                  key={p.id}
+                  person={p}
+                  selected={selected.has(p.id)}
+                  onToggle={() => toggleOne(p.id)}
+                />
               ))}
             </ul>
           )}

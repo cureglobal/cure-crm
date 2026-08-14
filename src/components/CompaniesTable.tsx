@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
+import {
+  bulkDeleteCompanies,
+  bulkSetCompanyOwner,
+  bulkMatchCompaniesBrreg,
+} from "@/lib/actions";
 import {
   ArrowDown,
   ArrowUp,
@@ -12,6 +17,9 @@ import {
   Briefcase,
   TrendingUp,
   TriangleAlert,
+  Trash2,
+  Wand2,
+  X,
 } from "lucide-react";
 
 export interface CompanyRow {
@@ -29,7 +37,7 @@ export interface CompanyRow {
   people: string[];
 }
 
-const GRID = "grid grid-cols-[1.8fr_110px_70px_1fr_1fr_1.3fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.8fr_110px_70px_1fr_1fr_1.3fr] items-center gap-3";
 
 type SortKey = "navn" | "orgnr" | "deals" | "apen" | "vunnet" | "personer";
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
@@ -82,16 +90,23 @@ export default function CompaniesTable({
   rows,
   totalOpen,
   totalWon,
+  owners,
 }: {
   rows: CompanyRow[];
   totalOpen: number;
   totalWon: number;
+  owners: { id: number; name: string }[];
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
     key: "navn",
     dir: 1,
   });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [ownerChoice, setOwnerChoice] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -133,6 +148,62 @@ export default function CompaniesTable({
     return list;
   }, [rows, search, sort]);
 
+  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.id));
+
+  function toggleAll() {
+    setSelected((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        for (const r of visible) next.delete(r.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const r of visible) next.add(r.id);
+      return next;
+    });
+  }
+
+  function toggleOne(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    setConfirmingDelete(false);
+    setBulkMessage(null);
+  }
+
+  function applyOwner() {
+    if (!ownerChoice) return;
+    const ids = [...selected];
+    const ownerId = ownerChoice === "ingen" ? null : Number(ownerChoice);
+    startTransition(async () => {
+      await bulkSetCompanyOwner(ids, ownerId);
+      setBulkMessage(`Satt eier på ${ids.length} selskaper.`);
+    });
+  }
+
+  function applyBrregMatch() {
+    const ids = [...selected];
+    startTransition(async () => {
+      const res = await bulkMatchCompaniesBrreg(ids);
+      setBulkMessage(`${res.matched} av ${res.checked} ble bekreftet mot Enhetsregisteret.`);
+    });
+  }
+
+  function applyDelete() {
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkDeleteCompanies(ids);
+      clearSelection();
+    });
+  }
+
   const stats = [
     { label: "Selskaper", value: String(rows.length), icon: <Briefcase size={16} /> },
     { label: "Åpen pipeline", value: formatMoney(totalOpen), icon: <TrendingUp size={16} /> },
@@ -166,11 +237,82 @@ export default function CompaniesTable({
         />
       </div>
 
+      {selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">
+          <span className="text-[13px] font-medium">{selected.size} valgt</span>
+
+          <select
+            value={ownerChoice}
+            onChange={(e) => setOwnerChoice(e.target.value)}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Sett eier …</option>
+            <option value="ingen">Ingen eier</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyOwner}
+            disabled={pending || !ownerChoice}
+            className="btn btn-secondary !py-1.5"
+          >
+            Bruk
+          </button>
+
+          <button onClick={applyBrregMatch} disabled={pending} className="btn btn-secondary !py-1.5">
+            <Wand2 size={13} />
+            Match Brreg
+          </button>
+
+          {confirmingDelete ? (
+            <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
+              <span className="text-[12.5px] text-danger">Slette {selected.size} selskaper?</span>
+              <button onClick={applyDelete} disabled={pending} className="btn btn-danger !py-1">
+                Ja, slett
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="text-[12.5px] font-medium text-ink-soft hover:text-ink"
+              >
+                Avbryt
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              disabled={pending}
+              className="btn btn-danger !py-1.5"
+            >
+              <Trash2 size={13} />
+              Slett
+            </button>
+          )}
+
+          {bulkMessage && <span className="text-[12.5px] text-ink-soft">{bulkMessage}</span>}
+
+          <button
+            onClick={clearSelection}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/[0.06]"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-auto max-h-[75vh]">
-        <div className="min-w-[820px]">
+        <div className="min-w-[840px]">
         <div
           className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
         >
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleAll}
+            className="h-3.5 w-3.5"
+          />
           <HeaderCell label="Selskap" sortKey="navn" sort={sort} onSort={onSort} />
           <HeaderCell label="Org nr" sortKey="orgnr" sort={sort} onSort={onSort} />
           <HeaderCell label="Deals" sortKey="deals" sort={sort} onSort={onSort} align="center" />
@@ -193,55 +335,60 @@ export default function CompaniesTable({
           <ul>
             {visible.map((c) => (
               <li key={c.id} className="border-b border-line last:border-b-0">
-                <Link
-                  href={`/companies/${c.id}`}
-                  className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <CompanyLogo logoUrl={c.logoUrl} name={c.name} size={32} radius={9} />
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-[13.5px] font-medium">{c.name}</span>
-                        {!c.brregVerified && (
-                          <TriangleAlert
-                            size={12}
-                            className="shrink-0 text-warning-ink"
-                            aria-label="Ikke bekreftet"
-                          />
-                        )}
-                      </span>
-                      <span className="block truncate text-[11.5px] text-ink-soft">
-                        {c.orgName && c.orgName !== c.name
-                          ? c.orgName
-                          : c.website
-                            ? c.website.replace(/^https?:\/\//, "")
-                            : ""}
+                <div className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.id)}
+                    onChange={() => toggleOne(c.id)}
+                    className="h-3.5 w-3.5"
+                  />
+                  <Link href={`/companies/${c.id}`} className="contents">
+                    <span className="flex min-w-0 items-center gap-3">
+                      <CompanyLogo logoUrl={c.logoUrl} name={c.name} size={32} radius={9} />
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[13.5px] font-medium">{c.name}</span>
+                          {!c.brregVerified && (
+                            <TriangleAlert
+                              size={12}
+                              className="shrink-0 text-warning-ink"
+                              aria-label="Ikke bekreftet"
+                            />
+                          )}
+                        </span>
+                        <span className="block truncate text-[11.5px] text-ink-soft">
+                          {c.orgName && c.orgName !== c.name
+                            ? c.orgName
+                            : c.website
+                              ? c.website.replace(/^https?:\/\//, "")
+                              : ""}
+                        </span>
                       </span>
                     </span>
-                  </span>
-                  <span className="text-[12.5px] tabular-nums text-ink-soft">
-                    {c.orgNumber ? (
-                      formatOrgNumber(c.orgNumber)
-                    ) : (
-                      <span className="text-ink-faint">—</span>
-                    )}
-                  </span>
-                  <span className="text-center text-[13px] tabular-nums">
-                    {c.dealCount}
-                    {c.openCount > 0 && c.openCount !== c.dealCount && (
-                      <span className="text-ink-faint"> ({c.openCount} åpne)</span>
-                    )}
-                  </span>
-                  <span className="text-right text-[13px] font-medium tabular-nums">
-                    {c.openValue > 0 ? formatMoney(c.openValue) : "—"}
-                  </span>
-                  <span className="text-right text-[13px] tabular-nums text-ink-soft">
-                    {c.wonValue > 0 ? formatMoney(c.wonValue) : "—"}
-                  </span>
-                  <span className="truncate px-2 text-[12.5px] text-ink-soft">
-                    {c.people.length > 0 ? c.people.join(", ") : "—"}
-                  </span>
-                </Link>
+                    <span className="text-[12.5px] tabular-nums text-ink-soft">
+                      {c.orgNumber ? (
+                        formatOrgNumber(c.orgNumber)
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
+                    </span>
+                    <span className="text-center text-[13px] tabular-nums">
+                      {c.dealCount}
+                      {c.openCount > 0 && c.openCount !== c.dealCount && (
+                        <span className="text-ink-faint"> ({c.openCount} åpne)</span>
+                      )}
+                    </span>
+                    <span className="text-right text-[13px] font-medium tabular-nums">
+                      {c.openValue > 0 ? formatMoney(c.openValue) : "—"}
+                    </span>
+                    <span className="text-right text-[13px] tabular-nums text-ink-soft">
+                      {c.wonValue > 0 ? formatMoney(c.wonValue) : "—"}
+                    </span>
+                    <span className="truncate px-2 text-[12.5px] text-ink-soft">
+                      {c.people.length > 0 ? c.people.join(", ") : "—"}
+                    </span>
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>
