@@ -6,7 +6,7 @@ import { updateDealInline, bulkSetDealStage, bulkDeleteDeals } from "@/lib/actio
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
-import { stageDot, stageLabel, type Stage } from "@/lib/stages";
+import type { Stage } from "@/lib/stages";
 import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
 export interface DealRow {
@@ -26,9 +26,9 @@ export interface DealRow {
   comment: string;
 }
 
-const GRID = "grid grid-cols-[22px_1.6fr_60px_1.4fr_0.9fr_150px_1.6fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.9fr_60px_1fr_150px_1.9fr] items-center gap-3";
 
-type SortKey = "selskap" | "eier" | "deal" | "verdi" | "dato" | "kommentar";
+type SortKey = "selskap" | "eier" | "verdi" | "dato" | "kommentar";
 interface Sort {
   key: SortKey;
   dir: 1 | -1;
@@ -38,7 +38,6 @@ interface Sort {
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
   selskap: 1,
   eier: 1,
-  deal: 1,
   verdi: -1,
   dato: 1,
   kommentar: 1,
@@ -51,8 +50,6 @@ function compare(a: DealRow, b: DealRow, sort: Sort): number {
       return dir * a.companyName.localeCompare(b.companyName, "nb");
     case "eier":
       return dir * a.ownerName.localeCompare(b.ownerName, "nb");
-    case "deal":
-      return dir * a.title.localeCompare(b.title, "nb");
     case "verdi":
       return dir * ((a.value ?? -1) - (b.value ?? -1));
     case "dato": {
@@ -74,12 +71,10 @@ function todayStr() {
 
 function Row({
   deal,
-  stages,
   selected,
   onToggle,
 }: {
   deal: DealRow;
-  stages: Stage[];
   selected: boolean;
   onToggle: () => void;
 }) {
@@ -107,13 +102,7 @@ function Row({
             <span className="block truncate text-[13.5px] font-medium hover:text-accent">
               {deal.companyName}
             </span>
-            <span className="flex items-center gap-1.5 text-[11.5px] text-ink-soft">
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ background: stageDot(stages, deal.stage) }}
-              />
-              {stageLabel(stages, deal.stage)}
-            </span>
+            <span className="block truncate text-[11.5px] text-ink-soft">{deal.title}</span>
           </span>
         </Link>
 
@@ -128,16 +117,6 @@ function Row({
             </span>
           )}
         </span>
-
-        <input
-          defaultValue={deal.title}
-          onBlur={(e) => {
-            if (e.target.value.trim() && e.target.value.trim() !== deal.title) {
-              save("title", e.target.value.trim());
-            }
-          }}
-          className="field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] font-medium hover:!border-line focus:!border-accent focus:!bg-surface"
-        />
 
         {deal.hasLines ? (
           <span
@@ -171,16 +150,23 @@ function Row({
           }`}
         />
 
-        <input
-          defaultValue={deal.comment}
-          placeholder="Legg til kommentar …"
-          onBlur={(e) => {
-            if (e.target.value.trim() !== deal.comment) {
-              save("comment", e.target.value.trim());
-            }
-          }}
-          className="field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] text-ink-soft hover:!border-line focus:!border-accent focus:!bg-surface focus:text-ink"
-        />
+        <div className="group relative">
+          <input
+            defaultValue={deal.comment}
+            placeholder="Legg til kommentar …"
+            onBlur={(e) => {
+              if (e.target.value.trim() !== deal.comment) {
+                save("comment", e.target.value.trim());
+              }
+            }}
+            className="field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] text-ink-soft hover:!border-line focus:!border-accent focus:!bg-surface focus:text-ink"
+          />
+          {deal.comment && (
+            <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-72 max-w-[80vw] whitespace-pre-wrap rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100">
+              {deal.comment}
+            </div>
+          )}
+        </div>
       </div>
     </li>
   );
@@ -270,12 +256,13 @@ export default function DealsTable({
     setBulkMessage(null);
   }
 
-  function applyStage() {
-    if (!stageChoice) return;
+  function applyStage(stageId: string) {
+    if (!stageId) return;
     const ids = [...selected];
     startTransition(async () => {
-      await bulkSetDealStage(ids, stageChoice);
+      await bulkSetDealStage(ids, stageId);
       setBulkMessage(`Flyttet ${ids.length} deals.`);
+      setStageChoice("");
     });
   }
 
@@ -309,9 +296,6 @@ export default function DealsTable({
       />
       <HeaderCell label="Selskap" sortKey="selskap" sort={sort} onSort={onSort} />
       <HeaderCell label="Eier" sortKey="eier" sort={sort} onSort={onSort} align="center" />
-      <span className="px-2">
-        <HeaderCell label="Deal" sortKey="deal" sort={sort} onSort={onSort} />
-      </span>
       <span className="flex justify-end px-2">
         <HeaderCell label="Verdi" sortKey="verdi" sort={sort} onSort={onSort} align="right" />
       </span>
@@ -349,7 +333,11 @@ export default function DealsTable({
 
           <select
             value={stageChoice}
-            onChange={(e) => setStageChoice(e.target.value)}
+            onChange={(e) => {
+              setStageChoice(e.target.value);
+              applyStage(e.target.value);
+            }}
+            disabled={pending}
             className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
           >
             <option value="">Sett fase …</option>
@@ -359,13 +347,6 @@ export default function DealsTable({
               </option>
             ))}
           </select>
-          <button
-            onClick={applyStage}
-            disabled={pending || !stageChoice}
-            className="btn btn-secondary !py-1.5"
-          >
-            Bruk
-          </button>
 
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
@@ -425,7 +406,6 @@ export default function DealsTable({
                     <Row
                       key={deal.id}
                       deal={deal}
-                      stages={stages}
                       selected={selected.has(deal.id)}
                       onToggle={() => toggleOne(deal.id)}
                     />
@@ -440,7 +420,6 @@ export default function DealsTable({
               <Row
                 key={deal.id}
                 deal={deal}
-                stages={stages}
                 selected={selected.has(deal.id)}
                 onToggle={() => toggleOne(deal.id)}
               />

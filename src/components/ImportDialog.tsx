@@ -100,6 +100,7 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
   const [result, setResult] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
 
   function reset() {
     setParsed(null);
@@ -373,13 +374,33 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
                 <p className="mb-3 rounded-xl bg-mist/[0.03] px-4 py-3 text-[12.5px] text-ink-soft">
                   <span className="font-medium text-ink">Kolonner:</span> {activeTab.columns}
                 </p>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="btn btn-primary w-full py-2.5"
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={() => setDragActive(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragActive(false);
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) onFile(f);
+                  }}
+                  className={`rounded-xl border-2 border-dashed p-5 text-center transition ${
+                    dragActive ? "border-accent bg-accent-soft/60" : "border-line"
+                  }`}
                 >
-                  <Upload size={14} />
-                  Velg CSV-fil …
-                </button>
+                  <p className="mb-3 text-[12.5px] text-ink-soft">
+                    Dra og slipp CSV-filen hit, eller
+                  </p>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    className="btn btn-primary w-full py-2.5"
+                  >
+                    <Upload size={14} />
+                    Velg CSV-fil …
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-4">

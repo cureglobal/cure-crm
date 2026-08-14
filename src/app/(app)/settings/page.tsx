@@ -15,6 +15,7 @@ import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
 import AvatarUpload from "@/components/AvatarUpload";
 import AdminToggle from "@/components/AdminToggle";
+import UserActions from "@/components/UserActions";
 import { Mail, ShieldCheck, TriangleAlert, Building2, Signature, Palette, Layers } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -242,7 +243,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 <p className="text-[12.5px] text-ink-soft">{u.email}</p>
               </div>
               {me.isAdmin ? (
-                <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
+                <>
+                  <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
+                  <UserActions userId={u.id} canDelete={u.id !== me.id} />
+                </>
               ) : (
                 u.isAdmin && (
                   <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">

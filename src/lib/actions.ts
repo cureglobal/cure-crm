@@ -130,6 +130,61 @@ export async function setUserAdmin(userId: number, isAdmin: boolean) {
   revalidatePath("/settings");
 }
 
+export async function setUserPassword(
+  userId: number,
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireUser();
+  if (!me.isAdmin) throw new Error("Kun administrator kan sette passord for andre");
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) {
+    return { ok: false, message: "Passordet må være minst 8 tegn." };
+  }
+  await db
+    .update(users)
+    .set({ passwordHash: await bcrypt.hash(password, 12) })
+    .where(eq(users.id, userId));
+  return { ok: true, message: "Passordet ble oppdatert." };
+}
+
+// Blokkerer sletting dersom brukeren fortsatt eier data — samme mønster som
+// deleteStage — for å unngå å bryte NOT NULL-fremmednøkler (foreign_keys=ON).
+export async function deleteUser(
+  userId: number
+): Promise<{ ok: boolean; message: string }> {
+  const me = await requireUser();
+  if (!me.isAdmin) throw new Error("Kun administrator kan slette brukere");
+  if (userId === me.id) {
+    return { ok: false, message: "Du kan ikke slette deg selv." };
+  }
+  const ownsDeals = await db.query.deals.findFirst({ where: eq(deals.ownerId, userId) });
+  if (ownsDeals) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — brukeren eier deals. Overfør dem til en annen bruker først.",
+    };
+  }
+  const coOwns = await db.query.dealOwners.findFirst({ where: eq(dealOwners.userId, userId) });
+  if (coOwns) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — brukeren er med-eier på en eller flere deals.",
+    };
+  }
+  const hasEmail = await db.query.emailAccounts.findFirst({ where: eq(emailAccounts.userId, userId) });
+  if (hasEmail) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — brukeren har en e-postkonto koblet til. Fjern den først.",
+    };
+  }
+  await db.update(contactEvents).set({ userId: null }).where(eq(contactEvents.userId, userId));
+  await db.update(activities).set({ userId: null }).where(eq(activities.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
+  revalidatePath("/settings");
+  return { ok: true, message: "Brukeren ble slettet." };
+}
+
 // ---------- Deals ----------
 
 // Finner selskapet ut fra e-postdomene, eller fra personen hvis adressen er privat.
@@ -1204,6 +1259,17 @@ export async function createCompany(formData: FormData) {
   redirect(`/companies/${company.id}`);
 }
 
+// Overstyrer det auto-genererte favicon-baserte logoUrl med et opplastet
+// bilde (data-URL, samme mønster som avatar og referanseprosjekt-skjermbilder).
+export async function updateCompanyLogo(companyId: number, formData: FormData) {
+  await requireUser();
+  const logo = String(formData.get("logo") ?? "");
+  if (!logo.startsWith("data:image/")) return;
+  await db.update(companies).set({ logoUrl: logo }).where(eq(companies.id, companyId));
+  revalidatePath(`/companies/${companyId}`);
+  revalidateDealViews();
+}
+
 export async function updateCompany(companyId: number, formData: FormData) {
   await requireUser();
   const set: Record<string, unknown> = {};
@@ -1349,10 +1415,19 @@ export async function autoMatchCompany(
 }
 
 // Kjører automatisk matching for alle ubekreftede selskaper.
+export interface UnresolvedCompany {
+  id: number;
+  name: string;
+  // Beste (men usikre) gjetning fra Enhetsregisteret — tom hvis vi ikke
+  // fant noe som helst å foreslå. Brukeren velger selv riktig treff.
+  candidateOrgName: string | null;
+  candidateOrgNumber: string | null;
+}
+
 export async function autoMatchAllCompanies(): Promise<{
   checked: number;
   matched: number;
-  unresolved: string[];
+  unresolved: UnresolvedCompany[];
 }> {
   await requireUser();
   const pending = await db.query.companies.findMany({
@@ -1360,11 +1435,20 @@ export async function autoMatchAllCompanies(): Promise<{
   });
 
   let matched = 0;
-  const unresolved: string[] = [];
+  const unresolved: UnresolvedCompany[] = [];
   for (const company of pending) {
     const res = await autoMatchCompany(company.id);
-    if (res.matched) matched++;
-    else unresolved.push(company.name);
+    if (res.matched) {
+      matched++;
+      continue;
+    }
+    const guess = await matchBrregCompany(company.name, company.domain);
+    unresolved.push({
+      id: company.id,
+      name: company.name,
+      candidateOrgName: guess.best?.name ?? null,
+      candidateOrgNumber: guess.best?.orgNumber ?? null,
+    });
   }
 
   revalidateDealViews();

@@ -22,7 +22,7 @@ import ContactLog from "@/components/ContactLog";
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
-import CompanyLogo from "@/components/CompanyLogo";
+import CompanyLogoUpload from "@/components/CompanyLogoUpload";
 import Avatar from "@/components/Avatar";
 import EmailThread from "@/components/EmailThread";
 import RequestAccessButton from "@/components/RequestAccessButton";
@@ -177,7 +177,13 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       </Link>
 
       <div className="mb-6 flex items-center gap-4">
-        <CompanyLogo logoUrl={company.logoUrl} name={company.name} size={56} radius={14} />
+        <CompanyLogoUpload
+          companyId={company.id}
+          name={company.name}
+          logoUrl={company.logoUrl}
+          size={56}
+          radius={14}
+        />
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-[24px] font-semibold tracking-tight">
             {company.name}
