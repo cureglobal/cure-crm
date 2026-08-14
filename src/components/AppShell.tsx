@@ -15,6 +15,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import NavLink from "@/components/NavLink";
+import GlobalSearch from "@/components/GlobalSearch";
 import ImportDialog from "@/components/ImportDialog";
 import type { Stage } from "@/lib/stages";
 
@@ -94,6 +95,8 @@ export default function AppShell({
             )}
           </button>
         </div>
+
+        <GlobalSearch collapsed={collapsed} />
 
         <nav className="flex flex-col gap-0.5 px-3">
           <NavLink
