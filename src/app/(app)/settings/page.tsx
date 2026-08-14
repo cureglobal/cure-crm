@@ -1,16 +1,20 @@
 import { eq } from "drizzle-orm";
-import { db, emailAccounts, companies } from "@/lib/db";
+import { db, emailAccounts, calendarAccounts, companies } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
   connectEmailAccount,
   disconnectEmailAccount,
   updateSignature,
+  startGoogleCalendarAuth,
+  disconnectGoogleCalendar,
 } from "@/lib/actions";
 import { formatDateTime } from "@/lib/format";
 import SyncButton from "@/components/SyncButton";
+import CalendarSyncButton from "@/components/CalendarSyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
 import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
@@ -29,6 +33,7 @@ import {
   Palette,
   Layers,
   Landmark,
+  CalendarDays,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -42,6 +47,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
 
   const account = await db.query.emailAccounts.findFirst({
     where: eq(emailAccounts.userId, me.id),
+  });
+  const calendarAccount = await db.query.calendarAccounts.findFirst({
+    where: eq(calendarAccounts.userId, me.id),
   });
   const allUsers = await db.query.users.findMany();
   const unverifiedCount = (
@@ -148,6 +156,81 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               <p className="text-[13px] text-danger">Fyll inn e-post og app-passord.</p>
             )}
           </form>
+        )}
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <CalendarDays size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Google Kalender</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Finner møter der noen hos oss og en kontaktperson hos en kunde var med i
+              samme møte, og logger dem automatisk som kontakthistorikk på selskapet.
+            </p>
+          </div>
+        </div>
+
+        {params.calendar === "connected" && (
+          <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
+            Google Kalender er koblet til. Kjør en synkronisering for å hente møtene.
+          </p>
+        )}
+        {params.error === "kalender-ikke-satt-opp" && (
+          <p className="mb-3 rounded-xl bg-danger/10 px-4 py-2.5 text-[13px] text-danger">
+            Google Kalender er ikke satt opp ennå — mangler API-nøkler i miljøet.
+          </p>
+        )}
+        {params.error === "kalender-avbrutt" && (
+          <p className="mb-3 rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] text-warning-ink">
+            Tilkoblingen ble avbrutt.
+          </p>
+        )}
+        {(params.error === "kalender-feil" || params.error === "kalender-ingen-refresh-token") && (
+          <p className="mb-3 rounded-xl bg-danger/10 px-4 py-2.5 text-[13px] text-danger">
+            Noe gikk galt ved tilkobling til Google Kalender. Prøv igjen.
+          </p>
+        )}
+
+        {calendarAccount ? (
+          <div>
+            <div className="mb-4 flex items-center gap-3 rounded-xl bg-mist/[0.03] p-4">
+              <ShieldCheck size={18} className="text-success" />
+              <div className="flex-1">
+                <p className="text-[13.5px] font-medium">{calendarAccount.email}</p>
+                <p className="text-[12.5px] text-ink-soft">
+                  {calendarAccount.lastSyncAt
+                    ? `Sist synkronisert ${formatDateTime(calendarAccount.lastSyncAt)}`
+                    : "Ikke synkronisert ennå"}
+                </p>
+              </div>
+              <form action={disconnectGoogleCalendar}>
+                <button type="submit" className="btn btn-danger">
+                  Koble fra
+                </button>
+              </form>
+            </div>
+            {calendarAccount.lastError && (
+              <p className="mb-4 flex items-start gap-2 rounded-xl bg-danger/10 px-4 py-2.5 text-[13px] text-danger">
+                <TriangleAlert size={15} className="mt-0.5 shrink-0" />
+                Siste synk feilet: {calendarAccount.lastError}
+              </p>
+            )}
+            <CalendarSyncButton />
+          </div>
+        ) : isGoogleCalendarConfigured() ? (
+          <form action={startGoogleCalendarAuth}>
+            <button type="submit" className="btn btn-primary">
+              Koble til Google Kalender
+            </button>
+          </form>
+        ) : (
+          <p className="text-[13px] text-ink-faint">
+            Krever at en admin setter opp Google OAuth (GOOGLE_CALENDAR_CLIENT_ID,
+            GOOGLE_CALENDAR_CLIENT_SECRET og GOOGLE_CALENDAR_REDIRECT_URI) først.
+          </p>
         )}
       </section>
 

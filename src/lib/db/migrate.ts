@@ -26,6 +26,15 @@ const CREATE_STATEMENTS = [
     last_error TEXT,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS calendar_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    email TEXT NOT NULL,
+    refresh_token_enc TEXT NOT NULL,
+    last_sync_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS companies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -178,6 +187,7 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_stages_sort_order ON stages(sort_order)",
   "CREATE INDEX IF NOT EXISTS idx_companies_business_unit ON companies(business_unit_id)",
   "CREATE INDEX IF NOT EXISTS idx_users_business_unit ON users(business_unit_id)",
+  "CREATE INDEX IF NOT EXISTS idx_calendar_accounts_user ON calendar_accounts(user_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har

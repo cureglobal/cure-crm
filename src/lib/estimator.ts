@@ -8,6 +8,7 @@ export type PhaseKey =
   | "seo"
   | "integrasjoner"
   | "testing"
+  | "moter"
   | "prosjektledelse";
 
 export interface PhaseDef {
@@ -23,6 +24,7 @@ export const PHASES: PhaseDef[] = [
   { key: "seo", label: "SEO/AEO" },
   { key: "integrasjoner", label: "Integrasjoner" },
   { key: "testing", label: "Testing og lansering" },
+  { key: "moter", label: "Møter" },
   { key: "prosjektledelse", label: "Prosjektledelse" },
 ];
 
@@ -75,8 +77,10 @@ export function estimateHours(signals: ScanSignals): Record<PhaseKey, number> {
   const testing = round(utvikling * 0.25 + 4, 100);
 
   const integrasjoner = 0; // står tom — fylles inn manuelt ved behov
+  const moter = 0; // antall møter varierer for mye til å gjettes fra en URL-skann
 
-  const sumUtenPl = oppstart + struktur + design + utvikling + seo + integrasjoner + testing;
+  const sumUtenPl =
+    oppstart + struktur + design + utvikling + seo + integrasjoner + testing + moter;
   const prosjektledelse = Math.round(sumUtenPl * 0.1);
 
   return {
@@ -87,6 +91,7 @@ export function estimateHours(signals: ScanSignals): Record<PhaseKey, number> {
     seo,
     integrasjoner,
     testing,
+    moter,
     prosjektledelse,
   };
 }

@@ -28,6 +28,7 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  formatNumberInput,
   relativeDay,
   toDateInputValue,
 } from "@/lib/format";
@@ -61,7 +62,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
   const owner = await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
 
   const coOwnerRows = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
     .from(dealOwners)
     .innerJoin(users, eq(dealOwners.userId, users.id))
     .where(eq(dealOwners.dealId, dealId))
@@ -213,9 +214,17 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
               )}
               <DealOwners
                 dealId={deal.id}
-                primaryOwner={{ id: deal.ownerId, name: owner?.name ?? "Ukjent" }}
+                primaryOwner={{
+                  id: deal.ownerId,
+                  name: owner?.name ?? "Ukjent",
+                  avatarDataUrl: owner?.avatarDataUrl ?? null,
+                }}
                 coOwners={coOwnerRows}
-                allUsers={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+                allUsers={allUsers.map((u) => ({
+                  id: u.id,
+                  name: u.name,
+                  avatarDataUrl: u.avatarDataUrl,
+                }))}
               />
               <span>Opprettet {formatDate(deal.createdAt)}</span>
             </div>
@@ -406,7 +415,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                   <input
                     name="value"
                     inputMode="numeric"
-                    defaultValue={deal.value ?? ""}
+                    defaultValue={formatNumberInput(deal.value)}
                     className="field mt-1"
                   />
                 )}

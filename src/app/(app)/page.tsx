@@ -24,6 +24,7 @@ function toFollowUpItem(d: {
   stage: string;
   followUpAt: Date | null;
   ownerName?: string | null;
+  ownerAvatarUrl?: string | null;
 }): FollowUpItem {
   return {
     id: d.id,
@@ -33,6 +34,7 @@ function toFollowUpItem(d: {
     stage: d.stage,
     followUpAt: d.followUpAt!,
     ownerName: d.ownerName ?? null,
+    ownerAvatarUrl: d.ownerAvatarUrl ?? null,
   };
 }
 
@@ -59,6 +61,7 @@ export default async function Dashboard() {
       companyName: companies.name,
       logoUrl: companies.logoUrl,
       ownerName: users.name,
+      ownerAvatarUrl: users.avatarDataUrl,
     })
     .from(deals)
     .innerJoin(companies, eq(deals.companyId, companies.id))

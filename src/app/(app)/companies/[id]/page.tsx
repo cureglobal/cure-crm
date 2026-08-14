@@ -59,6 +59,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       followUpAt: deals.followUpAt,
       comment: deals.comment,
       ownerName: users.name,
+      ownerAvatarUrl: users.avatarDataUrl,
     })
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
@@ -203,7 +204,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           <div className="mt-1 flex flex-wrap items-center gap-3 text-[13px] text-ink-soft">
             {companyOwner && (
               <span className="inline-flex items-center gap-1.5">
-                <Avatar name={companyOwner.name} size={18} />
+                <Avatar name={companyOwner.name} imageUrl={companyOwner.avatarDataUrl} size={18} />
                 {companyOwner.name}
               </span>
             )}
@@ -319,7 +320,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                         <span className="shrink-0 text-[13px] font-medium tabular-nums">
                           {d.value ? formatMoney(d.value) : "—"}
                         </span>
-                        {d.ownerName && <Avatar name={d.ownerName} size={22} />}
+                        {d.ownerName && (
+                          <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                        )}
                       </Link>
                     </li>
                   );

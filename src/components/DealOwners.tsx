@@ -8,6 +8,7 @@ import { Plus, X } from "lucide-react";
 export interface OwnerOption {
   id: number;
   name: string;
+  avatarDataUrl: string | null;
 }
 
 export default function DealOwners({
@@ -31,10 +32,15 @@ export default function DealOwners({
   return (
     <div className="relative flex items-center gap-1">
       <span>Eiere:</span>
-      <Avatar name={primaryOwner.name} size={20} title={`${primaryOwner.name} (hovedeier)`} />
+      <Avatar
+        name={primaryOwner.name}
+        imageUrl={primaryOwner.avatarDataUrl}
+        size={20}
+        title={`${primaryOwner.name} (hovedeier)`}
+      />
       {coOwners.map((o) => (
         <span key={o.id} className="group relative">
-          <Avatar name={o.name} size={20} title={o.name} />
+          <Avatar name={o.name} imageUrl={o.avatarDataUrl} size={20} title={o.name} />
           <button
             disabled={pending}
             onClick={() => startTransition(async () => { await removeDealOwner(dealId, o.id); })}
@@ -68,7 +74,7 @@ export default function DealOwners({
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition hover:bg-mist/[0.04]"
               >
-                <Avatar name={u.name} size={18} />
+                <Avatar name={u.name} imageUrl={u.avatarDataUrl} size={18} />
                 {u.name}
               </button>
             ))

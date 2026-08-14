@@ -13,6 +13,7 @@ export interface FollowUpItem {
   stage: string;
   followUpAt: Date;
   ownerName: string | null;
+  ownerAvatarUrl: string | null;
 }
 
 const MAX_VISIBLE = 7;
@@ -88,7 +89,9 @@ export default function FollowUpList({
                         {stageLabel(stages, d.stage)}
                       </p>
                     </div>
-                    {d.ownerName && <Avatar name={d.ownerName} size={22} />}
+                    {d.ownerName && (
+                      <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                    )}
                     <span
                       className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-medium ${
                         rel.tone === "overdue"

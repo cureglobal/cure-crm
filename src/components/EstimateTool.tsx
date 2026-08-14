@@ -97,6 +97,9 @@ export default function EstimateTool({
   const [phaseHours, setPhaseHours] = useState<Record<PhaseKey, number>>(() =>
     Object.fromEntries(PHASES.map((p) => [p.key, 0])) as Record<PhaseKey, number>
   );
+  // Standardfaser kan fjernes (skjules + nulles ut) — prosjektledelse er
+  // unntatt siden den alltid er avledet av de andre, ikke en egen linje.
+  const [hiddenPhases, setHiddenPhases] = useState<Set<PhaseKey>>(new Set());
   const [hourlyRate, setHourlyRate] = useState(DEFAULT_HOURLY_RATE);
   const [customRows, setCustomRows] = useState<CustomRow[]>([]);
   const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
@@ -196,6 +199,20 @@ export default function EstimateTool({
 
   function setDays(key: PhaseKey, days: number) {
     setHours(key, Math.round(days * HOURS_PER_DAY * 100) / 100);
+  }
+
+  function removePhase(key: PhaseKey) {
+    if (key === PL_KEY) return;
+    setHours(key, 0);
+    setHiddenPhases((prev) => new Set(prev).add(key));
+  }
+
+  function restorePhase(key: PhaseKey) {
+    setHiddenPhases((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
   }
 
   const otherPhasesHours = PHASES.filter((p) => p.key !== PL_KEY).reduce(
@@ -491,16 +508,17 @@ export default function EstimateTool({
         </div>
         <div
           className={`mb-1 grid gap-3 px-1 text-[11px] font-medium uppercase tracking-wide text-ink-faint ${
-            showDays ? "grid-cols-[1.3fr_90px_90px_130px]" : "grid-cols-[1.6fr_100px_130px]"
+            showDays ? "grid-cols-[1.3fr_90px_90px_130px_28px]" : "grid-cols-[1.6fr_100px_130px_28px]"
           }`}
         >
           <span>Fase</span>
           <span className="text-right">Timer</span>
           {showDays && <span className="text-right">Dager</span>}
           <span className="text-right">Sum</span>
+          <span />
         </div>
         <div className="flex flex-col divide-y divide-line">
-          {PHASES.map((p) => {
+          {PHASES.filter((p) => !hiddenPhases.has(p.key)).map((p) => {
             const isPl = p.key === PL_KEY;
             const warning = !isPl ? phaseWarning(p.key, referenceProjects) : null;
             const days = Math.round((phaseHours[p.key] / HOURS_PER_DAY) * 100) / 100;
@@ -508,7 +526,9 @@ export default function EstimateTool({
               <div key={p.key} className="py-2.5">
                 <div
                   className={`grid items-center gap-3 ${
-                    showDays ? "grid-cols-[1.3fr_90px_90px_130px]" : "grid-cols-[1.6fr_100px_130px]"
+                    showDays
+                      ? "grid-cols-[1.3fr_90px_90px_130px_28px]"
+                      : "grid-cols-[1.6fr_100px_130px_28px]"
                   }`}
                 >
                   <span className="flex items-center gap-1.5 text-[13.5px]">
@@ -547,6 +567,18 @@ export default function EstimateTool({
                   <span className="text-right text-[13.5px] font-medium tabular-nums">
                     {formatMoney(Math.round(phaseHours[p.key] * hourlyRate))}
                   </span>
+                  {isPl ? (
+                    <span />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => removePhase(p.key)}
+                      title="Fjern fasen"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint transition hover:bg-danger/10 hover:text-danger"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
                 {isPl && (
                   <p className="mt-1 text-[11.5px] text-ink-faint">= 10 % av de andre fasene</p>
@@ -563,6 +595,22 @@ export default function EstimateTool({
         </div>
         {showDays && (
           <p className="mt-3 text-[11.5px] text-ink-faint">1 dag = {HOURS_PER_DAY} timer.</p>
+        )}
+        {hiddenPhases.size > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11.5px] text-ink-faint">Fjernet:</span>
+            {PHASES.filter((p) => hiddenPhases.has(p.key)).map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => restorePhase(p.key)}
+                className="rounded-full bg-mist/[0.05] px-2.5 py-1 text-[11.5px] text-ink-soft transition hover:bg-mist/[0.08] hover:text-ink"
+              >
+                <Plus size={10} className="mr-1 inline" />
+                {p.label}
+              </button>
+            ))}
+          </div>
         )}
       </section>
 

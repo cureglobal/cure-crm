@@ -21,10 +21,18 @@ import {
   dealOwners,
   stages,
   businessUnits,
+  calendarAccounts,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, decrypt } from "@/lib/crypto";
+import {
+  isGoogleCalendarConfigured,
+  buildGoogleAuthUrl,
+  refreshAccessToken,
+  fetchCalendarEvents,
+  signCalendarState,
+} from "@/lib/googleCalendar";
 import { domainFromEmail, enrichFromEmail, fallbackNameFromDomain } from "@/lib/enrich";
 import {
   fetchBrregCompany,
@@ -492,7 +500,7 @@ export async function reorderStages(orderedIds: number[]) {
 }
 
 export async function updateDealDetails(dealId: number, formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
   const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
   if (!deal) return;
 
@@ -500,6 +508,15 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
   const comment = String(formData.get("comment") ?? "").trim() || null;
   const hasValueField = formData.has("value");
   const valueRaw = String(formData.get("value") ?? "").replace(/[^\d]/g, "");
+
+  if (comment !== deal.comment) {
+    await db.insert(activities).values({
+      dealId,
+      userId: me.id,
+      type: "comment",
+      content: comment ? `Oppdaterte kommentaren: «${comment}»` : "Fjernet kommentaren",
+    });
+  }
 
   await db
     .update(deals)
@@ -524,15 +541,17 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
 
 // Inline-redigering fra listevisningen: kun feltene som sendes inn oppdateres.
 export async function updateDealInline(dealId: number, formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
   const set: Record<string, unknown> = { updatedAt: new Date() };
+  let newComment: string | null | undefined;
 
   if (formData.has("title")) {
     const title = String(formData.get("title") ?? "").trim();
     if (title) set.title = title;
   }
   if (formData.has("comment")) {
-    set.comment = String(formData.get("comment") ?? "").trim() || null;
+    newComment = String(formData.get("comment") ?? "").trim() || null;
+    set.comment = newComment;
   }
   if (formData.has("followUpAt")) {
     const dateStr = String(formData.get("followUpAt") ?? "");
@@ -541,6 +560,20 @@ export async function updateDealInline(dealId: number, formData: FormData) {
   if (formData.has("value")) {
     const valueRaw = String(formData.get("value") ?? "").replace(/[^\d]/g, "");
     set.value = valueRaw ? Number(valueRaw) : null;
+  }
+
+  // Logges kun i "Notater og aktivitet" hvis kommentaren faktisk endres —
+  // ellers ville hver blur på et uendret felt skapt en aktivitetsrad.
+  if (newComment !== undefined) {
+    const current = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+    if (current && current.comment !== newComment) {
+      await db.insert(activities).values({
+        dealId,
+        userId: me.id,
+        type: "comment",
+        content: newComment ? `Oppdaterte kommentaren: «${newComment}»` : "Fjernet kommentaren",
+      });
+    }
   }
 
   await db.update(deals).set(set).where(eq(deals.id, dealId));
@@ -1801,6 +1834,115 @@ export async function syncEmailsNow(): Promise<{ ok: boolean; message: string }>
     ok: true,
     message: `Synk ferdig — ${result.matched} nye e-poster koblet til selskaper (${result.scanned} gjennomgått).`,
   };
+}
+
+// ---------- Google Kalender ----------
+
+export async function startGoogleCalendarAuth() {
+  const me = await requireUser();
+  if (!isGoogleCalendarConfigured()) {
+    redirect("/settings?error=kalender-ikke-satt-opp");
+  }
+  const state = await signCalendarState(me.id);
+  redirect(buildGoogleAuthUrl(state));
+}
+
+export async function disconnectGoogleCalendar() {
+  const me = await requireUser();
+  await db.delete(calendarAccounts).where(eq(calendarAccounts.userId, me.id));
+  revalidatePath("/settings");
+}
+
+// Henter møter i et vindu (30 dager tilbake, 14 dager frem) fra den
+// tilkoblede Google-kalenderen, og logger et møte som kontakthistorikk
+// (contact_events, kind="moete") på hver kunde der BÅDE minst én av oss OG
+// minst én person knyttet til kunden var blant deltakerne på samme hendelse.
+export async function syncGoogleCalendarNow(): Promise<{ ok: boolean; message: string }> {
+  const me = await requireUser();
+  const account = await db.query.calendarAccounts.findFirst({
+    where: eq(calendarAccounts.userId, me.id),
+  });
+  if (!account) return { ok: false, message: "Ingen kalender er koblet til." };
+
+  try {
+    const accessToken = await refreshAccessToken(decrypt(account.refreshTokenEnc));
+
+    const now = new Date();
+    const timeMin = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const timeMax = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const events = await fetchCalendarEvents(accessToken, timeMin, timeMax);
+
+    const allUsers = await db.query.users.findMany();
+    const ourEmailToUser = new Map(allUsers.map((u) => [u.email.toLowerCase(), u]));
+
+    const peopleWithCompany = await db
+      .select({
+        personEmail: people.email,
+        companyId: companyPeople.companyId,
+      })
+      .from(companyPeople)
+      .innerJoin(people, eq(companyPeople.personId, people.id));
+
+    const emailToCompanyIds = new Map<string, Set<number>>();
+    for (const row of peopleWithCompany) {
+      if (!row.personEmail) continue;
+      const email = row.personEmail.toLowerCase();
+      const set = emailToCompanyIds.get(email) ?? new Set<number>();
+      set.add(row.companyId);
+      emailToCompanyIds.set(email, set);
+    }
+
+    let logged = 0;
+    for (const event of events) {
+      if (!event.startedAt) continue;
+
+      const hasOurAttendee = event.attendeeEmails.some((email) => ourEmailToUser.has(email));
+      if (!hasOurAttendee) continue;
+
+      const matchedCompanyIds = new Set<number>();
+      for (const email of event.attendeeEmails) {
+        const companyIds = emailToCompanyIds.get(email);
+        if (companyIds) for (const id of companyIds) matchedCompanyIds.add(id);
+      }
+      if (matchedCompanyIds.size === 0) continue;
+
+      for (const companyId of matchedCompanyIds) {
+        // Unngår duplikater ved gjentatt synk av samme møte.
+        const already = await db.query.contactEvents.findFirst({
+          where: and(
+            eq(contactEvents.companyId, companyId),
+            eq(contactEvents.kind, "moete"),
+            eq(contactEvents.occurredAt, event.startedAt)
+          ),
+        });
+        if (already) continue;
+
+        await db.insert(contactEvents).values({
+          companyId,
+          userId: me.id,
+          kind: "moete",
+          note: event.summary,
+          occurredAt: event.startedAt,
+        });
+        logged++;
+      }
+    }
+
+    await db
+      .update(calendarAccounts)
+      .set({ lastSyncAt: new Date(), lastError: null })
+      .where(eq(calendarAccounts.id, account.id));
+    revalidateDealViews();
+    revalidatePath("/settings");
+    return { ok: true, message: `Synk fullført — ${logged} nye møter logget.` };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await db
+      .update(calendarAccounts)
+      .set({ lastError: message })
+      .where(eq(calendarAccounts.id, account.id));
+    return { ok: false, message: `Synk feilet: ${message}` };
+  }
 }
 
 // ---------- Pristilbud på e-post ----------

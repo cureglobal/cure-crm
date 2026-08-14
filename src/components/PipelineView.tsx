@@ -9,6 +9,7 @@ import { Columns3, List, Search, Layers, CircleDot } from "lucide-react";
 export interface OwnerOption {
   id: number;
   name: string;
+  avatarDataUrl: string | null;
 }
 
 export interface BusinessUnitOption {
@@ -217,6 +218,7 @@ export default function PipelineView({
         value: r.value,
         followUpAt: r.followUpAt,
         ownerName: r.ownerName,
+        ownerAvatarUrl: r.ownerAvatarUrl,
         coOwnerCount: r.coOwnerIds.length,
       })),
     [filtered]

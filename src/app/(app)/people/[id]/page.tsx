@@ -55,6 +55,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
           companyId: deals.companyId,
           companyName: companies.name,
           ownerName: users.name,
+          ownerAvatarUrl: users.avatarDataUrl,
         })
         .from(deals)
         .innerJoin(companies, eq(deals.companyId, companies.id))
@@ -256,7 +257,9 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                       <span className="shrink-0 text-[13px] font-medium tabular-nums">
                         {d.value ? formatMoney(d.value) : "—"}
                       </span>
-                      {d.ownerName && <Avatar name={d.ownerName} size={22} />}
+                      {d.ownerName && (
+                        <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                      )}
                     </Link>
                   </li>
                 );

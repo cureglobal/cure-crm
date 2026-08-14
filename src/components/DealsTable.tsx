@@ -8,7 +8,7 @@ import {
   bulkSetDealOwner,
   bulkDeleteDeals,
 } from "@/lib/actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatNumberInput } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import DealOwnerCell from "@/components/DealOwnerCell";
 import type { Stage } from "@/lib/stages";
@@ -21,6 +21,7 @@ export interface DealRow {
   companyBusinessUnitId: number | null;
   ownerId: number;
   ownerName: string;
+  ownerAvatarUrl: string | null;
   coOwnerIds: number[];
   title: string;
   stage: string;
@@ -84,7 +85,7 @@ function Row({
   deal: DealRow;
   selected: boolean;
   onToggle: () => void;
-  owners: { id: number; name: string }[];
+  owners: { id: number; name: string; avatarDataUrl: string | null }[];
 }) {
   const [pending, startTransition] = useTransition();
   const [dateVal, setDateVal] = useState(deal.followUpInput);
@@ -118,6 +119,7 @@ function Row({
           dealId={deal.id}
           ownerId={deal.ownerId}
           ownerName={deal.ownerName}
+          ownerAvatarUrl={deal.ownerAvatarUrl}
           coOwnerCount={deal.coOwnerIds.length}
           owners={owners}
         />
@@ -131,7 +133,7 @@ function Row({
           </span>
         ) : (
           <input
-            defaultValue={deal.value ?? ""}
+            defaultValue={formatNumberInput(deal.value)}
             inputMode="numeric"
             placeholder="—"
             onBlur={(e) => {
@@ -212,7 +214,7 @@ export default function DealsTable({
 }: {
   rows: DealRow[];
   stages: Stage[];
-  owners: { id: number; name: string }[];
+  owners: { id: number; name: string; avatarDataUrl: string | null }[];
   groupByStage?: boolean;
 }) {
   const [sort, setSort] = useState<Sort | null>(null);

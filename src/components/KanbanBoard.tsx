@@ -19,6 +19,7 @@ export interface KanbanDeal {
   value: number | null;
   followUpAt: number | null;
   ownerName: string;
+  ownerAvatarUrl: string | null;
   coOwnerCount: number;
 }
 
@@ -162,7 +163,7 @@ export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; st
                             ) : null}
                             {deal.ownerName && (
                               <span className="relative">
-                                <Avatar name={deal.ownerName} size={20} />
+                                <Avatar name={deal.ownerName} imageUrl={deal.ownerAvatarUrl} size={20} />
                                 {deal.coOwnerCount > 0 && (
                                   <span
                                     title={`${deal.coOwnerCount} med-eier${deal.coOwnerCount === 1 ? "" : "e"}`}

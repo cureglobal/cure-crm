@@ -8,14 +8,16 @@ export default function DealOwnerCell({
   dealId,
   ownerId,
   ownerName,
+  ownerAvatarUrl,
   coOwnerCount,
   owners,
 }: {
   dealId: number;
   ownerId: number;
   ownerName: string;
+  ownerAvatarUrl: string | null;
   coOwnerCount: number;
-  owners: { id: number; name: string }[];
+  owners: { id: number; name: string; avatarDataUrl: string | null }[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -35,7 +37,7 @@ export default function DealOwnerCell({
         title={`Eier: ${ownerName} (klikk for å endre)`}
         className="rounded-full transition disabled:opacity-60"
       >
-        <Avatar name={ownerName} size={28} />
+        <Avatar name={ownerName} imageUrl={ownerAvatarUrl} size={28} />
       </button>
       {coOwnerCount > 0 && (
         <span
@@ -62,7 +64,7 @@ export default function DealOwnerCell({
                         : "hover:bg-mist/[0.05]"
                     }`}
                   >
-                    <Avatar name={o.name} size={18} />
+                    <Avatar name={o.name} imageUrl={o.avatarDataUrl} size={18} />
                     {o.name}
                   </button>
                 </li>

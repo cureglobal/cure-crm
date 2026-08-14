@@ -36,6 +36,24 @@ export const businessUnits = sqliteTable("business_units", {
     .$defaultFn(() => new Date()),
 });
 
+// Google Kalender-tilkobling per bruker (samme idé som email_accounts, men
+// OAuth-refresh-token i stedet for et IMAP-app-passord). Brukes til å
+// synkronisere møter og logge dem som kontakthistorikk (contact_events) når
+// noen fra oss har møtt en person knyttet til en kunde.
+export const calendarAccounts = sqliteTable("calendar_accounts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  email: text("email").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  lastSyncAt: integer("last_sync_at", { mode: "timestamp_ms" }),
+  lastError: text("last_error"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const emailAccounts = sqliteTable("email_accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id")
@@ -279,6 +297,7 @@ export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;
 export type DealOwner = typeof dealOwners.$inferSelect;
 export type EmailAccount = typeof emailAccounts.$inferSelect;
+export type CalendarAccount = typeof calendarAccounts.$inferSelect;
 export type EmailMessage = typeof emailMessages.$inferSelect;
 export type EmailAccessGrant = typeof emailAccessGrants.$inferSelect;
 export type Activity = typeof activities.$inferSelect;

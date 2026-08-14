@@ -37,6 +37,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
+  const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
 
   const coOwnerRows = await db.query.dealOwners.findMany();
   const coOwnerIdsByDeal = new Map<number, number[]>();
@@ -66,6 +67,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       companyBusinessUnitId: d.companyBusinessUnitId,
       ownerId: d.ownerId,
       ownerName: ownerNames.get(d.ownerId) ?? "",
+      ownerAvatarUrl: ownerAvatars.get(d.ownerId) ?? null,
       coOwnerIds: coOwnerIdsByDeal.get(d.id) ?? [],
       title: d.title,
       stage: d.stage,
@@ -92,7 +94,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       <PipelineView
         rows={dealRows}
         stages={stages}
-        owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+        owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
         businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name }))}
         currentUserId={me.id}
         initialView={initialView}

@@ -47,6 +47,14 @@ export function formatMoney(value: number | null | undefined) {
   }).format(value);
 }
 
+// Samme tallgruppering som formatMoney (f.eks. "30 000 000"), men uten
+// valutategn — til manuelt redigerbare beløps-input, som ellers viste rå
+// sifre uten mellomrom mens den beregnede varelinje-summen viste formatMoney.
+export function formatNumberInput(value: number | null | undefined) {
+  if (value == null) return "";
+  return new Intl.NumberFormat("nb-NO").format(value);
+}
+
 export function initials(name: string) {
   return name
     .split(/\s+/)
