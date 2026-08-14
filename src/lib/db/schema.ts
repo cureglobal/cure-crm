@@ -12,8 +12,25 @@ export const users = sqliteTable("users", {
   theme: text("theme").notNull().default("lys"),
   // Profilbilde som data-URL (samme mønster som referanseprosjektenes screenshot).
   avatarDataUrl: text("avatar_data_url"),
+  // Hvilket av våre egne aksjeselskap (Cure AS, Cure Christiania AS, …)
+  // brukeren jobber i — se business_units-tabellen under.
+  businessUnitId: integer("business_unit_id"),
   // Satt når brukeren har fullført (eller lukket) onboarding-gjennomgangen.
   onboardingSeenAt: integer("onboarding_seen_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// Våre egne juridiske enheter (Cure AS, Cure Christiania AS, Cure Placebo
+// AS, …) — IKKE å forveksle med `companies`, som er kundene/leadene. Fritt
+// redigerbar liste (samme idé som `stages`), knyttes til både brukere
+// (hvem jobber i hvilket selskap) og kunder (hvilket av våre selskap som
+// eier kunden).
+export const businessUnits = sqliteTable("business_units", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -65,6 +82,8 @@ export const companies = sqliteTable("companies", {
   fiscalYear: text("fiscal_year"),
   brregSyncedAt: integer("brreg_synced_at", { mode: "timestamp_ms" }),
   primaryContactId: integer("primary_contact_id"),
+  // Hvilket av våre egne selskap (business_units) som eier denne kunden.
+  businessUnitId: integer("business_unit_id"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -253,6 +272,7 @@ export const activities = sqliteTable("activities", {
 
 export type User = typeof users.$inferSelect;
 export type Company = typeof companies.$inferSelect;
+export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;

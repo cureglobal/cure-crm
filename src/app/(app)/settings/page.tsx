@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, emailAccounts, companies } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getBusinessUnits } from "@/lib/businessUnits.server";
 import {
   addUser,
   connectEmailAccount,
@@ -13,10 +14,21 @@ import SyncButton from "@/components/SyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
 import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
+import BusinessUnitsManager from "@/components/BusinessUnitsManager";
+import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
 import AdminToggle from "@/components/AdminToggle";
 import UserActions from "@/components/UserActions";
-import { Mail, ShieldCheck, TriangleAlert, Building2, Signature, Palette, Layers } from "lucide-react";
+import {
+  Mail,
+  ShieldCheck,
+  TriangleAlert,
+  Building2,
+  Signature,
+  Palette,
+  Layers,
+  Landmark,
+} from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
 // Krever Vercel Pro (eller Fluid Compute) for å faktisk få mer enn 10–15 sek;
@@ -35,6 +47,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     await db.query.companies.findMany({ where: eq(companies.brregVerified, false) })
   ).length;
   const stageRows = await getStages();
+  const businessUnitRows = await getBusinessUnits();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -205,6 +218,23 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       <section className="card mb-6 p-6">
         <div className="mb-4 flex items-center gap-2.5">
           <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Landmark size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Våre selskap</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              De juridiske enhetene vi selv jobber i (f.eks. Cure AS, Cure Christiania AS).
+              Knytt brukere til riktig selskap nedenfor i Brukere, og kunder inne på hver
+              enkelt bedriftsside.
+            </p>
+          </div>
+        </div>
+        <BusinessUnitsManager units={businessUnitRows.map((u) => ({ id: u.id, name: u.name }))} />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
             <Building2 size={16} />
           </span>
           <div>
@@ -244,15 +274,27 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               </div>
               {me.isAdmin ? (
                 <>
+                  <UserBusinessUnitSelect
+                    userId={u.id}
+                    initialBusinessUnitId={u.businessUnitId}
+                    units={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
+                  />
                   <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
                   <UserActions userId={u.id} canDelete={u.id !== me.id} />
                 </>
               ) : (
-                u.isAdmin && (
-                  <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
-                    Administrator
-                  </span>
-                )
+                <>
+                  {businessUnitRows.find((b) => b.id === u.businessUnitId) && (
+                    <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
+                      {businessUnitRows.find((b) => b.id === u.businessUnitId)?.name}
+                    </span>
+                  )}
+                  {u.isAdmin && (
+                    <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
+                      Administrator
+                    </span>
+                  )}
+                </>
               )}
             </li>
           ))}
@@ -273,6 +315,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               placeholder="Midlertidig passord (minst 8 tegn)"
               className="field"
             />
+            <select name="businessUnitId" defaultValue="" className="field">
+              <option value="">Ikke satt</option>
+              {businessUnitRows.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
             {params.error === "bruker" && (
               <p className="text-[13px] text-danger">Kunne ikke opprette brukeren.</p>
             )}

@@ -13,6 +13,7 @@ export interface DealRow {
   id: number;
   companyName: string;
   logoUrl: string | null;
+  companyBusinessUnitId: number | null;
   ownerId: number;
   ownerName: string;
   coOwnerIds: number[];

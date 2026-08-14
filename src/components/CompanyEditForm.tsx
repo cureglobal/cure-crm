@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import { updateCompany } from "@/lib/actions";
 import { formatOrgNumber } from "@/components/CompanyFacts";
-import { UserRound } from "lucide-react";
+import { UserRound, Landmark } from "lucide-react";
 
 export default function CompanyEditForm({
   company,
   people,
   users,
+  businessUnits,
 }: {
   company: {
     id: number;
@@ -19,9 +20,11 @@ export default function CompanyEditForm({
     phone: string | null;
     primaryContactId: number | null;
     ownerId: number | null;
+    businessUnitId: number | null;
   };
   people: { id: number; name: string }[];
   users: { id: number; name: string }[];
+  businessUnits: { id: number; name: string }[];
 }) {
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -82,6 +85,25 @@ export default function CompanyEditForm({
             {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-[12px] font-medium text-ink-soft">
+          <span className="flex items-center gap-1.5">
+            <Landmark size={12} />
+            Vårt selskap
+          </span>
+          <select
+            key={company.businessUnitId ?? "ingen"}
+            name="businessUnitId"
+            defaultValue={company.businessUnitId ? String(company.businessUnitId) : ""}
+            className="field mt-1"
+          >
+            <option value="">Ikke satt</option>
+            {businessUnits.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
               </option>
             ))}
           </select>

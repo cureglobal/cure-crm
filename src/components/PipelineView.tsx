@@ -11,6 +11,11 @@ export interface OwnerOption {
   name: string;
 }
 
+export interface BusinessUnitOption {
+  id: number;
+  name: string;
+}
+
 type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "egendefinert";
 
 // Husker sist brukte filter i nettleseren, slik at det ligger klart igjen når
@@ -23,6 +28,7 @@ const ACTIVE_DAYS = 45;
 interface StoredFilters {
   view?: "kanban" | "liste";
   ownerId?: "alle" | number;
+  businessUnitId?: "alle" | number;
   datePreset?: DatePreset;
   fromDate?: string;
   toDate?: string;
@@ -65,6 +71,7 @@ export default function PipelineView({
   rows,
   stages,
   owners,
+  businessUnits,
   currentUserId,
   initialView,
   initialDatePreset,
@@ -75,6 +82,7 @@ export default function PipelineView({
   rows: DealRow[];
   stages: Stage[];
   owners: OwnerOption[];
+  businessUnits: BusinessUnitOption[];
   // Brukes som standardeier ("Eier = meg") første gang, før noe er lagret.
   currentUserId: number;
   // Udefinert = ikke satt eksplisitt via URL; da avgjør lagrede preferanser
@@ -90,6 +98,7 @@ export default function PipelineView({
   const [view, setView] = useState<"kanban" | "liste">(initialView ?? "liste");
   const [search, setSearch] = useState("");
   const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
+  const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>("alle");
   const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset ?? "alle");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -117,6 +126,7 @@ export default function PipelineView({
     const saved = readStored();
     if (initialView === undefined) setView(saved?.view ?? "liste");
     if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? currentUserId);
+    setBusinessUnitId(saved?.businessUnitId ?? "alle");
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
     if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
     if (initialOnlyActive === undefined) setOnlyActive(saved?.onlyActive ?? false);
@@ -134,12 +144,31 @@ export default function PipelineView({
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ view, ownerId, datePreset, fromDate, toDate, groupByStage, onlyActive })
+        JSON.stringify({
+          view,
+          ownerId,
+          businessUnitId,
+          datePreset,
+          fromDate,
+          toDate,
+          groupByStage,
+          onlyActive,
+        })
       );
     } catch {
       // Privat nettlesing e.l. — ikke kritisk, filteret gjelder bare denne sesjonen.
     }
-  }, [hydrated, view, ownerId, datePreset, fromDate, toDate, groupByStage, onlyActive]);
+  }, [
+    hydrated,
+    view,
+    ownerId,
+    businessUnitId,
+    datePreset,
+    fromDate,
+    toDate,
+    groupByStage,
+    onlyActive,
+  ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -150,6 +179,9 @@ export default function PipelineView({
     return rows.filter((r) => {
       // En deal regnes som "eid" av en bruker enten som hoved-eier eller som med-eier.
       if (ownerId !== "alle" && r.ownerId !== ownerId && !r.coOwnerIds.includes(ownerId)) {
+        return false;
+      }
+      if (businessUnitId !== "alle" && r.companyBusinessUnitId !== businessUnitId) {
         return false;
       }
       if (onlyActive && r.updatedAt < activeCutoff) return false;
@@ -172,7 +204,7 @@ export default function PipelineView({
       }
       return true;
     });
-  }, [rows, search, ownerId, datePreset, fromDate, toDate, onlyActive]);
+  }, [rows, search, ownerId, businessUnitId, datePreset, fromDate, toDate, onlyActive]);
 
   const kanbanItems: KanbanDeal[] = useMemo(
     () =>
@@ -245,6 +277,22 @@ export default function PipelineView({
         </select>
 
         <select
+          value={businessUnitId === "alle" ? "alle" : String(businessUnitId)}
+          onChange={(e) =>
+            setBusinessUnitId(e.target.value === "alle" ? "alle" : Number(e.target.value))
+          }
+          className={selectClass}
+          title="Filtrer på hvilket av våre selskap kunden tilhører"
+        >
+          <option value="alle">Alle selskap</option>
+          {businessUnits.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+
+        <select
           value={datePreset}
           onChange={(e) => setDatePreset(e.target.value as DatePreset)}
           className={selectClass}
@@ -302,7 +350,11 @@ export default function PipelineView({
         )}
       </div>
 
-      {(search || ownerId !== "alle" || datePreset !== "alle" || onlyActive) && (
+      {(search ||
+        ownerId !== "alle" ||
+        businessUnitId !== "alle" ||
+        datePreset !== "alle" ||
+        onlyActive) && (
         <p className="mb-3 text-[12.5px] text-ink-faint">
           Viser {filtered.length} av {rows.length} deals
         </p>

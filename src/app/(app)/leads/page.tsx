@@ -3,6 +3,7 @@ import { db, deals as dealsTable, companies, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
+import { getBusinessUnits } from "@/lib/businessUnits.server";
 import PipelineView from "@/components/PipelineView";
 import NewDealButton from "@/components/NewDealButton";
 import type { DealRow } from "@/components/DealsTable";
@@ -28,6 +29,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       companyId: dealsTable.companyId,
       companyName: companies.name,
       logoUrl: companies.logoUrl,
+      companyBusinessUnitId: companies.businessUnitId,
     })
     .from(dealsTable)
     .innerJoin(companies, eq(dealsTable.companyId, companies.id))
@@ -53,6 +55,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   );
 
   const stages = await getStages();
+  const businessUnits = await getBusinessUnits();
   const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
   const dealRows: DealRow[] = [...rows]
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99))
@@ -60,6 +63,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       id: d.id,
       companyName: d.companyName,
       logoUrl: d.logoUrl,
+      companyBusinessUnitId: d.companyBusinessUnitId,
       ownerId: d.ownerId,
       ownerName: ownerNames.get(d.ownerId) ?? "",
       coOwnerIds: coOwnerIdsByDeal.get(d.id) ?? [],
@@ -89,6 +93,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         rows={dealRows}
         stages={stages}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+        businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name }))}
         currentUserId={me.id}
         initialView={initialView}
         initialDatePreset={

@@ -20,6 +20,7 @@ import {
   referenceProjects,
   dealOwners,
   stages,
+  businessUnits,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -105,9 +106,14 @@ export async function addUser(formData: FormData) {
   if (!name || !email || password.length < 8) {
     redirect("/settings?error=bruker");
   }
-  await db
-    .insert(users)
-    .values({ name, email, passwordHash: await bcrypt.hash(password, 12) });
+  const rawBusinessUnitId = String(formData.get("businessUnitId") ?? "");
+  const businessUnitId = rawBusinessUnitId ? Number(rawBusinessUnitId) : null;
+  await db.insert(users).values({
+    name,
+    email,
+    passwordHash: await bcrypt.hash(password, 12),
+    businessUnitId: businessUnitId && businessUnitId > 0 ? businessUnitId : null,
+  });
   revalidatePath("/settings");
 }
 
@@ -128,6 +134,79 @@ export async function setUserAdmin(userId: number, isAdmin: boolean) {
   if (!me.isAdmin || userId === me.id) return;
   await db.update(users).set({ isAdmin }).where(eq(users.id, userId));
   revalidatePath("/settings");
+}
+
+export async function setUserBusinessUnit(userId: number, businessUnitId: number | null) {
+  const me = await requireUser();
+  if (!me.isAdmin) return;
+  await db.update(users).set({ businessUnitId }).where(eq(users.id, userId));
+  revalidatePath("/settings");
+}
+
+// ---------- Egne selskap (business units) ----------
+
+export async function createBusinessUnit(formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return null;
+  const existing = await db.query.businessUnits.findMany({
+    orderBy: [asc(businessUnits.sortOrder)],
+  });
+  const nextOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+  const [unit] = await db
+    .insert(businessUnits)
+    .values({ name, sortOrder: nextOrder })
+    .returning();
+  revalidatePath("/settings");
+  return unit;
+}
+
+export async function updateBusinessUnit(id: number, formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  await db.update(businessUnits).set({ name }).where(eq(businessUnits.id, id));
+  revalidatePath("/settings");
+}
+
+export async function deleteBusinessUnit(
+  id: number
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const usedByUser = await db.query.users.findFirst({
+    where: eq(users.businessUnitId, id),
+  });
+  if (usedByUser) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — flytt brukerne til et annet selskap først.",
+    };
+  }
+  const usedByCompany = await db.query.companies.findFirst({
+    where: eq(companies.businessUnitId, id),
+  });
+  if (usedByCompany) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — flytt kundene til et annet selskap først.",
+    };
+  }
+  await db.delete(businessUnits).where(eq(businessUnits.id, id));
+  revalidatePath("/settings");
+  return { ok: true, message: "Selskapet ble slettet." };
+}
+
+export async function bulkSetCompanyBusinessUnit(
+  companyIds: number[],
+  businessUnitId: number | null
+) {
+  await requireUser();
+  if (companyIds.length === 0) return;
+  await db
+    .update(companies)
+    .set({ businessUnitId })
+    .where(inArray(companies.id, companyIds));
+  revalidateDealViews();
 }
 
 export async function setUserPassword(
@@ -1285,6 +1364,11 @@ export async function updateCompany(companyId: number, formData: FormData) {
     const raw = String(formData.get("ownerId") ?? "");
     const id = Number(raw);
     set.ownerId = raw && Number.isFinite(id) && id > 0 ? id : null;
+  }
+  if (formData.has("businessUnitId")) {
+    const raw = String(formData.get("businessUnitId") ?? "");
+    const id = Number(raw);
+    set.businessUnitId = raw && Number.isFinite(id) && id > 0 ? id : null;
   }
   let manualOrgNumber: string | null = null;
   if (formData.has("orgNumber")) {

@@ -22,6 +22,7 @@ import ContactLog from "@/components/ContactLog";
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
+import { getBusinessUnits } from "@/lib/businessUnits.server";
 import CompanyLogoUpload from "@/components/CompanyLogoUpload";
 import Avatar from "@/components/Avatar";
 import EmailThread from "@/components/EmailThread";
@@ -150,6 +151,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const companyOwner = allUsers.find((u) => u.id === company.ownerId);
+  const businessUnitRows = await getBusinessUnits();
 
   const stages = await getStages();
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
@@ -487,9 +489,11 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
               phone: company.phone,
               primaryContactId: company.primaryContactId,
               ownerId: company.ownerId,
+              businessUnitId: company.businessUnitId,
             }}
             people={contacts.map((c) => ({ id: c.id, name: c.name }))}
             users={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+            businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
           />
         </div>
       </div>

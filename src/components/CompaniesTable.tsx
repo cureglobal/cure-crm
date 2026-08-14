@@ -7,6 +7,7 @@ import CompanyLogo from "@/components/CompanyLogo";
 import {
   bulkDeleteCompanies,
   bulkSetCompanyOwner,
+  bulkSetCompanyBusinessUnit,
   bulkMatchCompaniesBrreg,
 } from "@/lib/actions";
 import {
@@ -91,11 +92,13 @@ export default function CompaniesTable({
   totalOpen,
   totalWon,
   owners,
+  businessUnits,
 }: {
   rows: CompanyRow[];
   totalOpen: number;
   totalWon: number;
   owners: { id: number; name: string }[];
+  businessUnits: { id: number; name: string }[];
 }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
@@ -104,6 +107,7 @@ export default function CompaniesTable({
   });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [ownerChoice, setOwnerChoice] = useState("");
+  const [businessUnitChoice, setBusinessUnitChoice] = useState("");
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
@@ -188,6 +192,16 @@ export default function CompaniesTable({
     });
   }
 
+  function applyBusinessUnit() {
+    if (!businessUnitChoice) return;
+    const ids = [...selected];
+    const businessUnitId = businessUnitChoice === "ingen" ? null : Number(businessUnitChoice);
+    startTransition(async () => {
+      await bulkSetCompanyBusinessUnit(ids, businessUnitId);
+      setBulkMessage(`Satt vårt selskap på ${ids.length} selskaper.`);
+    });
+  }
+
   function applyBrregMatch() {
     const ids = [...selected];
     startTransition(async () => {
@@ -257,6 +271,27 @@ export default function CompaniesTable({
           <button
             onClick={applyOwner}
             disabled={pending || !ownerChoice}
+            className="btn btn-secondary !py-1.5"
+          >
+            Bruk
+          </button>
+
+          <select
+            value={businessUnitChoice}
+            onChange={(e) => setBusinessUnitChoice(e.target.value)}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Sett vårt selskap …</option>
+            <option value="ingen">Ikke satt</option>
+            {businessUnits.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyBusinessUnit}
+            disabled={pending || !businessUnitChoice}
             className="btn btn-secondary !py-1.5"
           >
             Bruk

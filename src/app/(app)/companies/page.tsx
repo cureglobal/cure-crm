@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db, companies, deals, people, companyPeople, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getBusinessUnits } from "@/lib/businessUnits.server";
 import CompaniesTable, { type CompanyRow } from "@/components/CompaniesTable";
 import NewCompanyButton from "@/components/NewCompanyButton";
 
@@ -61,6 +62,7 @@ export default async function CompaniesPage() {
   const totalWon = rows.reduce((acc, r) => acc + r.wonValue, 0);
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
+  const businessUnitRows = await getBusinessUnits();
 
   return (
     <div>
@@ -78,6 +80,7 @@ export default async function CompaniesPage() {
         totalOpen={totalOpen}
         totalWon={totalWon}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+        businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
       />
     </div>
   );

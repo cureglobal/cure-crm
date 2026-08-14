@@ -154,6 +154,12 @@ const CREATE_STATEMENTS = [
     phase_hours TEXT,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS business_units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -170,6 +176,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_stages_sort_order ON stages(sort_order)",
+  "CREATE INDEX IF NOT EXISTS idx_companies_business_unit ON companies(business_unit_id)",
+  "CREATE INDEX IF NOT EXISTS idx_users_business_unit ON users(business_unit_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -193,6 +201,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     fiscal_year: "TEXT",
     brreg_synced_at: "INTEGER",
     primary_contact_id: "INTEGER",
+    business_unit_id: "INTEGER",
   },
   people: { notes: "TEXT" },
   deals: { comment: "TEXT" },
@@ -201,6 +210,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     theme: "TEXT NOT NULL DEFAULT 'lys'",
     avatar_data_url: "TEXT",
     onboarding_seen_at: "INTEGER",
+    business_unit_id: "INTEGER",
   },
 };
 
@@ -260,6 +270,46 @@ async function seedStagesAndMigrateLegacy(client: Client) {
   }
 }
 
+// Våre tre juridiske enheter ved innføringen av dette. Fritt redigerbart
+// etterpå fra Innstillinger — denne listen brukes kun til førstegangs-seeding.
+const DEFAULT_BUSINESS_UNITS = ["Cure AS", "Cure Christiania AS", "Cure Placebo AS"];
+
+// Kjøres én gang: seeder de tre selskapene og gjetter en fornuftig
+// standardkobling ut fra det brukeren oppga da funksjonen ble innført
+// (Anita og TK i Cure Christiania AS, resten i Cure AS; FBN Norsk
+// Familieeierskap i Cure Christiania AS). Idempotent — hopper over alt
+// dette hvis business_units-tabellen ikke er tom, akkurat som fasene.
+async function seedBusinessUnits(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM business_units");
+  if (Number(existing.rows[0].c) > 0) return;
+
+  const idByName: Record<string, number> = {};
+  for (let i = 0; i < DEFAULT_BUSINESS_UNITS.length; i++) {
+    const name = DEFAULT_BUSINESS_UNITS[i];
+    const res = await client.execute({
+      sql: "INSERT INTO business_units (name, sort_order, created_at) VALUES (?, ?, ?)",
+      args: [name, i, Date.now()],
+    });
+    idByName[name] = Number(res.lastInsertRowid);
+  }
+
+  const cureId = idByName["Cure AS"];
+  const christianiaId = idByName["Cure Christiania AS"];
+
+  await client.execute({
+    sql: "UPDATE users SET business_unit_id = ? WHERE business_unit_id IS NULL AND (name LIKE 'Anita%' OR name LIKE 'TK%' OR name LIKE '% TK')",
+    args: [christianiaId],
+  });
+  await client.execute({
+    sql: "UPDATE users SET business_unit_id = ? WHERE business_unit_id IS NULL",
+    args: [cureId],
+  });
+  await client.execute({
+    sql: "UPDATE companies SET business_unit_id = ? WHERE business_unit_id IS NULL AND name = 'FBN Norsk Familieeierskap'",
+    args: [christianiaId],
+  });
+}
+
 async function addMissingColumns(client: Client) {
   for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
     const exists = await client.execute({
@@ -300,4 +350,6 @@ export async function migrate(client: Client) {
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
   // Må kjøre etter at både stages- og deals-tabellen finnes.
   await seedStagesAndMigrateLegacy(client);
+  // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
+  await seedBusinessUnits(client);
 }
