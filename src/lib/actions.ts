@@ -117,6 +117,18 @@ export async function addUser(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// Admin kan endre navn på hvem som helst; alle andre kan bare endre sitt eget
+// — samme tilgangsmønster som updateAvatar.
+export async function updateUserName(userId: number, formData: FormData) {
+  const me = await requireUser();
+  if (!me.isAdmin && me.id !== userId) return;
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  await db.update(users).set({ name }).where(eq(users.id, userId));
+  revalidatePath("/settings");
+  revalidateDealViews();
+}
+
 // Admin kan endre bilde på hvem som helst; alle andre kan bare endre sitt eget.
 export async function updateAvatar(userId: number, formData: FormData) {
   const me = await requireUser();
@@ -590,6 +602,42 @@ export async function bulkSetDealStage(dealIds: number[], stage: string) {
       userId: me.id,
       type: "stage",
       content: `Flyttet til «${stageRow?.label ?? stage}»`,
+    }))
+  );
+  revalidateDealViews();
+}
+
+// Endrer hoved-eieren på en enkelt deal — fra oversiktsbildet (listevisningen).
+export async function updateDealOwner(dealId: number, ownerId: number) {
+  const me = await requireUser();
+  const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+  if (!owner) return;
+  await db.update(deals).set({ ownerId, updatedAt: new Date() }).where(eq(deals.id, dealId));
+  await db.insert(activities).values({
+    dealId,
+    userId: me.id,
+    type: "owner",
+    content: `Endret eier til ${owner.name}`,
+  });
+  revalidateDealViews(dealId);
+}
+
+// Samme som over, for flere valgte deals samtidig.
+export async function bulkSetDealOwner(dealIds: number[], ownerId: number) {
+  const me = await requireUser();
+  if (dealIds.length === 0) return;
+  const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+  if (!owner) return;
+  await db
+    .update(deals)
+    .set({ ownerId, updatedAt: new Date() })
+    .where(inArray(deals.id, dealIds));
+  await db.insert(activities).values(
+    dealIds.map((dealId) => ({
+      dealId,
+      userId: me.id,
+      type: "owner",
+      content: `Endret eier til ${owner.name}`,
     }))
   );
   revalidateDealViews();

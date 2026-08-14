@@ -17,6 +17,7 @@ import StagesManager from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
+import UserNameEdit from "@/components/UserNameEdit";
 import AdminToggle from "@/components/AdminToggle";
 import UserActions from "@/components/UserActions";
 import {
@@ -265,11 +266,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 size={36}
                 editable={me.isAdmin || u.id === me.id}
               />
-              <div className="flex-1">
-                <p className="text-[13.5px] font-medium">
-                  {u.name}
-                  {u.id === me.id && <span className="ml-1.5 text-ink-faint">(deg)</span>}
-                </p>
+              <div className="min-w-0 flex-1">
+                {me.isAdmin || u.id === me.id ? (
+                  <UserNameEdit userId={u.id} initialName={u.name} isSelf={u.id === me.id} />
+                ) : (
+                  <p className="text-[13.5px] font-medium">{u.name}</p>
+                )}
                 <p className="text-[12.5px] text-ink-soft">{u.email}</p>
               </div>
               {me.isAdmin ? (

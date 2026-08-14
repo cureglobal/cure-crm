@@ -363,7 +363,7 @@ export default function PipelineView({
       {view === "kanban" ? (
         <KanbanBoard deals={kanbanItems} stages={stages} />
       ) : (
-        <DealsTable rows={filtered} stages={stages} groupByStage={groupByStage} />
+        <DealsTable rows={filtered} stages={stages} owners={owners} groupByStage={groupByStage} />
       )}
     </div>
   );

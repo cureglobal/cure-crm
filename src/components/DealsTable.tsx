@@ -2,10 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { updateDealInline, bulkSetDealStage, bulkDeleteDeals } from "@/lib/actions";
+import {
+  updateDealInline,
+  bulkSetDealStage,
+  bulkSetDealOwner,
+  bulkDeleteDeals,
+} from "@/lib/actions";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
-import Avatar from "@/components/Avatar";
+import DealOwnerCell from "@/components/DealOwnerCell";
 import type { Stage } from "@/lib/stages";
 import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
@@ -74,10 +79,12 @@ function Row({
   deal,
   selected,
   onToggle,
+  owners,
 }: {
   deal: DealRow;
   selected: boolean;
   onToggle: () => void;
+  owners: { id: number; name: string }[];
 }) {
   const [pending, startTransition] = useTransition();
   const [dateVal, setDateVal] = useState(deal.followUpInput);
@@ -107,17 +114,13 @@ function Row({
           </span>
         </Link>
 
-        <span className="relative flex justify-center">
-          <Avatar name={deal.ownerName} size={28} />
-          {deal.coOwnerIds.length > 0 && (
-            <span
-              title={`${deal.coOwnerIds.length} med-eier${deal.coOwnerIds.length === 1 ? "" : "e"}`}
-              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-mist/[0.08] text-[9px] font-semibold text-ink-soft"
-            >
-              +{deal.coOwnerIds.length}
-            </span>
-          )}
-        </span>
+        <DealOwnerCell
+          dealId={deal.id}
+          ownerId={deal.ownerId}
+          ownerName={deal.ownerName}
+          coOwnerCount={deal.coOwnerIds.length}
+          owners={owners}
+        />
 
         {deal.hasLines ? (
           <span
@@ -204,15 +207,18 @@ function HeaderCell({
 export default function DealsTable({
   rows,
   stages,
+  owners,
   groupByStage = false,
 }: {
   rows: DealRow[];
   stages: Stage[];
+  owners: { id: number; name: string }[];
   groupByStage?: boolean;
 }) {
   const [sort, setSort] = useState<Sort | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [stageChoice, setStageChoice] = useState("");
+  const [ownerChoice, setOwnerChoice] = useState("");
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
@@ -264,6 +270,16 @@ export default function DealsTable({
       await bulkSetDealStage(ids, stageId);
       setBulkMessage(`Flyttet ${ids.length} deals.`);
       setStageChoice("");
+    });
+  }
+
+  function applyOwner(ownerId: string) {
+    if (!ownerId) return;
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkSetDealOwner(ids, Number(ownerId));
+      setBulkMessage(`Satt eier på ${ids.length} deals.`);
+      setOwnerChoice("");
     });
   }
 
@@ -349,6 +365,23 @@ export default function DealsTable({
             ))}
           </select>
 
+          <select
+            value={ownerChoice}
+            onChange={(e) => {
+              setOwnerChoice(e.target.value);
+              applyOwner(e.target.value);
+            }}
+            disabled={pending}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Sett eier …</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
               <span className="text-[12.5px] text-danger">Slette {selected.size} deals?</span>
@@ -409,6 +442,7 @@ export default function DealsTable({
                       deal={deal}
                       selected={selected.has(deal.id)}
                       onToggle={() => toggleOne(deal.id)}
+                      owners={owners}
                     />
                   ))}
                 </ul>
@@ -423,6 +457,7 @@ export default function DealsTable({
                 deal={deal}
                 selected={selected.has(deal.id)}
                 onToggle={() => toggleOne(deal.id)}
+                owners={owners}
               />
             ))}
           </ul>
