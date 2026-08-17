@@ -51,6 +51,14 @@ import { generateQuotePdf } from "@/lib/pdf";
 import { sendMailFromAccount } from "@/lib/mailer";
 import { formatDateShort } from "@/lib/format";
 
+// Standard oppfølgingsdato for nyopprettede deals — dagens dato, samme
+// klokkeslett-konvensjon som datofelter ellers bruker ("${dateStr}T09:00:00").
+function todayFollowUpDate() {
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  return d;
+}
+
 function revalidateDealViews(dealId?: number) {
   revalidatePath("/");
   revalidatePath("/leads");
@@ -372,6 +380,7 @@ export async function createDeal(formData: FormData) {
       title: dealTitle || "Ny deal",
       ownerId: me.id,
       stage: firstStageId(await getStages()),
+      followUpAt: todayFollowUpDate(),
     })
     .returning();
 
@@ -1067,6 +1076,7 @@ export async function createDealFromEstimate(
       title: dealTitle || "Ny deal",
       ownerId: me.id,
       stage: firstStageId(await getStages()),
+      followUpAt: todayFollowUpDate(),
     })
     .returning();
 

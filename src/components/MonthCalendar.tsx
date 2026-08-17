@@ -98,13 +98,17 @@ export default function MonthCalendar({ deals }: { deals: CalendarDeal[] }) {
                 href={`/leads?view=liste&dato=egendefinert&fra=${key}&til=${key}`}
                 onMouseEnter={() => setHoverKey(key)}
                 onMouseLeave={() => setHoverKey((k) => (k === key ? null : k))}
-                className={`flex aspect-square items-center justify-center rounded-full text-[12.5px] transition ${
+                className={`flex aspect-square items-center justify-center rounded-full text-[11px] transition ${
                   inMonth ? "text-ink" : "text-ink-faint/50"
-                } ${hasDeadline ? "font-semibold ring-2 ring-accent" : ""} ${
-                  isToday ? "bg-accent-soft" : "hover:bg-mist/[0.05]"
-                }`}
+                } ${isToday ? "bg-accent-soft" : "hover:bg-mist/[0.05]"}`}
               >
-                {day.getDate()}
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                    hasDeadline ? "bg-mist/[0.14] font-semibold" : ""
+                  }`}
+                >
+                  {day.getDate()}
+                </span>
               </Link>
               {hoverKey === key && hasDeadline && (
                 <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-1 w-56 -translate-x-1/2 rounded-xl border border-line bg-surface p-2.5 shadow-pop">

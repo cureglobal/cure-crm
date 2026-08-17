@@ -10,34 +10,11 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
-import { formatDateTime, startOfDay } from "@/lib/format";
+import { formatDateTime, formatMoney, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
-import FollowUpList, { type FollowUpItem } from "@/components/FollowUpList";
 import MonthCalendar from "@/components/MonthCalendar";
-import { CalendarDays, TrendingUp, Users, CircleCheck } from "lucide-react";
-
-function toFollowUpItem(d: {
-  id: number;
-  title: string;
-  companyName: string;
-  logoUrl: string | null;
-  stage: string;
-  followUpAt: Date | null;
-  ownerName?: string | null;
-  ownerAvatarUrl?: string | null;
-}): FollowUpItem {
-  return {
-    id: d.id,
-    title: d.title,
-    companyName: d.companyName,
-    logoUrl: d.logoUrl,
-    stage: d.stage,
-    followUpAt: d.followUpAt!,
-    ownerName: d.ownerName ?? null,
-    ownerAvatarUrl: d.ownerAvatarUrl ?? null,
-  };
-}
+import { CalendarDays, TrendingUp, Coins, CircleCheck } from "lucide-react";
 
 function greeting(name: string) {
   const hour = new Date().getHours();
@@ -58,6 +35,7 @@ export default async function Dashboard() {
       stage: deals.stage,
       value: deals.value,
       followUpAt: deals.followUpAt,
+      updatedAt: deals.updatedAt,
       companyId: deals.companyId,
       companyName: companies.name,
       logoUrl: companies.logoUrl,
@@ -75,14 +53,17 @@ export default async function Dashboard() {
   const activeDeals = allDeals.filter(
     (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
   );
-  const wonCount = allDeals.filter((d) => wonStageIds.has(d.stage)).length;
+  const pipelineValue = activeDeals.reduce((acc, d) => acc + (d.value ?? 0), 0);
 
   const withFollowUp = activeDeals
     .filter((d) => d.followUpAt)
     .sort((a, b) => a.followUpAt!.getTime() - b.followUpAt!.getTime());
 
   const today = startOfDay(new Date());
-  const endOfToday = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const soldLast30Value = allDeals
+    .filter((d) => wonStageIds.has(d.stage) && d.updatedAt >= thirtyDaysAgo)
+    .reduce((acc, d) => acc + (d.value ?? 0), 0);
 
   // Denne uken = mandag til søndag i inneværende uke, fra og med i dag.
   const weekday = (today.getDay() + 6) % 7;
@@ -90,9 +71,6 @@ export default async function Dashboard() {
   const endOfWeek = new Date(monday.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const overdue = withFollowUp.filter((d) => d.followUpAt! < today);
-  const dueToday = withFollowUp.filter(
-    (d) => d.followUpAt! >= today && d.followUpAt! < endOfToday
-  );
   // I dag først, deretter kronologisk resten av uken.
   const thisWeek = withFollowUp.filter(
     (d) => d.followUpAt! >= today && d.followUpAt! < endOfWeek
@@ -144,10 +122,15 @@ export default async function Dashboard() {
     .limit(8);
 
   const stats = [
-    { label: "Aktive deals", value: activeDeals.length, icon: <Users size={16} /> },
-    { label: "Å følge opp i dag", value: dueToday.length, icon: <CalendarDays size={16} /> },
-    { label: "Forfalt oppfølging", value: overdue.length, icon: <TrendingUp size={16} />, danger: overdue.length > 0 },
-    { label: "Vunnet totalt", value: wonCount, icon: <CircleCheck size={16} /> },
+    { label: "Oppfølginger denne uken", value: thisWeek.length, icon: <CalendarDays size={16} /> },
+    {
+      label: "Oppfølginger forfalt",
+      value: overdue.length,
+      icon: <TrendingUp size={16} />,
+      danger: overdue.length > 0,
+    },
+    { label: "Verdi i pipeline", value: formatMoney(pipelineValue), icon: <Coins size={16} /> },
+    { label: "Solgt siste 30 dager", value: formatMoney(soldLast30Value), icon: <CircleCheck size={16} /> },
   ];
 
   return (
@@ -189,24 +172,6 @@ export default async function Dashboard() {
       </div>
 
       <div className="mb-6 grid items-start gap-6 lg:grid-cols-2">
-        <FollowUpList
-          heading="Oppfølginger denne uken"
-          items={thisWeek.map(toFollowUpItem)}
-          seeAllHref="/leads?view=liste&dato=uke&aktive=1"
-          emptyText="Ingen oppfølginger igjen denne uken."
-          stages={stages}
-        />
-        <FollowUpList
-          heading="Oppfølginger, forfalt"
-          items={overdue.map(toFollowUpItem)}
-          seeAllHref="/leads?view=liste&dato=forfalt&aktive=1"
-          emptyText="Ingenting er forfalt. Godt jobbet."
-          tone="danger"
-          stages={stages}
-        />
-      </div>
-
-      <div className="mb-6">
         <MonthCalendar
           deals={withFollowUp.map((d) => ({
             id: d.id,
@@ -215,9 +180,7 @@ export default async function Dashboard() {
             followUpAt: d.followUpAt!.getTime(),
           }))}
         />
-      </div>
 
-      <div className="grid gap-6">
         <section className="card p-6">
           <h2 className="mb-4 text-[16px] font-semibold tracking-tight">Siste aktivitet</h2>
           {recent.length === 0 ? (

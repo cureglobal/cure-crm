@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { createDealForCompany } from "@/lib/actions";
+import { toDateInputValue } from "@/lib/format";
 import { Plus, X } from "lucide-react";
 
 function SubmitButton() {
@@ -73,7 +74,12 @@ export default function NewDealOnCompanyButton({
                 </label>
                 <label className="text-[12px] font-medium text-ink-soft">
                   Oppfølging
-                  <input type="date" name="followUpAt" className="field mt-1" />
+                  <input
+                    type="date"
+                    name="followUpAt"
+                    defaultValue={toDateInputValue(new Date())}
+                    className="field mt-1"
+                  />
                 </label>
               </div>
               <p className="text-[12px] text-ink-faint">
