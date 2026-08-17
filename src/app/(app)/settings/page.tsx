@@ -3,6 +3,7 @@ import { db, emailAccounts, calendarAccounts, companies } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getLostReasons } from "@/lib/lostReasons.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
@@ -19,6 +20,7 @@ import BrregMatchAll from "@/components/BrregMatchAll";
 import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
+import LostReasonsManager from "@/components/LostReasonsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
 import UserNameEdit from "@/components/UserNameEdit";
@@ -34,6 +36,7 @@ import {
   Layers,
   Landmark,
   CalendarDays,
+  ThumbsDown,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -57,6 +60,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   ).length;
   const stageRows = await getStages();
   const businessUnitRows = await getBusinessUnits();
+  const lostReasonRows = await getLostReasons();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -296,6 +300,23 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             isWon: s.isWon,
             isLost: s.isLost,
           }))}
+        />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <ThumbsDown size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Tapte grunner</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Grunnene som kan velges når en deal flyttes til en tapt-fase.
+            </p>
+          </div>
+        </div>
+        <LostReasonsManager
+          reasons={lostReasonRows.map((r) => ({ id: r.id, label: r.label }))}
         />
       </section>
 

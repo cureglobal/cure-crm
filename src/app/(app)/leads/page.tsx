@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getLostReasons } from "@/lib/lostReasons.server";
 import PipelineView from "@/components/PipelineView";
 import NewDealButton from "@/components/NewDealButton";
 import type { DealRow } from "@/components/DealsTable";
@@ -57,6 +58,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
 
   const stages = await getStages();
   const businessUnits = await getBusinessUnits();
+  const lostReasons = await getLostReasons();
   const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
   const dealRows: DealRow[] = [...rows]
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99))
@@ -96,13 +98,20 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         stages={stages}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
         businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name }))}
+        lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
         currentUserId={me.id}
         initialView={initialView}
         initialDatePreset={
-          params.dato === "uke" || params.dato === "forfalt" || params.dato === "idag"
+          params.dato === "uke" ||
+          params.dato === "forfalt" ||
+          params.dato === "idag" ||
+          params.dato === "neste7" ||
+          params.dato === "egendefinert"
             ? params.dato
             : undefined
         }
+        initialFromDate={typeof params.fra === "string" ? params.fra : undefined}
+        initialToDate={typeof params.til === "string" ? params.til : undefined}
         initialOnlyActive={
           params.aktive === "1" ? true : params.aktive === "0" ? false : undefined
         }

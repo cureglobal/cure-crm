@@ -38,13 +38,11 @@ export function relativeDay(d: Date): { label: string; tone: "overdue" | "today"
   return { label: formatDate(d), tone: "later" };
 }
 
+// Alltid "XXX XXXkr" (uten mellomrom før "kr") — Intl sin egen currency-stil
+// legger inn et mellomrom der, som gjorde formatet ulikt formatNumberInput.
 export function formatMoney(value: number | null | undefined) {
   if (value == null) return "";
-  return new Intl.NumberFormat("nb-NO", {
-    style: "currency",
-    currency: "NOK",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return `${new Intl.NumberFormat("nb-NO").format(value)}kr`;
 }
 
 // Samme tallgruppering som formatMoney (f.eks. "30 000 000"), men uten

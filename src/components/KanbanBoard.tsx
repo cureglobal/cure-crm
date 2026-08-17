@@ -3,11 +3,12 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import type { Stage } from "@/lib/stages";
-import { updateDealStage } from "@/lib/actions";
+import { updateDealStage, markDealLost } from "@/lib/actions";
 import { relativeDay, formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import { celebrateWin } from "@/components/WonCelebration";
+import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { CalendarDays } from "lucide-react";
 
 export interface KanbanDeal {
@@ -23,7 +24,15 @@ export interface KanbanDeal {
   coOwnerCount: number;
 }
 
-export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; stages: Stage[] }) {
+export default function KanbanBoard({
+  deals,
+  stages,
+  lostReasons,
+}: {
+  deals: KanbanDeal[];
+  stages: Stage[];
+  lostReasons: LostReasonOption[];
+}) {
   const [, startTransition] = useTransition();
   const [optimistic, applyMove] = useOptimistic(
     deals,
@@ -34,6 +43,9 @@ export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; st
   // Sann fra dragstart til dragend/drop — lar oss vise alle fasene (komprimert
   // for de tomme) mens man drar, uten at de tar plass ellers.
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingLostDrop, setPendingLostDrop] = useState<{ id: number; stageId: string } | null>(
+    null
+  );
 
   function onDrop(stage: Stage, e: React.DragEvent) {
     e.preventDefault();
@@ -44,10 +56,24 @@ export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; st
     const deal = optimistic.find((d) => d.id === id);
     const stageId = String(stage.id);
     if (!deal || deal.stage === stageId) return;
+    if (stage.isLost) {
+      setPendingLostDrop({ id, stageId });
+      return;
+    }
     if (stage.isWon) celebrateWin(`${deal.companyName} · ${deal.title}`);
     startTransition(async () => {
       applyMove({ id, stage: stageId });
       await updateDealStage(id, stageId);
+    });
+  }
+
+  function confirmLostDrop(lostReasonId: number, comment: string) {
+    if (!pendingLostDrop) return;
+    const { id, stageId } = pendingLostDrop;
+    setPendingLostDrop(null);
+    startTransition(async () => {
+      applyMove({ id, stage: stageId });
+      await markDealLost(id, stageId, lostReasonId, comment);
     });
   }
 
@@ -190,6 +216,14 @@ export default function KanbanBoard({ deals, stages }: { deals: KanbanDeal[]; st
           </div>
         );
       })}
+
+      {pendingLostDrop && (
+        <LostReasonDialog
+          reasons={lostReasons}
+          onConfirm={confirmLostDrop}
+          onCancel={() => setPendingLostDrop(null)}
+        />
+      )}
     </div>
   );
 }

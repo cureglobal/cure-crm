@@ -43,11 +43,15 @@
   --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
-/* ELGUIDE — retro terminal-stil butikksystem: blå bunn, grå paneler, monospace. */
+/* ELGUIDE — retro terminal-stil butikksystem: blå bunn, grå paneler, monospace.
+   --color-ink brukes både som sidebakgrunn (blå canvas) og inni paneler (grå
+   surface) — de trenger motsatt tekstfarge. Standarden under er derfor hvit
+   (for canvas), og slås tilbake til sort inni .card/.field/.bg-surface, hvor
+   den lyse grå bakgrunnen ellers ville gitt sort-på-sort. */
 :root[data-theme="elguide"] {
   --color-canvas: #0000a0;
   --color-surface: #c0c0c0;
-  --color-ink: #000000;
+  --color-ink: #ffffff;
   --color-ink-soft: #26265c;
   --color-ink-faint: #55558c;
   --color-accent: #000000;
@@ -63,6 +67,12 @@
   --shadow-card: inset 1px 1px 0 rgba(255, 255, 255, 0.75), inset -1px -1px 0 rgba(0, 0, 0, 0.45);
   --shadow-pop: inset 1px 1px 0 rgba(255, 255, 255, 0.75), inset -1px -1px 0 rgba(0, 0, 0, 0.45);
   --radius-btn: 4px;
+}
+
+:root[data-theme="elguide"] .card,
+:root[data-theme="elguide"] .field,
+:root[data-theme="elguide"] [class*="bg-surface"] {
+  --color-ink: #000000;
 }
 
 html {

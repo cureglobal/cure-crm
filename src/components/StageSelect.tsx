@@ -2,8 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { Stage } from "@/lib/stages";
-import { updateDealStage } from "@/lib/actions";
+import { updateDealStage, markDealLost } from "@/lib/actions";
 import { celebrateWin } from "@/components/WonCelebration";
+import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { Search, ChevronDown } from "lucide-react";
 
 export default function StageSelect({
@@ -11,15 +12,18 @@ export default function StageSelect({
   stage,
   dealName,
   stages,
+  lostReasons,
 }: {
   dealId: number;
   stage: string;
   dealName?: string;
   stages: Stage[];
+  lostReasons: LostReasonOption[];
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [pendingLostStage, setPendingLostStage] = useState<Stage | null>(null);
 
   const current = stages.find((s) => String(s.id) === stage);
 
@@ -31,11 +35,31 @@ export default function StageSelect({
 
   function choose(s: Stage) {
     const sId = String(s.id);
-    if (s.isWon && stage !== sId) celebrateWin(dealName);
+    if (sId === stage) {
+      setOpen(false);
+      setQuery("");
+      return;
+    }
+    if (s.isLost) {
+      setOpen(false);
+      setQuery("");
+      setPendingLostStage(s);
+      return;
+    }
+    if (s.isWon) celebrateWin(dealName);
     setOpen(false);
     setQuery("");
     startTransition(async () => {
       await updateDealStage(dealId, sId);
+    });
+  }
+
+  function confirmLost(lostReasonId: number, comment: string) {
+    if (!pendingLostStage) return;
+    const sId = String(pendingLostStage.id);
+    setPendingLostStage(null);
+    startTransition(async () => {
+      await markDealLost(dealId, sId, lostReasonId, comment);
     });
   }
 
@@ -100,6 +124,15 @@ export default function StageSelect({
             </ul>
           </div>
         </>
+      )}
+
+      {pendingLostStage && (
+        <LostReasonDialog
+          reasons={lostReasons}
+          pending={pending}
+          onConfirm={confirmLost}
+          onCancel={() => setPendingLostStage(null)}
+        />
       )}
     </div>
   );

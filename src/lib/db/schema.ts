@@ -36,6 +36,18 @@ export const businessUnits = sqliteTable("business_units", {
     .$defaultFn(() => new Date()),
 });
 
+// Fritt redigerbar liste over grunner til at en deal tapes (samme idé som
+// stages/business_units), valgt i popup-en som vises når en deal flyttes til
+// en tapt-fase. Se `deals.lostReasonId`.
+export const lostReasons = sqliteTable("lost_reasons", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // Google Kalender-tilkobling per bruker (samme idé som email_accounts, men
 // OAuth-refresh-token i stedet for et IMAP-app-passord). Brukes til å
 // synkronisere møter og logge dem som kontakthistorikk (contact_events) når
@@ -135,6 +147,8 @@ export const deals = sqliteTable("deals", {
   value: integer("value"),
   followUpAt: integer("follow_up_at", { mode: "timestamp_ms" }),
   comment: text("comment"),
+  // Satt når deal-en flyttes til en tapt-fase — se lost_reasons-tabellen over.
+  lostReasonId: integer("lost_reason_id"),
   ownerId: integer("owner_id")
     .notNull()
     .references(() => users.id),
@@ -291,6 +305,7 @@ export const activities = sqliteTable("activities", {
 export type User = typeof users.$inferSelect;
 export type Company = typeof companies.$inferSelect;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
+export type LostReason = typeof lostReasons.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;

@@ -5,12 +5,15 @@ import Link from "next/link";
 import {
   updateDealInline,
   bulkSetDealStage,
+  bulkMarkDealsLost,
   bulkSetDealOwner,
+  bulkAddDealOwner,
   bulkDeleteDeals,
 } from "@/lib/actions";
 import { formatMoney, formatNumberInput } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import DealOwnerCell from "@/components/DealOwnerCell";
+import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import type { Stage } from "@/lib/stages";
 import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
@@ -120,7 +123,7 @@ function Row({
           ownerId={deal.ownerId}
           ownerName={deal.ownerName}
           ownerAvatarUrl={deal.ownerAvatarUrl}
-          coOwnerCount={deal.coOwnerIds.length}
+          coOwnerIds={deal.coOwnerIds}
           owners={owners}
         />
 
@@ -210,20 +213,24 @@ export default function DealsTable({
   rows,
   stages,
   owners,
+  lostReasons,
   groupByStage = false,
 }: {
   rows: DealRow[];
   stages: Stage[];
   owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  lostReasons: LostReasonOption[];
   groupByStage?: boolean;
 }) {
   const [sort, setSort] = useState<Sort | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [stageChoice, setStageChoice] = useState("");
   const [ownerChoice, setOwnerChoice] = useState("");
+  const [addOwnerChoice, setAddOwnerChoice] = useState("");
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -267,10 +274,27 @@ export default function DealsTable({
 
   function applyStage(stageId: string) {
     if (!stageId) return;
+    const stageRow = stages.find((s) => String(s.id) === stageId);
+    if (stageRow?.isLost) {
+      setPendingLostStageId(stageId);
+      return;
+    }
     const ids = [...selected];
     startTransition(async () => {
       await bulkSetDealStage(ids, stageId);
       setBulkMessage(`Flyttet ${ids.length} deals.`);
+      setStageChoice("");
+    });
+  }
+
+  function confirmLost(lostReasonId: number, comment: string) {
+    if (!pendingLostStageId) return;
+    const ids = [...selected];
+    const stageId = pendingLostStageId;
+    setPendingLostStageId(null);
+    startTransition(async () => {
+      await bulkMarkDealsLost(ids, stageId, lostReasonId, comment);
+      setBulkMessage(`Markerte ${ids.length} deals som tapt.`);
       setStageChoice("");
     });
   }
@@ -282,6 +306,16 @@ export default function DealsTable({
       await bulkSetDealOwner(ids, Number(ownerId));
       setBulkMessage(`Satt eier på ${ids.length} deals.`);
       setOwnerChoice("");
+    });
+  }
+
+  function applyAddOwner(userId: string) {
+    if (!userId) return;
+    const ids = [...selected];
+    startTransition(async () => {
+      await bulkAddDealOwner(ids, Number(userId));
+      setBulkMessage(`Lagt til som eier på ${ids.length} deals.`);
+      setAddOwnerChoice("");
     });
   }
 
@@ -384,6 +418,24 @@ export default function DealsTable({
             ))}
           </select>
 
+          <select
+            value={addOwnerChoice}
+            onChange={(e) => {
+              setAddOwnerChoice(e.target.value);
+              applyAddOwner(e.target.value);
+            }}
+            disabled={pending}
+            title="Legger til som med-eier, uten å erstatte hovedeieren"
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="">Legg til eier …</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
               <span className="text-[12.5px] text-danger">Slette {selected.size} deals?</span>
@@ -466,6 +518,19 @@ export default function DealsTable({
         )}
       </div>
       </div>
+
+      {pendingLostStageId && (
+        <LostReasonDialog
+          reasons={lostReasons}
+          dealCount={selected.size}
+          pending={pending}
+          onConfirm={confirmLost}
+          onCancel={() => {
+            setPendingLostStageId(null);
+            setStageChoice("");
+          }}
+        />
+      )}
     </div>
   );
 }

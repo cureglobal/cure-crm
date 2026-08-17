@@ -10,7 +10,7 @@ export function celebrateWin(dealName?: string) {
 }
 
 const COLORS = ["#0071e3", "#30d158", "#ff9f0a", "#5e5ce6", "#ff453a", "#ffd60a"];
-const DURATION = 4200;
+const DURATION = 5000;
 
 interface Piece {
   x: number;
@@ -58,17 +58,18 @@ function useConfetti(active: boolean) {
     };
 
     const burst = () => {
-      for (let i = 0; i < 60; i++) {
-        spawn(0, height * 0.8, 4 + Math.random() * 7, -(5 + Math.random() * 8));
-        spawn(width, height * 0.8, -(4 + Math.random() * 7), -(5 + Math.random() * 8));
+      for (let i = 0; i < 110; i++) {
+        spawn(0, height * 0.8, 4 + Math.random() * 8, -(5 + Math.random() * 9));
+        spawn(width, height * 0.8, -(4 + Math.random() * 8), -(5 + Math.random() * 9));
       }
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 90; i++) {
         spawn(Math.random() * width, -20, (Math.random() - 0.5) * 2.5, 1.5 + Math.random() * 2);
       }
     };
     burst();
-    // Andre salve så feiringen ikke er over på et blunk.
-    const second = setTimeout(burst, 900);
+    // Flere salver så feiringen varer lenger og ikke er over på et blunk.
+    const second = setTimeout(burst, 800);
+    const third = setTimeout(burst, 1700);
 
     let raf = 0;
     const start = performance.now();
@@ -111,6 +112,7 @@ function useConfetti(active: boolean) {
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(second);
+      clearTimeout(third);
     };
   }, [active]);
 
@@ -147,9 +149,19 @@ export default function WonCelebration() {
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
       <div className="absolute inset-x-0 bottom-[12vh] flex flex-col items-center gap-3">
-        <span className="dancer select-none text-[86px] leading-none drop-shadow-lg">
-          🕺
-        </span>
+        <div className="relative flex items-end gap-1">
+          <span className="sparkle sparkle-1 select-none text-[34px] leading-none">✨</span>
+          <span className="dancer dancer-1 select-none text-[72px] leading-none drop-shadow-lg">
+            🕺
+          </span>
+          <span className="dancer dancer-2 select-none text-[86px] leading-none drop-shadow-lg">
+            🎉
+          </span>
+          <span className="dancer dancer-1 select-none text-[72px] leading-none drop-shadow-lg">
+            💃
+          </span>
+          <span className="sparkle sparkle-2 select-none text-[30px] leading-none">🎆</span>
+        </div>
         <div className="won-banner rounded-full bg-surface/90 px-5 py-2.5 shadow-pop backdrop-blur-xl">
           <p className="text-[15px] font-semibold tracking-tight">
             Vunnet! {dealName && <span className="text-ink-soft">{dealName}</span>}
@@ -158,7 +170,7 @@ export default function WonCelebration() {
       </div>
 
       <style>{`
-        @keyframes crm-dance {
+        @keyframes crm-dance-1 {
           0%   { transform: translateY(0) rotate(-14deg) scale(1); }
           15%  { transform: translateY(-26px) rotate(12deg) scale(1.06); }
           30%  { transform: translateY(0) rotate(-10deg) scale(1); }
@@ -167,20 +179,41 @@ export default function WonCelebration() {
           75%  { transform: translateY(-24px) rotate(10deg) scale(1.05); }
           100% { transform: translateY(0) rotate(-14deg) scale(1); }
         }
+        @keyframes crm-dance-2 {
+          0%   { transform: translateY(0) rotate(0deg) scale(1); }
+          25%  { transform: translateY(-32px) rotate(-16deg) scale(1.1); }
+          50%  { transform: translateY(0) rotate(0deg) scale(1); }
+          75%  { transform: translateY(-28px) rotate(16deg) scale(1.08); }
+          100% { transform: translateY(0) rotate(0deg) scale(1); }
+        }
+        @keyframes crm-sparkle {
+          0%, 100% { opacity: 0.3; transform: scale(0.8) rotate(0deg); }
+          50% { opacity: 1; transform: scale(1.3) rotate(25deg); }
+        }
         @keyframes crm-pop {
           0%   { opacity: 0; transform: translateY(14px) scale(0.9); }
           20%  { opacity: 1; transform: translateY(0) scale(1); }
           85%  { opacity: 1; }
           100% { opacity: 0; }
         }
-        .dancer {
-          animation: crm-dance 0.85s ease-in-out infinite;
+        .dancer-1 {
+          animation: crm-dance-1 0.85s ease-in-out infinite;
+        }
+        .dancer-2 {
+          animation: crm-dance-2 0.95s ease-in-out infinite;
+          animation-delay: 0.15s;
+        }
+        .sparkle {
+          animation: crm-sparkle 1.1s ease-in-out infinite;
+        }
+        .sparkle-2 {
+          animation-delay: 0.4s;
         }
         .won-banner {
           animation: crm-pop ${DURATION}ms ease-out forwards;
         }
         @media (prefers-reduced-motion: reduce) {
-          .dancer { animation: none; }
+          .dancer-1, .dancer-2, .sparkle { animation: none; }
         }
       `}</style>
     </div>

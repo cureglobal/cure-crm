@@ -22,6 +22,7 @@ import {
   stages,
   businessUnits,
   calendarAccounts,
+  lostReasons,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -436,6 +437,146 @@ export async function updateDealStage(dealId: number, stage: string) {
   revalidateDealViews(dealId);
 }
 
+// Flytter en deal til en tapt-fase sammen med en påkrevd tapt-grunn og en
+// valgfri fritekstkommentar. Kommentaren legges til på deals.comment (samme
+// felt som "Kommentar" ellers i appen), og hele hendelsen logges som ÉN rad
+// under "Notater og aktivitet" — deal-en slettes aldri.
+export async function markDealLost(
+  dealId: number,
+  stage: string,
+  lostReasonId: number,
+  comment: string
+) {
+  const me = await requireUser();
+  const [reasonRow, deal] = await Promise.all([
+    db.query.lostReasons.findFirst({ where: eq(lostReasons.id, lostReasonId) }),
+    db.query.deals.findFirst({ where: eq(deals.id, dealId) }),
+  ]);
+  if (!deal) return;
+
+  const trimmedComment = comment.trim();
+  const newComment = trimmedComment
+    ? [deal.comment, trimmedComment].filter(Boolean).join("\n")
+    : deal.comment;
+
+  await db
+    .update(deals)
+    .set({
+      stage,
+      lostReasonId,
+      followUpAt: null,
+      comment: newComment,
+      updatedAt: new Date(),
+    })
+    .where(eq(deals.id, dealId));
+
+  const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
+  await db.insert(activities).values({
+    dealId,
+    userId: me.id,
+    type: "lost",
+    content: `Tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
+  });
+  revalidateDealViews(dealId);
+}
+
+// Bulk-variant av markDealLost — samme grunn og kommentar på flere deals
+// samtidig, fra flervalg i listevisningen. Kommentaren må appendes per deal
+// (ulik eksisterende comment-verdi), så hver deal oppdateres for seg selv,
+// mens aktivitetsloggen batches i ett innlegg.
+export async function bulkMarkDealsLost(
+  dealIds: number[],
+  stage: string,
+  lostReasonId: number,
+  comment: string
+) {
+  const me = await requireUser();
+  if (dealIds.length === 0) return;
+  const [reasonRow, targetDeals] = await Promise.all([
+    db.query.lostReasons.findFirst({ where: eq(lostReasons.id, lostReasonId) }),
+    db.query.deals.findMany({ where: inArray(deals.id, dealIds) }),
+  ]);
+
+  const trimmedComment = comment.trim();
+  for (const deal of targetDeals) {
+    const newComment = trimmedComment
+      ? [deal.comment, trimmedComment].filter(Boolean).join("\n")
+      : deal.comment;
+    await db
+      .update(deals)
+      .set({
+        stage,
+        lostReasonId,
+        followUpAt: null,
+        comment: newComment,
+        updatedAt: new Date(),
+      })
+      .where(eq(deals.id, deal.id));
+  }
+
+  const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
+  await db.insert(activities).values(
+    dealIds.map((dealId) => ({
+      dealId,
+      userId: me.id,
+      type: "lost",
+      content: `Tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
+    }))
+  );
+  revalidateDealViews();
+}
+
+// ---------- Tapte grunner (lost reasons) ----------
+
+export async function createLostReason(formData: FormData) {
+  await requireUser();
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return null;
+  const existing = await db.query.lostReasons.findMany({
+    orderBy: [asc(lostReasons.sortOrder)],
+  });
+  const nextOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+  const [reason] = await db
+    .insert(lostReasons)
+    .values({ label, sortOrder: nextOrder })
+    .returning();
+  revalidatePath("/settings");
+  return reason;
+}
+
+export async function updateLostReason(id: number, formData: FormData) {
+  await requireUser();
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return;
+  await db.update(lostReasons).set({ label }).where(eq(lostReasons.id, id));
+  revalidatePath("/settings");
+}
+
+export async function deleteLostReason(
+  id: number
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const inUse = await db.query.deals.findFirst({ where: eq(deals.lostReasonId, id) });
+  if (inUse) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — den er i bruk på minst én deal.",
+    };
+  }
+  await db.delete(lostReasons).where(eq(lostReasons.id, id));
+  revalidatePath("/settings");
+  return { ok: true, message: "Grunnen ble slettet." };
+}
+
+// `orderedIds` er hele lista i sin nye rekkefølge.
+export async function reorderLostReasons(orderedIds: number[]) {
+  await requireUser();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(lostReasons).set({ sortOrder: i }).where(eq(lostReasons.id, orderedIds[i]));
+  }
+  revalidatePath("/settings");
+}
+
 // ---------- Faser (pipeline-stages) ----------
 
 export async function createStage(formData: FormData) {
@@ -671,6 +812,55 @@ export async function bulkSetDealOwner(dealIds: number[], ownerId: number) {
       userId: me.id,
       type: "owner",
       content: `Endret eier til ${owner.name}`,
+    }))
+  );
+  revalidateDealViews();
+}
+
+// Bytter hovedeier, men uten å miste den forrige — den blir med-eier i
+// stedet for å falle helt av dealen. Brukes fra flervalg-eier-velgeren i
+// Pipeline-listen (DealOwnerCell), der man kan velge flere eiere.
+export async function swapDealMainOwner(dealId: number, newOwnerId: number) {
+  const me = await requireUser();
+  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  if (!deal || deal.ownerId === newOwnerId) return;
+  const newOwner = await db.query.users.findFirst({ where: eq(users.id, newOwnerId) });
+  if (!newOwner) return;
+  const oldOwnerId = deal.ownerId;
+
+  await db
+    .update(deals)
+    .set({ ownerId: newOwnerId, updatedAt: new Date() })
+    .where(eq(deals.id, dealId));
+  await db.insert(dealOwners).values({ dealId, userId: oldOwnerId }).onConflictDoNothing();
+  await db
+    .delete(dealOwners)
+    .where(and(eq(dealOwners.dealId, dealId), eq(dealOwners.userId, newOwnerId)));
+  await db.insert(activities).values({
+    dealId,
+    userId: me.id,
+    type: "owner",
+    content: `Endret hovedeier til ${newOwner.name}`,
+  });
+  revalidateDealViews(dealId);
+}
+
+// Legger til én med-eier på flere valgte deals samtidig — bulk-motstykket til
+// addDealOwner, brukt fra "Legg til eier"-verktøylinjen i DealsTable.
+export async function bulkAddDealOwner(dealIds: number[], userId: number) {
+  const me = await requireUser();
+  if (dealIds.length === 0) return;
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) return;
+  for (const dealId of dealIds) {
+    await db.insert(dealOwners).values({ dealId, userId }).onConflictDoNothing();
+  }
+  await db.insert(activities).values(
+    dealIds.map((dealId) => ({
+      dealId,
+      userId: me.id,
+      type: "owner",
+      content: `La til ${user.name} som eier`,
     }))
   );
   revalidateDealViews();

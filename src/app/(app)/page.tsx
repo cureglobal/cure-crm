@@ -14,6 +14,7 @@ import { formatDateTime, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
 import FollowUpList, { type FollowUpItem } from "@/components/FollowUpList";
+import MonthCalendar from "@/components/MonthCalendar";
 import { CalendarDays, TrendingUp, Users, CircleCheck } from "lucide-react";
 
 function toFollowUpItem(d: {
@@ -202,6 +203,17 @@ export default async function Dashboard() {
           emptyText="Ingenting er forfalt. Godt jobbet."
           tone="danger"
           stages={stages}
+        />
+      </div>
+
+      <div className="mb-6">
+        <MonthCalendar
+          deals={withFollowUp.map((d) => ({
+            id: d.id,
+            title: d.title,
+            companyName: d.companyName,
+            followUpAt: d.followUpAt!.getTime(),
+          }))}
         />
       </div>
 

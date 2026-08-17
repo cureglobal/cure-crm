@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import KanbanBoard, { type KanbanDeal } from "@/components/KanbanBoard";
 import DealsTable, { type DealRow } from "@/components/DealsTable";
+import type { LostReasonOption } from "@/components/LostReasonDialog";
 import type { Stage } from "@/lib/stages";
 import { Columns3, List, Search, Layers, CircleDot } from "lucide-react";
 
@@ -17,7 +18,7 @@ export interface BusinessUnitOption {
   name: string;
 }
 
-type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "egendefinert";
+type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "neste7" | "egendefinert";
 
 // Husker sist brukte filter i nettleseren, slik at det ligger klart igjen når
 // man kommer tilbake fra en annen fane. Eksplisitte URL-parametre (f.eks. fra
@@ -56,6 +57,15 @@ function activeCutoffTs(days: number) {
   return Date.now() - days * 24 * 60 * 60 * 1000;
 }
 
+// yyyy-mm-dd for "i dag ± N dager" — brukt av "idag"-filteret (siste 7 dager
+// og i dag) og "neste7"-filteret (i dag og 7 dager frem).
+function offsetDateStr(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function weekRange(): [string, string] {
   const d = new Date();
   const day = (d.getDay() + 6) % 7; // mandag = 0
@@ -73,9 +83,12 @@ export default function PipelineView({
   stages,
   owners,
   businessUnits,
+  lostReasons,
   currentUserId,
   initialView,
   initialDatePreset,
+  initialFromDate,
+  initialToDate,
   initialOwnerId,
   initialGroupByStage,
   initialOnlyActive,
@@ -84,12 +97,15 @@ export default function PipelineView({
   stages: Stage[];
   owners: OwnerOption[];
   businessUnits: BusinessUnitOption[];
+  lostReasons: LostReasonOption[];
   // Brukes som standardeier ("Eier = meg") første gang, før noe er lagret.
   currentUserId: number;
   // Udefinert = ikke satt eksplisitt via URL; da avgjør lagrede preferanser
   // (eller de faste standardverdiene under, ved aller første besøk).
   initialView?: "kanban" | "liste";
   initialDatePreset?: DatePreset;
+  initialFromDate?: string;
+  initialToDate?: string;
   initialOwnerId?: "alle" | number;
   initialGroupByStage?: boolean;
   initialOnlyActive?: boolean;
@@ -101,8 +117,8 @@ export default function PipelineView({
   const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
   const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>("alle");
   const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset ?? "alle");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(initialFromDate ?? "");
+  const [toDate, setToDate] = useState(initialToDate ?? "");
   const [groupByStage, setGroupByStage] = useState(initialGroupByStage ?? true);
   const [onlyActive, setOnlyActive] = useState(initialOnlyActive ?? false);
 
@@ -131,8 +147,8 @@ export default function PipelineView({
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
     if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
     if (initialOnlyActive === undefined) setOnlyActive(saved?.onlyActive ?? false);
-    if (saved?.fromDate) setFromDate(saved.fromDate);
-    if (saved?.toDate) setToDate(saved.toDate);
+    if (initialFromDate === undefined && saved?.fromDate) setFromDate(saved.fromDate);
+    if (initialToDate === undefined && saved?.toDate) setToDate(saved.toDate);
     setHydrated(true);
     // Kjøres bare ved montering — filtrene selv styrer lagring videre.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,6 +192,8 @@ export default function PipelineView({
     const today = todayStr();
     const [monday, sunday] = weekRange();
     const activeCutoff = activeCutoffTs(ACTIVE_DAYS);
+    const sevenDaysAgo = offsetDateStr(-7);
+    const sevenDaysAhead = offsetDateStr(7);
 
     return rows.filter((r) => {
       // En deal regnes som "eid" av en bruker enten som hoved-eier eller som med-eier.
@@ -195,9 +213,12 @@ export default function PipelineView({
       if (datePreset !== "alle") {
         const d = r.followUpInput; // yyyy-mm-dd eller ""
         if (!d) return false;
-        if (datePreset === "idag" && d !== today) return false;
+        // "I dag" viser også de siste 7 dagene, ikke bare eksakt i dag —
+        // ellers druknet nylig forfalte oppfølginger i "Alle datoer".
+        if (datePreset === "idag" && (d < sevenDaysAgo || d > today)) return false;
         if (datePreset === "forfalt" && d >= today) return false;
         if (datePreset === "uke" && (d < monday || d > sunday)) return false;
+        if (datePreset === "neste7" && (d < today || d > sevenDaysAhead)) return false;
         if (datePreset === "egendefinert") {
           if (fromDate && d < fromDate) return false;
           if (toDate && d > toDate) return false;
@@ -301,8 +322,9 @@ export default function PipelineView({
         >
           <option value="alle">Alle datoer</option>
           <option value="forfalt">Forfalt</option>
-          <option value="idag">I dag</option>
+          <option value="idag">I dag (siste 7 dager)</option>
           <option value="uke">Denne uken</option>
+          <option value="neste7">Neste 7 dager</option>
           <option value="egendefinert">Fra–til …</option>
         </select>
 
@@ -362,10 +384,36 @@ export default function PipelineView({
         </p>
       )}
 
+      {datePreset === "idag" && filtered.length === 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-mist/[0.03] px-4 py-3">
+          <span className="text-[12.5px] text-ink-soft">
+            Ingen treff de siste 7 dagene. Prøv i stedet:
+          </span>
+          <button
+            onClick={() => setDatePreset("forfalt")}
+            className="rounded-full bg-mist/[0.06] px-3 py-1.5 text-[12.5px] font-medium text-ink-soft transition hover:bg-mist/[0.1] hover:text-ink"
+          >
+            Forfalt
+          </button>
+          <button
+            onClick={() => setDatePreset("neste7")}
+            className="rounded-full bg-mist/[0.06] px-3 py-1.5 text-[12.5px] font-medium text-ink-soft transition hover:bg-mist/[0.1] hover:text-ink"
+          >
+            Deadline neste 7 dager
+          </button>
+        </div>
+      )}
+
       {view === "kanban" ? (
-        <KanbanBoard deals={kanbanItems} stages={stages} />
+        <KanbanBoard deals={kanbanItems} stages={stages} lostReasons={lostReasons} />
       ) : (
-        <DealsTable rows={filtered} stages={stages} owners={owners} groupByStage={groupByStage} />
+        <DealsTable
+          rows={filtered}
+          stages={stages}
+          owners={owners}
+          lostReasons={lostReasons}
+          groupByStage={groupByStage}
+        />
       )}
     </div>
   );

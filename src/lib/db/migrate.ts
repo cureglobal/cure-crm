@@ -169,6 +169,12 @@ const CREATE_STATEMENTS = [
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS lost_reasons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -188,6 +194,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_companies_business_unit ON companies(business_unit_id)",
   "CREATE INDEX IF NOT EXISTS idx_users_business_unit ON users(business_unit_id)",
   "CREATE INDEX IF NOT EXISTS idx_calendar_accounts_user ON calendar_accounts(user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_lost_reasons_sort_order ON lost_reasons(sort_order)",
+  "CREATE INDEX IF NOT EXISTS idx_deals_lost_reason ON deals(lost_reason_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -214,7 +222,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     business_unit_id: "INTEGER",
   },
   people: { notes: "TEXT" },
-  deals: { comment: "TEXT" },
+  deals: { comment: "TEXT", lost_reason_id: "INTEGER" },
   users: {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",
@@ -284,6 +292,16 @@ async function seedStagesAndMigrateLegacy(client: Client) {
 // etterpå fra Innstillinger — denne listen brukes kun til førstegangs-seeding.
 const DEFAULT_BUSINESS_UNITS = ["Cure AS", "Cure Christiania AS", "Cure Placebo AS"];
 
+const DEFAULT_LOST_REASONS = [
+  "Tapt til konkurrent",
+  "Ingen respons",
+  "Prosjekter er kansellert",
+  "Ikke aktuelt for Cure",
+  "For dyrt",
+  "Vi kansellerer",
+  "Korrupt anbud",
+];
+
 // Kjøres én gang: seeder de tre selskapene og gjetter en fornuftig
 // standardkobling ut fra det brukeren oppga da funksjonen ble innført
 // (Anita og TK i Cure Christiania AS, resten i Cure AS; FBN Norsk
@@ -318,6 +336,20 @@ async function seedBusinessUnits(client: Client) {
     sql: "UPDATE companies SET business_unit_id = ? WHERE business_unit_id IS NULL AND name = 'FBN Norsk Familieeierskap'",
     args: [christianiaId],
   });
+}
+
+// Kjøres én gang: seeder standard tapt-grunner (fra det opprinnelige
+// dropdown-utvalget). Idempotent, akkurat som fasene og business units.
+async function seedLostReasons(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM lost_reasons");
+  if (Number(existing.rows[0].c) > 0) return;
+
+  for (let i = 0; i < DEFAULT_LOST_REASONS.length; i++) {
+    await client.execute({
+      sql: "INSERT INTO lost_reasons (label, sort_order, created_at) VALUES (?, ?, ?)",
+      args: [DEFAULT_LOST_REASONS[i], i, Date.now()],
+    });
+  }
 }
 
 async function addMissingColumns(client: Client) {
@@ -362,4 +394,5 @@ export async function migrate(client: Client) {
   await seedStagesAndMigrateLegacy(client);
   // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
   await seedBusinessUnits(client);
+  await seedLostReasons(client);
 }

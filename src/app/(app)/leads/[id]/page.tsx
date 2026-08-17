@@ -45,6 +45,7 @@ import DealOwners from "@/components/DealOwners";
 import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
+import { getLostReasons } from "@/lib/lostReasons.server";
 
 export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
   const me = await requireUser();
@@ -70,6 +71,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const stages = await getStages();
+  const lostReasons = await getLostReasons();
 
   const otherDeals = await db.query.deals.findMany({
     where: and(eq(deals.companyId, company.id), ne(deals.id, deal.id)),
@@ -238,6 +240,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
           stage={deal.stage}
           dealName={`${company.name} · ${deal.title}`}
           stages={stages}
+          lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
         />
       </div>
 
