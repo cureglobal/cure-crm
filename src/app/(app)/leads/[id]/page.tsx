@@ -584,13 +584,21 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                 <li key={a.id} className="flex gap-3">
                   <span
                     className={`mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full ${
-                      a.type === "note" ? "bg-accent" : "bg-ink-faint"
+                      a.type === "note" ? "bg-accent" : a.type === "won" ? "bg-success" : "bg-ink-faint"
                     }`}
                   />
                   <div>
-                    <p className={`text-[13px] ${a.type === "note" ? "" : "text-ink-soft"}`}>
+                    <p
+                      className={`text-[13px] ${
+                        a.type === "note" ? "" : a.type === "won" ? "text-success-ink" : "text-ink-soft"
+                      }`}
+                    >
                       {a.type !== "note" && (
-                        <span className="font-medium text-ink">{a.userName ?? "System"} </span>
+                        <span
+                          className={`font-medium ${a.type === "won" ? "text-success-ink" : "text-ink"}`}
+                        >
+                          {a.userName ?? "System"}{" "}
+                        </span>
                       )}
                       {a.content}
                     </p>

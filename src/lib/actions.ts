@@ -49,7 +49,7 @@ import { PHASES } from "@/lib/estimator";
 import * as companyInsight from "@/lib/companyInsight";
 import { generateQuotePdf } from "@/lib/pdf";
 import { sendMailFromAccount } from "@/lib/mailer";
-import { formatDateShort } from "@/lib/format";
+import { formatDateShort, formatMoney } from "@/lib/format";
 
 // Standard oppfølgingsdato for nyopprettede deals — dagens dato, samme
 // klokkeslett-konvensjon som datofelter ellers bruker ("${dateStr}T09:00:00").
@@ -57,6 +57,37 @@ function todayFollowUpDate() {
   const d = new Date();
   d.setHours(9, 0, 0, 0);
   return d;
+}
+
+// Fornavnet brukt i aktivitetsmeldinger om vunnet/tapt deals — samme idé som
+// hilsenen på oversikten, som også bare bruker fornavnet.
+function firstName(fullName: string) {
+  return fullName.split(" ")[0];
+}
+
+// "Odd-Erik" / "Odd-Erik og Anita" / "Odd-Erik, TK og Anita".
+function formatNameList(names: string[]): string {
+  const unique = [...new Set(names)];
+  if (unique.length === 0) return "Noen";
+  if (unique.length === 1) return unique[0];
+  return `${unique.slice(0, -1).join(", ")} og ${unique[unique.length - 1]}`;
+}
+
+// Fornavnene til alle som er tagget på en deal (hovedeier + med-eiere) —
+// brukt i vunnet-/tapt-meldingene i aktivitetsloggen.
+async function taggedNames(dealId: number, ownerId: number): Promise<string[]> {
+  const [owner, coOwnerRows] = await Promise.all([
+    db.query.users.findFirst({ where: eq(users.id, ownerId) }),
+    db
+      .select({ name: users.name })
+      .from(dealOwners)
+      .innerJoin(users, eq(dealOwners.userId, users.id))
+      .where(eq(dealOwners.dealId, dealId)),
+  ]);
+  const names = [owner?.name, ...coOwnerRows.map((r) => r.name)].filter(
+    (n): n is string => !!n
+  );
+  return names.map(firstName);
 }
 
 function revalidateDealViews(dealId?: number) {
@@ -433,16 +464,27 @@ export async function createDealForCompany(companyId: number, formData: FormData
 export async function updateDealStage(dealId: number, stage: string) {
   const me = await requireUser();
   const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });
-  await db
-    .update(deals)
-    .set({ stage, updatedAt: new Date() })
-    .where(eq(deals.id, dealId));
-  await db.insert(activities).values({
-    dealId,
-    userId: me.id,
-    type: "stage",
-    content: `Flyttet til «${stageRow?.label ?? stage}»`,
-  });
+  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  if (!deal) return;
+
+  const set: Record<string, unknown> = { stage, updatedAt: new Date() };
+  if (stageRow?.isWon) set.closedAt = new Date();
+  await db.update(deals).set(set).where(eq(deals.id, dealId));
+
+  let type = "stage";
+  let content = `Flyttet til «${stageRow?.label ?? stage}»`;
+  if (stageRow?.isWon) {
+    const company = await db.query.companies.findFirst({
+      where: eq(companies.id, deal.companyId),
+    });
+    const names = await taggedNames(dealId, deal.ownerId);
+    type = "won";
+    content = `${formatNameList(names)} solgte «${deal.title}» til ${
+      company?.name ?? "kunden"
+    } for ${formatMoney(deal.value ?? 0)}! 🎉`;
+  }
+
+  await db.insert(activities).values({ dealId, userId: me.id, type, content });
   revalidateDealViews(dealId);
 }
 
@@ -479,12 +521,18 @@ export async function markDealLost(
     })
     .where(eq(deals.id, dealId));
 
+  const company = await db.query.companies.findFirst({
+    where: eq(companies.id, deal.companyId),
+  });
+  const names = await taggedNames(dealId, deal.ownerId);
   const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
   await db.insert(activities).values({
     dealId,
     userId: me.id,
     type: "lost",
-    content: `Tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
+    content: `${formatNameList(names)} markerte «${deal.title}» hos ${
+      company?.name ?? "kunden"
+    } som tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
   });
   revalidateDealViews(dealId);
 }
@@ -507,6 +555,7 @@ export async function bulkMarkDealsLost(
   ]);
 
   const trimmedComment = comment.trim();
+  const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
   for (const deal of targetDeals) {
     const newComment = trimmedComment
       ? [deal.comment, trimmedComment].filter(Boolean).join("\n")
@@ -521,17 +570,21 @@ export async function bulkMarkDealsLost(
         updatedAt: new Date(),
       })
       .where(eq(deals.id, deal.id));
-  }
 
-  const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
-  await db.insert(activities).values(
-    dealIds.map((dealId) => ({
-      dealId,
+    const company = await db.query.companies.findFirst({
+      where: eq(companies.id, deal.companyId),
+    });
+    const names = await taggedNames(deal.id, deal.ownerId);
+    await db.insert(activities).values({
+      dealId: deal.id,
       userId: me.id,
       type: "lost",
-      content: `Tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
-    }))
-  );
+      content: `${formatNameList(names)} markerte «${deal.title}» hos ${
+        company?.name ?? "kunden"
+      } som tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
+    });
+  }
+
   revalidateDealViews();
 }
 
@@ -775,18 +828,38 @@ export async function bulkSetDealStage(dealIds: number[], stage: string) {
   const me = await requireUser();
   if (dealIds.length === 0) return;
   const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });
-  await db
-    .update(deals)
-    .set({ stage, updatedAt: new Date() })
-    .where(inArray(deals.id, dealIds));
-  await db.insert(activities).values(
-    dealIds.map((dealId) => ({
-      dealId,
-      userId: me.id,
-      type: "stage",
-      content: `Flyttet til «${stageRow?.label ?? stage}»`,
-    }))
-  );
+
+  const set: Record<string, unknown> = { stage, updatedAt: new Date() };
+  if (stageRow?.isWon) set.closedAt = new Date();
+  await db.update(deals).set(set).where(inArray(deals.id, dealIds));
+
+  if (stageRow?.isWon) {
+    // Hver deal har eget selskap/verdi/tagget-liste, så meldingen bygges per deal.
+    const targetDeals = await db.query.deals.findMany({ where: inArray(deals.id, dealIds) });
+    for (const deal of targetDeals) {
+      const company = await db.query.companies.findFirst({
+        where: eq(companies.id, deal.companyId),
+      });
+      const names = await taggedNames(deal.id, deal.ownerId);
+      await db.insert(activities).values({
+        dealId: deal.id,
+        userId: me.id,
+        type: "won",
+        content: `${formatNameList(names)} solgte «${deal.title}» til ${
+          company?.name ?? "kunden"
+        } for ${formatMoney(deal.value ?? 0)}! 🎉`,
+      });
+    }
+  } else {
+    await db.insert(activities).values(
+      dealIds.map((dealId) => ({
+        dealId,
+        userId: me.id,
+        type: "stage",
+        content: `Flyttet til «${stageRow?.label ?? stage}»`,
+      }))
+    );
+  }
   revalidateDealViews();
 }
 

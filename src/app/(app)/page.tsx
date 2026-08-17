@@ -36,6 +36,7 @@ export default async function Dashboard() {
       value: deals.value,
       followUpAt: deals.followUpAt,
       updatedAt: deals.updatedAt,
+      closedAt: deals.closedAt,
       companyId: deals.companyId,
       companyName: companies.name,
       logoUrl: companies.logoUrl,
@@ -62,7 +63,7 @@ export default async function Dashboard() {
   const today = startOfDay(new Date());
   const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
   const soldLast30Value = allDeals
-    .filter((d) => wonStageIds.has(d.stage) && d.updatedAt >= thirtyDaysAgo)
+    .filter((d) => wonStageIds.has(d.stage) && (d.closedAt ?? d.updatedAt) >= thirtyDaysAgo)
     .reduce((acc, d) => acc + (d.value ?? 0), 0);
 
   // Denne uken = mandag til søndag i inneværende uke, fra og med i dag.
@@ -191,11 +192,17 @@ export default async function Dashboard() {
             <ul className="flex flex-col gap-3">
               {recent.map((a) => (
                 <li key={a.id} className="flex gap-3 text-[13px]">
-                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-faint" />
+                  <span
+                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
+                      a.type === "won" ? "bg-success" : "bg-ink-faint"
+                    }`}
+                  />
                   <div className="min-w-0">
-                    <p className="text-ink">
+                    <p className={a.type === "won" ? "text-success-ink" : "text-ink"}>
                       <span className="font-medium">{a.userName ?? "System"}</span>{" "}
-                      <span className="text-ink-soft">{a.content}</span>
+                      <span className={a.type === "won" ? "text-success-ink" : "text-ink-soft"}>
+                        {a.content}
+                      </span>
                     </p>
                     <p className="mt-0.5 text-[12px] text-ink-faint">
                       <Link href={`/leads/${a.dealId}`} className="hover:text-accent">

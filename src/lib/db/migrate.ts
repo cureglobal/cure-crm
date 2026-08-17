@@ -222,7 +222,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     business_unit_id: "INTEGER",
   },
   people: { notes: "TEXT" },
-  deals: { comment: "TEXT", lost_reason_id: "INTEGER" },
+  deals: { comment: "TEXT", lost_reason_id: "INTEGER", closed_at: "INTEGER" },
   users: {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",

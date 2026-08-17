@@ -149,6 +149,8 @@ export const deals = sqliteTable("deals", {
   comment: text("comment"),
   // Satt når deal-en flyttes til en tapt-fase — se lost_reasons-tabellen over.
   lostReasonId: integer("lost_reason_id"),
+  // Satt til dagens dato når deal-en flyttes til en vunnet-fase.
+  closedAt: integer("closed_at", { mode: "timestamp_ms" }),
   ownerId: integer("owner_id")
     .notNull()
     .references(() => users.id),

@@ -15,6 +15,7 @@ import {
 import { formatMoney, formatNumberInput } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import DealOwnerCell from "@/components/DealOwnerCell";
+import DateField from "@/components/DateField";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { celebrateWin } from "@/components/WonCelebration";
 import type { Stage } from "@/lib/stages";
@@ -161,16 +162,14 @@ function Row({
           />
         )}
 
-        <input
-          type="date"
+        <DateField
           value={dateVal}
-          onChange={(e) => {
-            setDateVal(e.target.value);
-            save("followUpAt", e.target.value);
+          onChange={(v) => {
+            setDateVal(v);
+            save("followUpAt", v);
           }}
-          className={`field !border-transparent !bg-transparent !px-2 !py-1.5 text-[12.5px] hover:!border-line focus:!border-accent focus:!bg-surface ${
-            overdue ? "!font-medium !text-danger" : ""
-          }`}
+          overdue={overdue}
+          className="field !border-transparent !bg-transparent !px-2 !py-1.5 text-[12.5px] hover:!border-line"
         />
 
         <div className="group relative">
@@ -421,7 +420,7 @@ export default function DealsTable({
 
   if (rows.length === 0) {
     return (
-      <div className="card overflow-auto max-h-[75vh]">
+      <div className="card overflow-x-auto">
         <div className="min-w-[880px]">
           {header}
           <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
@@ -529,7 +528,7 @@ export default function DealsTable({
         </div>
       )}
 
-      <div className="card overflow-auto max-h-[75vh]">
+      <div className="card overflow-x-auto">
       <div className="min-w-[880px]">
         {header}
         {groups ? (
