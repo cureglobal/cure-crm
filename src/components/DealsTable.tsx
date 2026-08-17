@@ -396,7 +396,7 @@ export default function DealsTable({
 
   const header = (
     <div
-      className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
+      className={`${GRID} sticky top-0 z-20 border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
     >
       <input
         type="checkbox"
@@ -420,21 +420,18 @@ export default function DealsTable({
 
   if (rows.length === 0) {
     return (
-      <div className="card overflow-x-auto">
-        <div className="min-w-[880px]">
-          {header}
-          <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
-            Ingen deals matcher filtrene.
-          </p>
-        </div>
+      <div className="min-w-[880px]">
+        {header}
+        <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
+          Ingen deals matcher filtrene.
+        </p>
       </div>
     );
   }
 
-  // NB: ingen overflow-hidden på kortet — det bryter sticky-posisjonering på kolonneraden.
-  // overflow-x-auto er trygt fordi kortet ikke har en fast høyde: innholdet
-  // overgår aldri boksens egen høyde, så det oppstår aldri vertikal scroll her
-  // — bare horisontal, når skalering/zoom gjør kolonnene trangere enn min-bredden.
+  // Ingen boks/overflow rundt listen — den skal bare flyte som resten av
+  // siden (også fordi overflow-x-auto her gjorde at popover-menyer inni
+  // radene, f.eks. datovelgeren, ble klippet av kortets ytterkant).
   return (
     <div>
       {selected.size > 0 && (
@@ -528,7 +525,6 @@ export default function DealsTable({
         </div>
       )}
 
-      <div className="card overflow-x-auto">
       <div className="min-w-[880px]">
         {header}
         {groups ? (
@@ -596,7 +592,6 @@ export default function DealsTable({
             ))}
           </ul>
         )}
-      </div>
       </div>
 
       {pendingLostStageId && (

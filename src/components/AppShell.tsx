@@ -11,6 +11,7 @@ import {
   Building2,
   Contact,
   Calculator,
+  BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -127,6 +128,12 @@ export default function AppShell({
             href="/estimat"
             label="Prisverktøy"
             icon={<Calculator size={17} strokeWidth={1.8} />}
+            collapsed={collapsed}
+          />
+          <NavLink
+            href="/statistikk"
+            label="Statistikk"
+            icon={<BarChart3 size={17} strokeWidth={1.8} />}
             collapsed={collapsed}
           />
           <NavLink
