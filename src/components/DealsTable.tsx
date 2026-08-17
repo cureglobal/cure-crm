@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   updateDealInline,
+  updateDealStage,
+  markDealLost,
   bulkSetDealStage,
   bulkMarkDealsLost,
   bulkSetDealOwner,
@@ -14,6 +16,7 @@ import { formatMoney, formatNumberInput } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import DealOwnerCell from "@/components/DealOwnerCell";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
+import { celebrateWin } from "@/components/WonCelebration";
 import type { Stage } from "@/lib/stages";
 import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
@@ -84,11 +87,17 @@ function Row({
   selected,
   onToggle,
   owners,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
 }: {
   deal: DealRow;
   selected: boolean;
   onToggle: () => void;
   owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [dateVal, setDateVal] = useState(deal.followUpInput);
@@ -104,7 +113,12 @@ function Row({
 
   return (
     <li
-      className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""} ${
+        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
     >
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
@@ -231,6 +245,12 @@ export default function DealsTable({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
+  const [pendingLostDrop, setPendingLostDrop] = useState<{
+    dealId: number;
+    stageId: string;
+  } | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -299,6 +319,44 @@ export default function DealsTable({
     });
   }
 
+  function handleDragStart(dealId: number, e: React.DragEvent) {
+    e.dataTransfer.setData("text/deal-id", String(dealId));
+    e.dataTransfer.effectAllowed = "move";
+    setIsDragging(true);
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false);
+    setDragOverStageId(null);
+  }
+
+  function handleDrop(stage: Stage, e: React.DragEvent) {
+    e.preventDefault();
+    setDragOverStageId(null);
+    const dealId = Number(e.dataTransfer.getData("text/deal-id"));
+    if (!dealId) return;
+    const deal = rows.find((r) => r.id === dealId);
+    const stageId = String(stage.id);
+    if (!deal || deal.stage === stageId) return;
+    if (stage.isLost) {
+      setPendingLostDrop({ dealId, stageId });
+      return;
+    }
+    if (stage.isWon) celebrateWin(`${deal.companyName} · ${deal.title}`);
+    startTransition(async () => {
+      await updateDealStage(dealId, stageId);
+    });
+  }
+
+  function confirmLostDrop(lostReasonId: number, comment: string) {
+    if (!pendingLostDrop) return;
+    const { dealId, stageId } = pendingLostDrop;
+    setPendingLostDrop(null);
+    startTransition(async () => {
+      await markDealLost(dealId, stageId, lostReasonId, comment);
+    });
+  }
+
   function applyOwner(ownerId: string) {
     if (!ownerId) return;
     const ids = [...selected];
@@ -334,8 +392,8 @@ export default function DealsTable({
         stage: s,
         items: sorted.filter((r) => r.stage === String(s.id)),
       }))
-      .filter((g) => g.items.length > 0);
-  }, [sorted, groupByStage, stages]);
+      .filter((g) => isDragging || g.items.length > 0);
+  }, [sorted, groupByStage, stages, isDragging]);
 
   const header = (
     <div
@@ -477,8 +535,19 @@ export default function DealsTable({
         {groups ? (
           groups.map((g) => {
             const sum = g.items.reduce((acc, r) => acc + (r.value ?? 0), 0);
+            const stageId = String(g.stage.id);
+            const isOver = dragOverStageId === stageId;
             return (
-              <div key={g.stage.id}>
+              <div
+                key={g.stage.id}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverStageId(stageId);
+                }}
+                onDragLeave={() => setDragOverStageId((s) => (s === stageId ? null : s))}
+                onDrop={(e) => handleDrop(g.stage, e)}
+                className={`transition-colors ${isOver ? "bg-accent-soft/40" : ""}`}
+              >
                 <div className="sticky top-[41px] z-10 flex items-center gap-2 border-b border-line bg-canvas/95 px-5 py-2 backdrop-blur-xl">
                   <span className="h-2 w-2 rounded-full" style={{ background: g.stage.color }} />
                   <span className="text-[12.5px] font-semibold">{g.stage.label}</span>
@@ -497,9 +566,21 @@ export default function DealsTable({
                       selected={selected.has(deal.id)}
                       onToggle={() => toggleOne(deal.id)}
                       owners={owners}
+                      draggable
+                      onDragStart={(e) => handleDragStart(deal.id, e)}
+                      onDragEnd={handleDragEnd}
                     />
                   ))}
                 </ul>
+                {isDragging && g.items.length === 0 && (
+                  <div
+                    className={`mx-5 mb-2 flex items-center justify-center rounded-xl border-2 border-dashed px-3 py-4 text-[12px] font-medium ${
+                      isOver ? "border-accent/50 bg-accent-soft/40 text-accent" : "border-line text-ink-faint"
+                    }`}
+                  >
+                    Slipp her
+                  </div>
+                )}
               </div>
             );
           })
@@ -529,6 +610,15 @@ export default function DealsTable({
             setPendingLostStageId(null);
             setStageChoice("");
           }}
+        />
+      )}
+
+      {pendingLostDrop && (
+        <LostReasonDialog
+          reasons={lostReasons}
+          pending={pending}
+          onConfirm={confirmLostDrop}
+          onCancel={() => setPendingLostDrop(null)}
         />
       )}
     </div>
