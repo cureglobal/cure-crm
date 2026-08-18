@@ -817,6 +817,29 @@ export async function setFollowUp(dealId: number, formData: FormData) {
   revalidateDealViews(dealId);
 }
 
+// Setter samme oppfølgingsdato på flere valgte deals samtidig, fra
+// flervalg i listevisningen.
+export async function bulkSetFollowUp(dealIds: number[], dateStr: string) {
+  const me = await requireUser();
+  if (dealIds.length === 0) return;
+  const date = dateStr ? new Date(`${dateStr}T09:00:00`) : null;
+  await db
+    .update(deals)
+    .set({ followUpAt: date, updatedAt: new Date() })
+    .where(inArray(deals.id, dealIds));
+  await db.insert(activities).values(
+    dealIds.map((dealId) => ({
+      dealId,
+      userId: me.id,
+      type: "followup",
+      content: date
+        ? `Oppfølging satt til ${date.toLocaleDateString("nb-NO", { day: "numeric", month: "long" })}`
+        : "Oppfølging fjernet",
+    }))
+  );
+  revalidateDealViews();
+}
+
 export async function deleteDeal(dealId: number) {
   await requireUser();
   const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });

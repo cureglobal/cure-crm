@@ -10,12 +10,15 @@ import {
   bulkMarkDealsLost,
   bulkSetDealOwner,
   bulkAddDealOwner,
+  bulkSetFollowUp,
   bulkDeleteDeals,
 } from "@/lib/actions";
-import { formatMoney, formatNumberInput } from "@/lib/format";
+import { formatMoney, formatNumberInput, relativeDay } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import DealOwnerCell from "@/components/DealOwnerCell";
 import DateField from "@/components/DateField";
+import BulkDateField from "@/components/BulkDateField";
+import BulkOwnerPicker from "@/components/BulkOwnerPicker";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { celebrateWin } from "@/components/WonCelebration";
 import type { Stage } from "@/lib/stages";
@@ -185,8 +188,11 @@ function Row({
             className="field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] text-ink-soft hover:!border-line focus:!border-accent focus:!bg-surface focus:text-ink"
           />
           {deal.comment && (
-            <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-72 max-w-[80vw] whitespace-pre-wrap rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100">
-              {deal.comment}
+            <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-72 max-w-[80vw] rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100">
+              <p className="mb-1 text-[11px] font-medium text-ink-faint">
+                {relativeDay(new Date(deal.updatedAt)).label}
+              </p>
+              <p className="whitespace-pre-wrap">{deal.comment}</p>
             </div>
           )}
         </div>
@@ -239,8 +245,6 @@ export default function DealsTable({
   const [sort, setSort] = useState<Sort | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [stageChoice, setStageChoice] = useState("");
-  const [ownerChoice, setOwnerChoice] = useState("");
-  const [addOwnerChoice, setAddOwnerChoice] = useState("");
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
@@ -282,6 +286,18 @@ export default function DealsTable({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleGroup(items: DealRow[]) {
+    const allSelected = items.length > 0 && items.every((r) => selected.has(r.id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const r of items) {
+        if (allSelected) next.delete(r.id);
+        else next.add(r.id);
+      }
       return next;
     });
   }
@@ -357,23 +373,20 @@ export default function DealsTable({
     });
   }
 
-  function applyOwner(ownerId: string) {
-    if (!ownerId) return;
+  function applyBulkOwner(mainOwnerId: number | null, addOwnerIds: number[]) {
     const ids = [...selected];
     startTransition(async () => {
-      await bulkSetDealOwner(ids, Number(ownerId));
-      setBulkMessage(`Satt eier på ${ids.length} deals.`);
-      setOwnerChoice("");
+      if (mainOwnerId != null) await bulkSetDealOwner(ids, mainOwnerId);
+      for (const userId of addOwnerIds) await bulkAddDealOwner(ids, userId);
+      setBulkMessage(`Oppdatert eiere på ${ids.length} deals.`);
     });
   }
 
-  function applyAddOwner(userId: string) {
-    if (!userId) return;
+  function applyBulkDate(dateStr: string) {
     const ids = [...selected];
     startTransition(async () => {
-      await bulkAddDealOwner(ids, Number(userId));
-      setBulkMessage(`Lagt til som eier på ${ids.length} deals.`);
-      setAddOwnerChoice("");
+      await bulkSetFollowUp(ids, dateStr);
+      setBulkMessage(`Satt dato på ${ids.length} deals.`);
     });
   }
 
@@ -456,40 +469,9 @@ export default function DealsTable({
             ))}
           </select>
 
-          <select
-            value={ownerChoice}
-            onChange={(e) => {
-              setOwnerChoice(e.target.value);
-              applyOwner(e.target.value);
-            }}
-            disabled={pending}
-            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-          >
-            <option value="">Sett eier …</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <BulkOwnerPicker owners={owners} disabled={pending} onApply={applyBulkOwner} />
 
-          <select
-            value={addOwnerChoice}
-            onChange={(e) => {
-              setAddOwnerChoice(e.target.value);
-              applyAddOwner(e.target.value);
-            }}
-            disabled={pending}
-            title="Legger til som med-eier, uten å erstatte hovedeieren"
-            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-          >
-            <option value="">Legg til eier …</option>
-            {owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
+          <BulkDateField onChoose={applyBulkDate} disabled={pending} />
 
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
@@ -545,6 +527,13 @@ export default function DealsTable({
                 className={`transition-colors ${isOver ? "bg-accent-soft/40" : ""}`}
               >
                 <div className="sticky top-[41px] z-10 flex items-center gap-2 border-b border-line bg-canvas/95 px-5 py-2 backdrop-blur-xl">
+                  <input
+                    type="checkbox"
+                    checked={g.items.length > 0 && g.items.every((r) => selected.has(r.id))}
+                    onChange={() => toggleGroup(g.items)}
+                    title="Velg alle i denne fasen"
+                    className="h-3.5 w-3.5"
+                  />
                   <span className="h-2 w-2 rounded-full" style={{ background: g.stage.color }} />
                   <span className="text-[12.5px] font-semibold">{g.stage.label}</span>
                   <span className="text-[12px] text-ink-faint">{g.items.length}</span>
