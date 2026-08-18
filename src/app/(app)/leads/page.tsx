@@ -1,5 +1,5 @@
-import { desc, eq, asc } from "drizzle-orm";
-import { db, deals as dealsTable, companies, users } from "@/lib/db";
+import { desc, eq, asc, inArray } from "drizzle-orm";
+import { db, deals as dealsTable, companies, users, activities } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
@@ -57,6 +57,23 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
     (await db.query.dealLines.findMany()).map((l) => l.dealId)
   );
 
+  // Hvem som sist rørte kommentarfeltet — "comment" er vanlig redigering,
+  // "lost" fordi tapt-flyten også kan legge til tekst i kommentaren.
+  // Mangler helt for CSV-importerte deals, som ikke logger en aktivitet.
+  const commentActivity = await db
+    .select({ dealId: activities.dealId, userId: activities.userId, createdAt: activities.createdAt })
+    .from(activities)
+    .where(inArray(activities.type, ["comment", "lost"]))
+    .orderBy(desc(activities.createdAt));
+  const commentedByDeal = new Map<number, number | null>();
+  for (const a of commentActivity) {
+    if (!commentedByDeal.has(a.dealId)) commentedByDeal.set(a.dealId, a.userId);
+  }
+  function commentAuthor(dealId: number): string | null {
+    const uid = commentedByDeal.get(dealId);
+    return uid != null ? (ownerNames.get(uid) ?? null) : null;
+  }
+
   const stages = await getStages();
   const businessUnits = await getBusinessUnits();
   const lostReasons = await getLostReasons();
@@ -82,6 +99,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
       followUpAt: d.followUpAt ? d.followUpAt.getTime() : null,
       followUpInput: toDateInputValue(d.followUpAt),
       comment: d.comment ?? "",
+      commentedBy: d.comment ? commentAuthor(d.id) : null,
     }));
 
   return (

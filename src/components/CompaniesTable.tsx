@@ -4,11 +4,15 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
+import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
 import {
   bulkDeleteCompanies,
   bulkSetCompanyOwner,
   bulkSetCompanyBusinessUnit,
   bulkMatchCompaniesBrreg,
+  getCompaniesForMerge,
+  mergeCompanies,
+  type MergeCandidate,
 } from "@/lib/actions";
 import {
   ArrowDown,
@@ -20,6 +24,7 @@ import {
   TriangleAlert,
   Trash2,
   Wand2,
+  GitMerge,
   X,
 } from "lucide-react";
 
@@ -111,6 +116,10 @@ export default function CompaniesTable({
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [mergeCandidates, setMergeCandidates] = useState<MergeCandidate[] | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergePending, startMergeTransition] = useTransition();
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -218,6 +227,30 @@ export default function CompaniesTable({
     });
   }
 
+  function openMerge() {
+    const ids = [...selected];
+    setMergeLoading(true);
+    setMergeError(null);
+    startTransition(async () => {
+      const candidates = await getCompaniesForMerge(ids);
+      setMergeLoading(false);
+      setMergeCandidates(candidates);
+    });
+  }
+
+  function confirmMerge(keepId: number, mergeIds: number[], overrides: Record<string, number>) {
+    setMergeError(null);
+    startMergeTransition(async () => {
+      const res = await mergeCompanies(keepId, mergeIds, overrides);
+      if (res.ok) {
+        setMergeCandidates(null);
+        clearSelection();
+      } else {
+        setMergeError(res.message);
+      }
+    });
+  }
+
   const stats = [
     { label: "Selskaper", value: String(rows.length), icon: <Briefcase size={16} /> },
     { label: "Åpen pipeline", value: formatMoney(totalOpen), icon: <TrendingUp size={16} /> },
@@ -301,6 +334,17 @@ export default function CompaniesTable({
             <Wand2 size={13} />
             Match Brreg
           </button>
+
+          {selected.size >= 2 && (
+            <button
+              onClick={openMerge}
+              disabled={pending || mergeLoading}
+              className="btn btn-secondary !py-1.5"
+            >
+              <GitMerge size={13} />
+              {mergeLoading ? "Henter …" : "Slå sammen"}
+            </button>
+          )}
 
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
@@ -430,6 +474,16 @@ export default function CompaniesTable({
         )}
         </div>
       </div>
+
+      {mergeCandidates && (
+        <MergeCompaniesDialog
+          candidates={mergeCandidates}
+          pending={mergePending}
+          error={mergeError}
+          onConfirm={confirmMerge}
+          onCancel={() => setMergeCandidates(null)}
+        />
+      )}
     </div>
   );
 }

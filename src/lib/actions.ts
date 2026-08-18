@@ -15,6 +15,7 @@ import {
   activities,
   contactEvents,
   emailAccounts,
+  emailMessages,
   emailAccessGrants,
   dealLines,
   referenceProjects,
@@ -2073,6 +2074,244 @@ export async function bulkDeleteCompanies(companyIds: number[]): Promise<{ delet
   await db.delete(companies).where(inArray(companies.id, companyIds));
   revalidateDealViews();
   return { deleted: companyIds.length };
+}
+
+// ---------- Slå sammen selskaper ----------
+
+// Feltene brukeren kan velge vinner for i sammenslåings-dialogen —
+// tekniske/utledede felt (domain, logoUrl, brregVerified osv.) håndteres
+// i stedet automatisk i mergeCompanies (behold hovedselskapets verdi,
+// ellers første ikke-tomme). Kan ikke eksporteres herfra — en "use
+// server"-fil kan bare eksportere async-funksjoner.
+const MERGEABLE_COMPANY_FIELDS = [
+  "name",
+  "orgName",
+  "orgNumber",
+  "ownerId",
+  "businessUnitId",
+  "primaryContactId",
+  "website",
+  "phone",
+  "address",
+  "postalCode",
+  "city",
+  "employees",
+  "industry",
+  "ceoName",
+  "revenue",
+  "profit",
+  "fiscalYear",
+] as const;
+
+export interface MergeCandidate {
+  id: number;
+  name: string;
+  domain: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  orgName: string | null;
+  orgNumber: string | null;
+  ownerId: number | null;
+  ownerName: string | null;
+  phone: string | null;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  employees: number | null;
+  industry: string | null;
+  ceoName: string | null;
+  revenue: number | null;
+  profit: number | null;
+  fiscalYear: string | null;
+  primaryContactId: number | null;
+  primaryContactName: string | null;
+  businessUnitId: number | null;
+  businessUnitName: string | null;
+  dealCount: number;
+  peopleCount: number;
+}
+
+// Henter alt en sammenslåings-dialog trenger for de valgte selskapene,
+// inkl. utledede navn for eier/hovedkontakt/vårt selskap og noen nøkkeltall
+// (antall deals/personer) så brukeren kan se hvilket selskap som virker
+// "riktigst" å beholde som hovedselskap.
+export async function getCompaniesForMerge(companyIds: number[]): Promise<MergeCandidate[]> {
+  await requireUser();
+  if (companyIds.length < 2) return [];
+
+  const rows = await db.query.companies.findMany({ where: inArray(companies.id, companyIds) });
+
+  const ownerIds = [...new Set(rows.map((c) => c.ownerId).filter((id): id is number => id != null))];
+  const contactIds = [
+    ...new Set(rows.map((c) => c.primaryContactId).filter((id): id is number => id != null)),
+  ];
+  const buIds = [
+    ...new Set(rows.map((c) => c.businessUnitId).filter((id): id is number => id != null)),
+  ];
+
+  const [ownerRows, contactRows, buRows, dealRows, peopleLinks] = await Promise.all([
+    ownerIds.length ? db.query.users.findMany({ where: inArray(users.id, ownerIds) }) : [],
+    contactIds.length ? db.query.people.findMany({ where: inArray(people.id, contactIds) }) : [],
+    buIds.length ? db.query.businessUnits.findMany({ where: inArray(businessUnits.id, buIds) }) : [],
+    db.query.deals.findMany({ where: inArray(deals.companyId, companyIds) }),
+    db.query.companyPeople.findMany({ where: inArray(companyPeople.companyId, companyIds) }),
+  ]);
+
+  const ownerNameById = new Map(ownerRows.map((u) => [u.id, u.name]));
+  const contactNameById = new Map(contactRows.map((p) => [p.id, p.name]));
+  const buNameById = new Map(buRows.map((b) => [b.id, b.name]));
+  const dealCountByCompany = new Map<number, number>();
+  for (const d of dealRows) {
+    dealCountByCompany.set(d.companyId, (dealCountByCompany.get(d.companyId) ?? 0) + 1);
+  }
+  const peopleCountByCompany = new Map<number, number>();
+  for (const link of peopleLinks) {
+    peopleCountByCompany.set(link.companyId, (peopleCountByCompany.get(link.companyId) ?? 0) + 1);
+  }
+
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    domain: c.domain,
+    website: c.website,
+    logoUrl: c.logoUrl,
+    orgName: c.orgName,
+    orgNumber: c.orgNumber,
+    ownerId: c.ownerId,
+    ownerName: c.ownerId != null ? (ownerNameById.get(c.ownerId) ?? null) : null,
+    phone: c.phone,
+    address: c.address,
+    postalCode: c.postalCode,
+    city: c.city,
+    employees: c.employees,
+    industry: c.industry,
+    ceoName: c.ceoName,
+    revenue: c.revenue,
+    profit: c.profit,
+    fiscalYear: c.fiscalYear,
+    primaryContactId: c.primaryContactId,
+    primaryContactName:
+      c.primaryContactId != null ? (contactNameById.get(c.primaryContactId) ?? null) : null,
+    businessUnitId: c.businessUnitId,
+    businessUnitName: c.businessUnitId != null ? (buNameById.get(c.businessUnitId) ?? null) : null,
+    dealCount: dealCountByCompany.get(c.id) ?? 0,
+    peopleCount: peopleCountByCompany.get(c.id) ?? 0,
+  }));
+}
+
+// Slår sammen flere selskaper til ett: `keepId` overlever, `mergeIds`
+// slettes etter at alt tilhørende data er flyttet over. `overrides` sier
+// hvilket selskap sin verdi som skal vinne for de feltene brukeren fikk
+// velge mellom i dialogen (felt uten override beholder keepId sin egen
+// verdi uendret). Rekkefølgen under er bevisst: metadata og relaterte
+// rader flyttes FØR de tapende selskapene slettes, slik at en feil
+// underveis aldri etterlater data koblet til et slettet selskap.
+export async function mergeCompanies(
+  keepId: number,
+  mergeIds: number[],
+  overrides: Record<string, number>
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const loserIds = [...new Set(mergeIds)].filter((id) => id !== keepId);
+  if (loserIds.length === 0) {
+    return { ok: false, message: "Velg minst to selskaper å slå sammen." };
+  }
+
+  try {
+    const allIds = [keepId, ...loserIds];
+    const rows = await db.query.companies.findMany({ where: inArray(companies.id, allIds) });
+    const byId = new Map(rows.map((c) => [c.id, c as Record<string, unknown>]));
+    if (!byId.has(keepId) || loserIds.some((id) => !byId.has(id))) {
+      return { ok: false, message: "Fant ikke ett eller flere av selskapene." };
+    }
+
+    const set: Record<string, unknown> = {};
+    for (const field of MERGEABLE_COMPANY_FIELDS) {
+      const sourceId = overrides[field];
+      if (sourceId != null && sourceId !== keepId && byId.has(sourceId)) {
+        set[field] = byId.get(sourceId)![field];
+      }
+    }
+
+    // Brreg-status følger samme selskap som organisasjonsnummeret ble
+    // hentet fra, slik at "bekreftet"-merket ikke havner løsrevet fra
+    // hvilket org.nr som faktisk ble valgt.
+    const orgNumberSourceId = overrides.orgNumber ?? keepId;
+    if (orgNumberSourceId !== keepId && byId.has(orgNumberSourceId)) {
+      const source = byId.get(orgNumberSourceId)!;
+      set.brregVerified = source.brregVerified;
+      set.brregSyncedAt = source.brregSyncedAt;
+      set.industryCode = source.industryCode;
+    }
+
+    // Domene/logo har ingen egen velger — behold hovedselskapets verdi
+    // hvis satt, ellers første ikke-tomme blant de andre.
+    for (const field of ["domain", "logoUrl"] as const) {
+      const keepValue = byId.get(keepId)![field];
+      if (keepValue == null || keepValue === "") {
+        for (const id of loserIds) {
+          const v = byId.get(id)![field];
+          if (v != null && v !== "") {
+            set[field] = v;
+            break;
+          }
+        }
+      }
+    }
+
+    if (Object.keys(set).length > 0) {
+      await db.update(companies).set(set).where(eq(companies.id, keepId));
+    }
+
+    await db.update(deals).set({ companyId: keepId }).where(inArray(deals.companyId, loserIds));
+    await db
+      .update(contactEvents)
+      .set({ companyId: keepId })
+      .where(inArray(contactEvents.companyId, loserIds));
+    await db
+      .update(emailMessages)
+      .set({ companyId: keepId })
+      .where(inArray(emailMessages.companyId, loserIds));
+    await db
+      .update(emailAccessGrants)
+      .set({ companyId: keepId })
+      .where(inArray(emailAccessGrants.companyId, loserIds));
+
+    // company_people har UNIQUE(company_id, person_id) — flytt kun
+    // koblinger som ikke allerede finnes på det gjenværende selskapet,
+    // resten (duplikater) slettes i stedet for å flyttes.
+    const existingLinks = await db.query.companyPeople.findMany({
+      where: eq(companyPeople.companyId, keepId),
+    });
+    const linkedPersonIds = new Set(existingLinks.map((l) => l.personId));
+    const movingLinks = await db.query.companyPeople.findMany({
+      where: inArray(companyPeople.companyId, loserIds),
+    });
+    for (const link of movingLinks) {
+      if (linkedPersonIds.has(link.personId)) {
+        await db.delete(companyPeople).where(eq(companyPeople.id, link.id));
+      } else {
+        await db
+          .update(companyPeople)
+          .set({ companyId: keepId })
+          .where(eq(companyPeople.id, link.id));
+        linkedPersonIds.add(link.personId);
+      }
+    }
+
+    await db.delete(companies).where(inArray(companies.id, loserIds));
+
+    revalidateDealViews();
+    revalidatePath("/companies");
+    revalidatePath(`/companies/${keepId}`);
+    return { ok: true, message: `Slo sammen ${loserIds.length + 1} selskaper.` };
+  } catch (err) {
+    console.error("mergeCompanies feilet", err);
+    return {
+      ok: false,
+      message: "Sammenslåing feilet underveis. Sjekk selskapene og prøv igjen.",
+    };
+  }
 }
 
 // ---------- Kontakt med selskap ----------

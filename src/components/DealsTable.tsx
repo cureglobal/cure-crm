@@ -43,6 +43,7 @@ export interface DealRow {
   followUpAt: number | null;
   followUpInput: string; // yyyy-mm-dd
   comment: string;
+  commentedBy: string | null;
 }
 
 const GRID = "grid grid-cols-[22px_1.9fr_60px_1fr_150px_1.9fr] items-center gap-3";
@@ -192,6 +193,7 @@ function Row({
             <div className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-72 max-w-[80vw] rounded-xl border border-line bg-surface p-3 text-[12.5px] leading-relaxed text-ink opacity-0 shadow-pop transition-opacity duration-100 group-hover:opacity-100">
               <p className="mb-1 text-[11px] font-medium text-ink-faint">
                 {relativeDay(new Date(deal.updatedAt)).label}
+                {deal.commentedBy && ` · ${deal.commentedBy}`}
               </p>
               <p className="whitespace-pre-wrap">{deal.comment}</p>
             </div>
