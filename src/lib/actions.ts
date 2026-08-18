@@ -76,9 +76,9 @@ function formatNameList(names: string[]): string {
 
 // Fornavnene til alle som er tagget på en deal (hovedeier + med-eiere) —
 // brukt i vunnet-/tapt-meldingene i aktivitetsloggen.
-async function taggedNames(dealId: number, ownerId: number): Promise<string[]> {
+async function taggedNames(dealId: number, ownerId: number | null): Promise<string[]> {
   const [owner, coOwnerRows] = await Promise.all([
-    db.query.users.findFirst({ where: eq(users.id, ownerId) }),
+    ownerId == null ? null : db.query.users.findFirst({ where: eq(users.id, ownerId) }),
     db
       .select({ name: users.name })
       .from(dealOwners)
@@ -879,8 +879,15 @@ export async function bulkSetDealStage(dealIds: number[], stage: string) {
 }
 
 // Endrer hoved-eieren på en enkelt deal — fra oversiktsbildet (listevisningen).
-export async function updateDealOwner(dealId: number, ownerId: number) {
+// ownerId === null fjerner hovedeieren — en deal kan stå uten eier.
+export async function updateDealOwner(dealId: number, ownerId: number | null) {
   const me = await requireUser();
+  if (ownerId == null) {
+    await db.update(deals).set({ ownerId: null, updatedAt: new Date() }).where(eq(deals.id, dealId));
+    await db.insert(activities).values({ dealId, userId: me.id, type: "owner", content: "Fjernet eier" });
+    revalidateDealViews(dealId);
+    return;
+  }
   const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
   if (!owner) return;
   await db.update(deals).set({ ownerId, updatedAt: new Date() }).where(eq(deals.id, dealId));
@@ -929,7 +936,9 @@ export async function swapDealMainOwner(dealId: number, newOwnerId: number) {
     .update(deals)
     .set({ ownerId: newOwnerId, updatedAt: new Date() })
     .where(eq(deals.id, dealId));
-  await db.insert(dealOwners).values({ dealId, userId: oldOwnerId }).onConflictDoNothing();
+  if (oldOwnerId != null) {
+    await db.insert(dealOwners).values({ dealId, userId: oldOwnerId }).onConflictDoNothing();
+  }
   await db
     .delete(dealOwners)
     .where(and(eq(dealOwners.dealId, dealId), eq(dealOwners.userId, newOwnerId)));

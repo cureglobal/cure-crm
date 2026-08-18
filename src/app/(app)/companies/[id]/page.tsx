@@ -322,8 +322,15 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                         <span className="shrink-0 text-[13px] font-medium tabular-nums">
                           {d.value ? formatMoney(d.value) : "—"}
                         </span>
-                        {d.ownerName && (
+                        {d.ownerName ? (
                           <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                        ) : (
+                          <span
+                            title="Ingen eier"
+                            className="flex h-5 w-5 items-center justify-center rounded-full bg-warning/15 text-warning"
+                          >
+                            <TriangleAlert size={12} />
+                          </span>
                         )}
                       </Link>
                     </li>

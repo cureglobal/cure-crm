@@ -151,9 +151,8 @@ export const deals = sqliteTable("deals", {
   lostReasonId: integer("lost_reason_id"),
   // Satt til dagens dato når deal-en flyttes til en vunnet-fase.
   closedAt: integer("closed_at", { mode: "timestamp_ms" }),
-  ownerId: integer("owner_id")
-    .notNull()
-    .references(() => users.id),
+  // Kan være null — en deal kan stå uten hovedeier (vises med varseltrekant).
+  ownerId: integer("owner_id").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

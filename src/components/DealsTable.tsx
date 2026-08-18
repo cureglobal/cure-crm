@@ -27,7 +27,7 @@ export interface DealRow {
   companyName: string;
   logoUrl: string | null;
   companyBusinessUnitId: number | null;
-  ownerId: number;
+  ownerId: number | null;
   ownerName: string;
   ownerAvatarUrl: string | null;
   coOwnerIds: number[];

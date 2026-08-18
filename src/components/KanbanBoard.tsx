@@ -9,7 +9,7 @@ import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import { celebrateWin } from "@/components/WonCelebration";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, TriangleAlert } from "lucide-react";
 
 export interface KanbanDeal {
   id: number;
@@ -188,19 +188,26 @@ export default function KanbanBoard({
                                 {formatMoney(deal.value)}
                               </span>
                             ) : null}
-                            {deal.ownerName && (
-                              <span className="relative">
+                            <span className="relative">
+                              {deal.ownerName ? (
                                 <Avatar name={deal.ownerName} imageUrl={deal.ownerAvatarUrl} size={20} />
-                                {deal.coOwnerCount > 0 && (
-                                  <span
-                                    title={`${deal.coOwnerCount} med-eier${deal.coOwnerCount === 1 ? "" : "e"}`}
-                                    className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-mist/[0.08] text-[8px] font-semibold text-ink-soft"
-                                  >
-                                    +{deal.coOwnerCount}
-                                  </span>
-                                )}
-                              </span>
-                            )}
+                              ) : (
+                                <span
+                                  title="Ingen eier"
+                                  className="flex h-5 w-5 items-center justify-center rounded-full bg-warning/15 text-warning"
+                                >
+                                  <TriangleAlert size={11} />
+                                </span>
+                              )}
+                              {deal.coOwnerCount > 0 && (
+                                <span
+                                  title={`${deal.coOwnerCount} med-eier${deal.coOwnerCount === 1 ? "" : "e"}`}
+                                  className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-mist/[0.08] text-[8px] font-semibold text-ink-soft"
+                                >
+                                  +{deal.coOwnerCount}
+                                </span>
+                              )}
+                            </span>
                           </span>
                         </div>
                       </Link>

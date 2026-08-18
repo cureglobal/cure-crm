@@ -77,7 +77,7 @@ const CREATE_STATEMENTS = [
     value INTEGER,
     follow_up_at INTEGER,
     comment TEXT,
-    owner_id INTEGER NOT NULL REFERENCES users(id),
+    owner_id INTEGER REFERENCES users(id),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
@@ -352,6 +352,49 @@ async function seedLostReasons(client: Client) {
   }
 }
 
+// deals.owner_id var opprinnelig NOT NULL — en deal kan nå stå uten
+// hovedeier, men SQLite støtter ikke ALTER COLUMN, så tabellen bygges om.
+// Idempotent: sjekker PRAGMA table_info først og hopper over hvis kolonnen
+// allerede tillater NULL. client.migrate() kjører hele ombyggingen i én
+// transaksjon (med foreign_keys av/på automatisk) — nødvendig fordi flere
+// byggeprosesser kjører migrate() samtidig lokalt (se kommentaren i
+// migrate() lenger ned); uten denne atomisiteten kan en annen prosess sin
+// indeks-opprettelse treffe det korte vinduet der deals-tabellen er borte
+// (droppet, men ikke ombenevnt tilbake ennå).
+async function dropDealsOwnerNotNull(client: Client) {
+  const info = await client.execute("PRAGMA table_info(deals)");
+  const ownerCol = info.rows.find((r) => String(r.name) === "owner_id");
+  if (!ownerCol || Number(ownerCol.notnull) === 0) return;
+
+  try {
+    await client.migrate([
+      `CREATE TABLE deals_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        stage TEXT NOT NULL DEFAULT 'ny',
+        value INTEGER,
+        follow_up_at INTEGER,
+        comment TEXT,
+        lost_reason_id INTEGER,
+        closed_at INTEGER,
+        owner_id INTEGER REFERENCES users(id),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`,
+      `INSERT INTO deals_new (id, company_id, title, stage, value, follow_up_at, comment, lost_reason_id, closed_at, owner_id, created_at, updated_at)
+       SELECT id, company_id, title, stage, value, follow_up_at, comment, lost_reason_id, closed_at, owner_id, created_at, updated_at FROM deals`,
+      "DROP TABLE deals",
+      "ALTER TABLE deals_new RENAME TO deals",
+    ]);
+  } catch (err) {
+    // En annen samtidig byggeprosess kan alt ha fullført (eller startet)
+    // samme ombygging — harmløst så lenge sluttresultatet er korrekt.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("already exists") && !message.includes("no such table")) throw err;
+  }
+}
+
 async function addMissingColumns(client: Client) {
   for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
     const exists = await client.execute({
@@ -389,6 +432,8 @@ export async function migrate(client: Client) {
   for (const stmt of CREATE_STATEMENTS) await client.execute(stmt);
   // Må kjøre før indeksene, som kan peke på kolonner lagt til her.
   await addMissingColumns(client);
+  // Må kjøre før indeksene — ombyggingen dropper dem sammen med tabellen.
+  await dropDealsOwnerNotNull(client);
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
   // Må kjøre etter at både stages- og deals-tabellen finnes.
   await seedStagesAndMigrateLegacy(client);

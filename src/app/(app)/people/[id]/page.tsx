@@ -18,7 +18,7 @@ import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import DeletePersonButton from "@/components/DeletePersonButton";
-import { ArrowLeft, Mail, Phone, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Plus, Trash2, TriangleAlert } from "lucide-react";
 
 export default async function PersonPage({ params }: PageProps<"/people/[id]">) {
   await requireUser();
@@ -259,8 +259,15 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                       <span className="shrink-0 text-[13px] font-medium tabular-nums">
                         {d.value ? formatMoney(d.value) : "—"}
                       </span>
-                      {d.ownerName && (
+                      {d.ownerName ? (
                         <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                      ) : (
+                        <span
+                          title="Ingen eier"
+                          className="flex h-5 w-5 items-center justify-center rounded-full bg-warning/15 text-warning"
+                        >
+                          <TriangleAlert size={12} />
+                        </span>
                       )}
                     </Link>
                   </li>

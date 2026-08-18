@@ -68,7 +68,10 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   // omdøping) sendes videre til riktig, gjeldende URL.
   if (canonicalSlug && canonicalSlug !== slug) redirect(`/leads/${canonicalSlug}`);
 
-  const owner = await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
+  const owner =
+    deal.ownerId == null
+      ? null
+      : await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
 
   const coOwnerRows = await db
     .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
@@ -224,11 +227,15 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
               )}
               <DealOwners
                 dealId={deal.id}
-                primaryOwner={{
-                  id: deal.ownerId,
-                  name: owner?.name ?? "Ukjent",
-                  avatarDataUrl: owner?.avatarDataUrl ?? null,
-                }}
+                primaryOwner={
+                  deal.ownerId == null
+                    ? null
+                    : {
+                        id: deal.ownerId,
+                        name: owner?.name ?? "Ukjent",
+                        avatarDataUrl: owner?.avatarDataUrl ?? null,
+                      }
+                }
                 coOwners={coOwnerRows}
                 allUsers={allUsers.map((u) => ({
                   id: u.id,
