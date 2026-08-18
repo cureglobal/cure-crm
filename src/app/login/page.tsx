@@ -34,16 +34,16 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <h1 className="text-2xl font-semibold tracking-tight text-white">
             {hasUsers ? "Logg inn i Cure CRM" : "Velkommen til Cure CRM"}
           </h1>
-          <p className="mt-1.5 text-white/70">
-            {hasUsers
-              ? "Bruk e-post og passord."
-              : "Opprett administratorkontoen din for å komme i gang."}
-          </p>
+          {!hasUsers && (
+            <p className="mt-1.5 text-white/70">
+              Opprett administratorkontoen din for å komme i gang.
+            </p>
+          )}
         </div>
 
         <form
           action={hasUsers ? login : setupFirstUser}
-          className="card flex flex-col gap-3 p-6"
+          className="card theme-dark-scope flex flex-col gap-3 p-6"
         >
           {!hasUsers && (
             <input name="name" placeholder="Fullt navn" required className="field" />
