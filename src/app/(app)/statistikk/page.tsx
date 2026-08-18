@@ -1,24 +1,35 @@
-import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { formatMoney } from "@/lib/format";
+import { parseDateStr } from "@/components/CalendarPopover";
 import Avatar from "@/components/Avatar";
+import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
 
-type Periode = "30" | "kvartal" | "ar";
+type Periode = "30" | "kvartal" | "ar" | "egendefinert";
 
-const PERIODS: { key: Periode; label: string }[] = [
-  { key: "30", label: "Siste 30 dager" },
-  { key: "kvartal", label: "Siste kvartal" },
-  { key: "ar", label: "I år" },
-];
-
-function periodStart(periode: Periode): Date {
+function periodRange(periode: Periode, fra: string, til: string): { start: Date; end: Date } {
   const now = new Date();
-  if (periode === "kvartal") return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  if (periode === "ar") return new Date(now.getFullYear(), 0, 1);
-  return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (periode === "egendefinert") {
+    const start = parseDateStr(fra) ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDay = parseDateStr(til) ?? now;
+    const end = new Date(
+      endDay.getFullYear(),
+      endDay.getMonth(),
+      endDay.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+    return { start, end };
+  }
+  if (periode === "kvartal") {
+    return { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000), end: now };
+  }
+  if (periode === "ar") return { start: new Date(now.getFullYear(), 0, 1), end: now };
+  return { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: now };
 }
 
 interface StageBreakdown {
@@ -76,8 +87,12 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   await requireUser();
   const params = await searchParams;
   const periode: Periode =
-    params.periode === "kvartal" || params.periode === "ar" ? params.periode : "30";
-  const start = periodStart(periode);
+    params.periode === "kvartal" || params.periode === "ar" || params.periode === "egendefinert"
+      ? params.periode
+      : "30";
+  const fra = typeof params.fra === "string" ? params.fra : "";
+  const til = typeof params.til === "string" ? params.til : "";
+  const { start, end } = periodRange(periode, fra, til);
 
   const stages = await getStages();
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
@@ -92,7 +107,11 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
 
       // Faseoversikt: aktive (ikke vunnet/tapt) deals opprettet i valgt periode.
       const activeInPeriod = ownDeals.filter(
-        (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage) && d.createdAt >= start
+        (d) =>
+          !wonStageIds.has(d.stage) &&
+          !lostStageIds.has(d.stage) &&
+          d.createdAt >= start &&
+          d.createdAt <= end
       );
       const byStage = stages
         .map((s) => {
@@ -109,10 +128,13 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
       // Lukkede deals i perioden — vunnet via closedAt, tapt via updatedAt
       // (det finnes ikke noe eget "lostAt"-felt, så updatedAt er nærmeste vi har).
       const wonInPeriod = ownDeals.filter(
-        (d) => wonStageIds.has(d.stage) && (d.closedAt ?? d.updatedAt) >= start
+        (d) =>
+          wonStageIds.has(d.stage) &&
+          (d.closedAt ?? d.updatedAt) >= start &&
+          (d.closedAt ?? d.updatedAt) <= end
       );
       const lostInPeriod = ownDeals.filter(
-        (d) => lostStageIds.has(d.stage) && d.updatedAt >= start
+        (d) => lostStageIds.has(d.stage) && d.updatedAt >= start && d.updatedAt <= end
       );
       const closedTotal = wonInPeriod.length + lostInPeriod.length;
       const hitRate = closedTotal > 0 ? wonInPeriod.length / closedTotal : null;
@@ -179,19 +201,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           <h1 className="text-[26px] font-semibold tracking-tight">Statistikk</h1>
           <p className="mt-1 text-ink-soft">Selgerne rangert per målestørrelse.</p>
         </div>
-        <div className="flex rounded-full bg-mist/[0.05] p-1">
-          {PERIODS.map((p) => (
-            <Link
-              key={p.key}
-              href={`/statistikk?periode=${p.key}`}
-              className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition ${
-                periode === p.key ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              {p.label}
-            </Link>
-          ))}
-        </div>
+        <StatistikkPeriodPicker periode={periode} fra={fra} til={til} />
       </div>
 
       {sellerStats.length === 0 ? (

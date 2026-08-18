@@ -318,6 +318,27 @@ export async function deleteUser(
       message: "Kan ikke slette — brukeren har en e-postkonto koblet til. Fjern den først.",
     };
   }
+  const hasCalendar = await db.query.calendarAccounts.findFirst({
+    where: eq(calendarAccounts.userId, userId),
+  });
+  if (hasCalendar) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — brukeren har en kalenderkonto koblet til. Fjern den først.",
+    };
+  }
+  const hasAccessGrant = await db.query.emailAccessGrants.findFirst({
+    where: or(
+      eq(emailAccessGrants.ownerUserId, userId),
+      eq(emailAccessGrants.granteeUserId, userId)
+    ),
+  });
+  if (hasAccessGrant) {
+    return {
+      ok: false,
+      message: "Kan ikke slette — brukeren har innsynsforespørsler koblet til seg.",
+    };
+  }
   await db.update(contactEvents).set({ userId: null }).where(eq(contactEvents.userId, userId));
   await db.update(activities).set({ userId: null }).where(eq(activities.userId, userId));
   await db.delete(users).where(eq(users.id, userId));
@@ -1805,6 +1826,15 @@ export async function updateCompany(companyId: number, formData: FormData) {
 
   if (Object.keys(set).length === 0) return;
   await db.update(companies).set(set).where(eq(companies.id, companyId));
+
+  // Velger man en person som hovedkontakt, skal personen automatisk regnes
+  // som tilknyttet dette selskapet — selv om de ikke var koblet fra før.
+  if (typeof set.primaryContactId === "number") {
+    await db
+      .insert(companyPeople)
+      .values({ companyId, personId: set.primaryContactId })
+      .onConflictDoNothing();
+  }
 
   // Setter brukeren orgnummeret selv, regnes selskapet som bekreftet og vi
   // henter offisielle data med én gang.

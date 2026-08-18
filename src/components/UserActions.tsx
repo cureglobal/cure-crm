@@ -40,7 +40,6 @@ export default function UserActions({
       const res = await deleteUser(userId);
       setMessage({ ok: res.ok, text: res.message });
       if (res.ok) reset();
-      else setMode("idle");
     });
   }
 

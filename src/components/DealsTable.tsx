@@ -19,6 +19,7 @@ import DealOwnerCell from "@/components/DealOwnerCell";
 import DateField from "@/components/DateField";
 import BulkDateField from "@/components/BulkDateField";
 import BulkOwnerPicker from "@/components/BulkOwnerPicker";
+import BulkStagePicker from "@/components/BulkStagePicker";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { celebrateWin } from "@/components/WonCelebration";
 import type { Stage } from "@/lib/stages";
@@ -244,7 +245,6 @@ export default function DealsTable({
 }) {
   const [sort, setSort] = useState<Sort | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [stageChoice, setStageChoice] = useState("");
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
@@ -319,7 +319,6 @@ export default function DealsTable({
     startTransition(async () => {
       await bulkSetDealStage(ids, stageId);
       setBulkMessage(`Flyttet ${ids.length} deals.`);
-      setStageChoice("");
     });
   }
 
@@ -331,7 +330,6 @@ export default function DealsTable({
     startTransition(async () => {
       await bulkMarkDealsLost(ids, stageId, lostReasonId, comment);
       setBulkMessage(`Markerte ${ids.length} deals som tapt.`);
-      setStageChoice("");
     });
   }
 
@@ -434,7 +432,7 @@ export default function DealsTable({
 
   if (rows.length === 0) {
     return (
-      <div className="min-w-[880px]">
+      <div className="card min-w-[880px]">
         {header}
         <p className="px-5 py-10 text-center text-[13px] text-ink-faint">
           Ingen deals matcher filtrene.
@@ -443,32 +441,18 @@ export default function DealsTable({
     );
   }
 
-  // Ingen boks/overflow rundt listen — den skal bare flyte som resten av
-  // siden (også fordi overflow-x-auto her gjorde at popover-menyer inni
-  // radene, f.eks. datovelgeren, ble klippet av kortets ytterkant).
+  // Kortet har bevisst ingen overflow-egenskap — det gir visuell ramme
+  // (bakgrunn/kant/skygge fra .card) uten å klippe popover-menyer inni
+  // radene (overflow-x-auto gjorde det tidligere, siden CSS da også tvinger
+  // overflow-y til å klippe). Vertikal scrolling skjer fortsatt på siden.
   return (
     <div>
       {selected.size > 0 && (
         <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-6">
-          <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/95 px-4 py-3 shadow-pop backdrop-blur-xl">
+          <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-line bg-canvas/95 px-4 py-3 shadow-pop backdrop-blur-xl">
             <span className="text-[13px] font-medium">{selected.size} valgt</span>
 
-            <select
-              value={stageChoice}
-              onChange={(e) => {
-                setStageChoice(e.target.value);
-                applyStage(e.target.value);
-              }}
-              disabled={pending}
-              className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-            >
-              <option value="">Sett fase …</option>
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            <BulkStagePicker stages={stages} disabled={pending} onApply={applyStage} />
 
             <BulkOwnerPicker owners={owners} disabled={pending} onApply={applyBulkOwner} />
 
@@ -510,7 +494,7 @@ export default function DealsTable({
         </div>
       )}
 
-      <div className="min-w-[880px]">
+      <div className="card min-w-[880px]">
         {header}
         {groups ? (
           groups.map((g) => {
@@ -592,10 +576,7 @@ export default function DealsTable({
           dealCount={selected.size}
           pending={pending}
           onConfirm={confirmLost}
-          onCancel={() => {
-            setPendingLostStageId(null);
-            setStageChoice("");
-          }}
+          onCancel={() => setPendingLostStageId(null)}
         />
       )}
 

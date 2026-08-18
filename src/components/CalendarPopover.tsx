@@ -28,10 +28,12 @@ export default function CalendarPopover({
   value,
   onChoose,
   onClear,
+  align = "down",
 }: {
   value: string; // yyyy-mm-dd, eller "" for ingen valgt dato
   onChoose: (dateStr: string) => void;
   onClear?: () => void;
+  align?: "down" | "up"; // "up" for triggere nederst i vinduet (bulk-verktøylinjen)
 }) {
   const selected = parseDateStr(value);
   const [monthStart, setMonthStart] = useState(() => {
@@ -55,7 +57,11 @@ export default function CalendarPopover({
   const todayStr = toDateStr(new Date());
 
   return (
-    <div className="absolute left-0 top-full z-40 mt-1.5 w-60 rounded-xl border border-line bg-surface p-2.5 shadow-pop">
+    <div
+      className={`absolute left-0 z-40 w-60 rounded-xl border border-line bg-surface p-2.5 shadow-pop ${
+        align === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+      }`}
+    >
       <div className="mb-2 flex items-center justify-between px-0.5">
         <button
           type="button"

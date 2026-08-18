@@ -154,6 +154,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const companyOwner = allUsers.find((u) => u.id === company.ownerId);
+  // Alle personer i systemet, ikke bare de allerede koblet til dette
+  // selskapet — man skal kunne velge en hovedkontakt som ennå ikke er
+  // knyttet hit, og da kobles de automatisk (se updateCompany).
+  const allPeopleOptions = await db.query.people.findMany({ orderBy: [asc(people.name)] });
   const businessUnitRows = await getBusinessUnits();
 
   const stages = await getStages();
@@ -503,7 +507,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
               ownerId: company.ownerId,
               businessUnitId: company.businessUnitId,
             }}
-            people={contacts.map((c) => ({ id: c.id, name: c.name }))}
+            people={allPeopleOptions.map((p) => ({ id: p.id, name: p.name }))}
             users={allUsers.map((u) => ({ id: u.id, name: u.name }))}
             businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
           />

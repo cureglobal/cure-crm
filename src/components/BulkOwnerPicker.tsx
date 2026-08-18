@@ -62,7 +62,7 @@ export default function BulkOwnerPicker({
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={closePopover} />
-          <div className="absolute left-0 top-full z-40 mt-1.5 w-60 rounded-xl border border-line bg-surface p-1.5 shadow-pop">
+          <div className="absolute left-0 bottom-full z-40 mb-1.5 w-60 rounded-xl border border-line bg-surface p-1.5 shadow-pop">
             <p className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
               Eiere
             </p>

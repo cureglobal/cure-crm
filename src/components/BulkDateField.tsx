@@ -33,6 +33,7 @@ export default function BulkDateField({
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <CalendarPopover
             value=""
+            align="up"
             onChoose={(d) => {
               onChoose(d);
               setOpen(false);
