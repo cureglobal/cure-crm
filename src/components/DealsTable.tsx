@@ -23,6 +23,7 @@ import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
 export interface DealRow {
   id: number;
+  slug: string;
   companyName: string;
   logoUrl: string | null;
   companyBusinessUnitId: number | null;
@@ -123,7 +124,7 @@ function Row({
     >
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
-        <Link href={`/leads/${deal.id}`} className="flex min-w-0 items-center gap-3">
+        <Link href={`/leads/${deal.slug}`} className="flex min-w-0 items-center gap-3">
           <CompanyLogo logoUrl={deal.logoUrl} name={deal.companyName} size={32} radius={9} />
           <span className="min-w-0">
             <span className="block truncate text-[13.5px] font-medium hover:text-accent">

@@ -9,12 +9,12 @@ export default function AccessRequestCard({
   grantId,
   requesterName,
   companyName,
-  dealId,
+  dealSlug,
 }: {
   grantId: number;
   requesterName: string;
   companyName: string;
-  dealId: number | null;
+  dealSlug: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   return (
@@ -25,8 +25,8 @@ export default function AccessRequestCard({
       <p className="flex-1 text-[13.5px]">
         <span className="font-medium">{requesterName}</span> ber om innsyn i
         e-postdialogen din med{" "}
-        {dealId ? (
-          <Link href={`/leads/${dealId}`} className="font-medium text-accent hover:underline">
+        {dealSlug ? (
+          <Link href={`/leads/${dealSlug}`} className="font-medium text-accent hover:underline">
             {companyName}
           </Link>
         ) : (

@@ -232,6 +232,7 @@ export default function PipelineView({
     () =>
       filtered.map((r) => ({
         id: r.id,
+        slug: r.slug,
         title: r.title,
         companyName: r.companyName,
         logoUrl: r.logoUrl,

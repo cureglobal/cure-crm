@@ -41,7 +41,8 @@ import {
   searchBrreg,
   type BrregHit,
 } from "@/lib/brreg";
-import { getStages } from "@/lib/stages.server";
+import { getStages, getDefaultStageId } from "@/lib/stages.server";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import { firstStageId } from "@/lib/stages";
 import { syncAccount } from "@/lib/imap";
 import { scanWebsite, type SiteScanResult } from "@/lib/siteScan";
@@ -93,7 +94,7 @@ async function taggedNames(dealId: number, ownerId: number): Promise<string[]> {
 function revalidateDealViews(dealId?: number) {
   revalidatePath("/");
   revalidatePath("/leads");
-  revalidatePath("/leads/[id]", "page");
+  revalidatePath("/leads/[slug]", "page");
   revalidatePath("/companies");
   revalidatePath("/companies/[id]", "page");
   revalidatePath("/people");
@@ -410,7 +411,7 @@ export async function createDeal(formData: FormData) {
       companyId: company.id,
       title: dealTitle || "Ny deal",
       ownerId: me.id,
-      stage: firstStageId(await getStages()),
+      stage: await getDefaultStageId(),
       followUpAt: todayFollowUpDate(),
     })
     .returning();
@@ -423,7 +424,8 @@ export async function createDeal(formData: FormData) {
   });
 
   revalidateDealViews(deal.id);
-  redirect(`/leads/${deal.id}`);
+  const slug = (await getDealSlugMap()).get(deal.id) ?? deal.id;
+  redirect(`/leads/${slug}`);
 }
 
 // Ny deal rett på et kjent selskap (fra selskapssiden).
@@ -444,7 +446,7 @@ export async function createDealForCompany(companyId: number, formData: FormData
       companyId,
       title,
       ownerId: me.id,
-      stage: firstStageId(await getStages()),
+      stage: await getDefaultStageId(),
       value: valueRaw ? Number(valueRaw) : null,
       followUpAt: dateStr ? new Date(`${dateStr}T09:00:00`) : null,
     })
@@ -458,7 +460,8 @@ export async function createDealForCompany(companyId: number, formData: FormData
   });
 
   revalidateDealViews(deal.id);
-  redirect(`/leads/${deal.id}`);
+  const slug = (await getDealSlugMap()).get(deal.id) ?? deal.id;
+  redirect(`/leads/${slug}`);
 }
 
 export async function updateDealStage(dealId: number, stage: string) {
@@ -740,6 +743,18 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
     .where(eq(companies.id, deal.companyId));
 
   revalidateDealViews(dealId);
+}
+
+// Klikk-for-å-endre-navn direkte på deal-siden (overskriften). Returnerer
+// den nye, gjeldende slug-en slik at klienten kan oppdatere adressefeltet.
+export async function renameDeal(dealId: number, title: string): Promise<{ slug: string } | null> {
+  await requireUser();
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  await db.update(deals).set({ title: trimmed, updatedAt: new Date() }).where(eq(deals.id, dealId));
+  revalidateDealViews(dealId);
+  const slug = (await getDealSlugMap()).get(dealId) ?? String(dealId);
+  return { slug };
 }
 
 // Inline-redigering fra listevisningen: kun feltene som sendes inn oppdateres.
@@ -1107,7 +1122,7 @@ export async function createDealFromEstimate(
   formData: FormData,
   lines: EstimateLineInput[]
 ): Promise<
-  | { ok: true; dealId: number; companyName: string; logoUrl: string | null }
+  | { ok: true; dealId: number; dealSlug: string; companyName: string; logoUrl: string | null }
   | { ok: false; message: string }
 > {
   const me = await requireUser();
@@ -1148,7 +1163,7 @@ export async function createDealFromEstimate(
       companyId: company.id,
       title: dealTitle || "Ny deal",
       ownerId: me.id,
-      stage: firstStageId(await getStages()),
+      stage: await getDefaultStageId(),
       followUpAt: todayFollowUpDate(),
     })
     .returning();
@@ -1163,7 +1178,14 @@ export async function createDealFromEstimate(
   await saveEstimateToDeal(deal.id, lines);
 
   revalidateDealViews(deal.id);
-  return { ok: true, dealId: deal.id, companyName: company.name, logoUrl: company.logoUrl };
+  const dealSlug = (await getDealSlugMap()).get(deal.id) ?? String(deal.id);
+  return {
+    ok: true,
+    dealId: deal.id,
+    dealSlug,
+    companyName: company.name,
+    logoUrl: company.logoUrl,
+  };
 }
 
 // ---------- Referanseprosjekter ----------
@@ -1594,7 +1616,7 @@ export async function updatePerson(personId: number, formData: FormData) {
   revalidatePath("/people");
   revalidatePath(`/people/${personId}`);
   revalidatePath("/companies/[id]", "page");
-  revalidatePath("/leads/[id]", "page");
+  revalidatePath("/leads/[slug]", "page");
 }
 
 export async function createPerson(formData: FormData) {
@@ -1812,7 +1834,13 @@ export async function globalSearch(query: string) {
     .where(or(like(companies.name, needle), like(companies.orgName, needle)))
     .limit(6);
 
-  return { deals: dealRows, people: peopleRows, companies: companyRows };
+  const slugMap = await getDealSlugMap();
+  const dealsWithSlug = dealRows.map((d) => ({
+    ...d,
+    slug: slugMap.get(d.id) ?? String(d.id),
+  }));
+
+  return { deals: dealsWithSlug, people: peopleRows, companies: companyRows };
 }
 
 // ---------- Brønnøysundregistrene ----------

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import {
   db,
@@ -42,16 +42,18 @@ import AccessRequestCard from "@/components/AccessRequestCard";
 import SendQuoteButton from "@/components/SendQuoteButton";
 import DialogLog from "@/components/DialogLog";
 import DealOwners from "@/components/DealOwners";
+import DealTitleEdit from "@/components/DealTitleEdit";
 import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getLostReasons } from "@/lib/lostReasons.server";
+import { getDealSlugMap, resolveDealSlugToId } from "@/lib/dealSlugs.server";
 
-export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
+export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   const me = await requireUser();
-  const { id } = await params;
-  const dealId = Number(id);
-  if (!Number.isFinite(dealId)) notFound();
+  const { slug } = await params;
+  const dealId = await resolveDealSlugToId(slug);
+  if (dealId == null) notFound();
 
   const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
   if (!deal) notFound();
@@ -59,6 +61,12 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
     where: eq(companies.id, deal.companyId),
   });
   if (!company) notFound();
+
+  const slugMap = await getDealSlugMap();
+  const canonicalSlug = slugMap.get(dealId);
+  // Gamle tallbaserte lenker (/leads/25) og utdaterte slugs (etter
+  // omdøping) sendes videre til riktig, gjeldende URL.
+  if (canonicalSlug && canonicalSlug !== slug) redirect(`/leads/${canonicalSlug}`);
 
   const owner = await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
 
@@ -201,7 +209,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
             >
               {company.name}
             </Link>
-            <h1 className="text-[24px] font-semibold tracking-tight">{deal.title}</h1>
+            <DealTitleEdit dealId={deal.id} initialTitle={deal.title} />
             <div className="mt-1 flex items-center gap-3 text-[13px] text-ink-soft">
               {company.website && (
                 <a
@@ -250,7 +258,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
             grantId={r.id}
             requesterName={r.requesterName}
             companyName={company.name}
-            dealId={deal.id}
+            dealSlug={canonicalSlug ?? String(deal.id)}
           />
         </div>
       ))}
@@ -296,7 +304,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[id]">) {
                 {otherDeals.map((d) => (
                   <li key={d.id}>
                     <Link
-                      href={`/leads/${d.id}`}
+                      href={`/leads/${slugMap.get(d.id) ?? d.id}`}
                       className="-mx-2 flex items-center gap-2.5 rounded-xl px-2 py-2 transition hover:bg-mist/[0.03]"
                     >
                       <span

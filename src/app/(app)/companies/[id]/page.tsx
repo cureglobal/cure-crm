@@ -23,6 +23,7 @@ import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import CompanyLogoUpload from "@/components/CompanyLogoUpload";
 import Avatar from "@/components/Avatar";
 import EmailThread from "@/components/EmailThread";
@@ -65,6 +66,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     .leftJoin(users, eq(deals.ownerId, users.id))
     .where(eq(deals.companyId, companyId))
     .orderBy(desc(deals.updatedAt));
+  const dealSlugMap = await getDealSlugMap();
 
   const contacts = await db
     .select({
@@ -288,7 +290,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   return (
                     <li key={d.id}>
                       <Link
-                        href={`/leads/${d.id}`}
+                        href={`/leads/${dealSlugMap.get(d.id) ?? d.id}`}
                         className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-mist/[0.03]"
                       >
                         <span

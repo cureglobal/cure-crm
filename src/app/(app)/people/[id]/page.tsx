@@ -14,6 +14,7 @@ import { linkPersonToCompany, unlinkPersonFromCompany, updatePerson } from "@/li
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import DeletePersonButton from "@/components/DeletePersonButton";
@@ -63,6 +64,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
         .where(inArray(deals.companyId, companyIds))
         .orderBy(desc(deals.updatedAt))
     : [];
+  const dealSlugMap = await getDealSlugMap();
 
   const availableCompanies = await db.query.companies.findMany({
     orderBy: [asc(companies.name)],
@@ -226,7 +228,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                 return (
                   <li key={d.id}>
                     <Link
-                      href={`/leads/${d.id}`}
+                      href={`/leads/${dealSlugMap.get(d.id) ?? d.id}`}
                       className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition hover:bg-mist/[0.03]"
                     >
                       <span

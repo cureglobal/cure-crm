@@ -10,6 +10,7 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import { formatDateTime, formatMoney, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
@@ -103,6 +104,11 @@ export default async function Dashboard() {
   for (const d of allDeals) {
     if (!dealForCompany.has(d.companyId)) dealForCompany.set(d.companyId, d.id);
   }
+  const slugMap = await getDealSlugMap();
+  function dealSlugForCompany(companyId: number): string | null {
+    const dealId = dealForCompany.get(companyId);
+    return dealId == null ? null : (slugMap.get(dealId) ?? String(dealId));
+  }
 
   const recent = await db
     .select({
@@ -152,7 +158,7 @@ export default async function Dashboard() {
               grantId={r.id}
               requesterName={r.requesterName}
               companyName={r.companyName}
-              dealId={dealForCompany.get(r.companyId) ?? null}
+              dealSlug={dealSlugForCompany(r.companyId)}
             />
           ))}
         </div>
@@ -205,7 +211,10 @@ export default async function Dashboard() {
                       </span>
                     </p>
                     <p className="mt-0.5 text-[12px] text-ink-faint">
-                      <Link href={`/leads/${a.dealId}`} className="hover:text-accent">
+                      <Link
+                        href={`/leads/${slugMap.get(a.dealId) ?? a.dealId}`}
+                        className="hover:text-accent"
+                      >
                         {a.companyName} · {a.dealTitle}
                       </Link>{" "}
                       · {formatDateTime(a.createdAt)}

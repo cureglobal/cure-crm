@@ -13,6 +13,7 @@ import { CalendarDays } from "lucide-react";
 
 export interface KanbanDeal {
   id: number;
+  slug: string;
   title: string;
   companyName: string;
   logoUrl: string | null;
@@ -145,7 +146,7 @@ export default function KanbanBoard({
                     return (
                       <Link
                         key={deal.id}
-                        href={`/leads/${deal.id}`}
+                        href={`/leads/${deal.slug}`}
                         draggable
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/deal-id", String(deal.id));

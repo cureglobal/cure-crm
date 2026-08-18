@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db, deals as dealsTable, companies, referenceProjects as referenceProjectsTable } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import EstimateTool from "@/components/EstimateTool";
 import type { ReferenceProjectData } from "@/components/ReferenceProjects";
 
@@ -24,7 +25,8 @@ export default async function EstimatePage({ searchParams }: PageProps<"/estimat
     }
   }
 
-  const dealOptions = await db
+  const slugMap = await getDealSlugMap();
+  const dealOptionRows = await db
     .select({
       id: dealsTable.id,
       title: dealsTable.title,
@@ -35,6 +37,10 @@ export default async function EstimatePage({ searchParams }: PageProps<"/estimat
     .from(dealsTable)
     .innerJoin(companies, eq(dealsTable.companyId, companies.id))
     .orderBy(asc(companies.name));
+  const dealOptions = dealOptionRows.map((d) => ({
+    ...d,
+    slug: slugMap.get(d.id) ?? String(d.id),
+  }));
 
   const referenceRows = await db.query.referenceProjects.findMany({
     orderBy: [asc(referenceProjectsTable.name)],

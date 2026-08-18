@@ -11,16 +11,30 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const error = params.error;
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden p-6">
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="absolute inset-0 -z-20 h-full w-full object-cover motion-reduce:hidden"
+      >
+        <source src="/videos/login-background.mp4" type="video/mp4" />
+      </video>
+      <div className="absolute inset-0 -z-10 bg-black/45" />
+
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-chip-dark text-xl font-semibold text-white shadow-pop">
-            C
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          {/* eslint-disable-next-line @next/next/no-img-element -- lite, statisk logobilde, ikke verdt next/image her */}
+          <img
+            src="/cure-logo.png"
+            alt="Cure"
+            className="mx-auto mb-4 h-14 w-14 rounded-2xl object-cover shadow-pop"
+          />
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
             {hasUsers ? "Logg inn i Cure CRM" : "Velkommen til Cure CRM"}
           </h1>
-          <p className="mt-1.5 text-ink-soft">
+          <p className="mt-1.5 text-white/70">
             {hasUsers
               ? "Bruk e-post og passord."
               : "Opprett administratorkontoen din for å komme i gang."}

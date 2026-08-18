@@ -42,6 +42,7 @@ interface DealOption {
   companyId: number;
   companyName: string;
   logoUrl: string | null;
+  slug: string;
 }
 
 interface CustomRow {
@@ -124,6 +125,7 @@ export default function EstimateTool({
   const [createPending, startCreate] = useTransition();
   const [createdDeal, setCreatedDeal] = useState<{
     id: number;
+    slug: string;
     companyName: string;
     logoUrl: string | null;
   } | null>(null);
@@ -287,7 +289,12 @@ export default function EstimateTool({
     startCreate(async () => {
       const res = await createDealFromEstimate(fd, buildLines());
       if (res.ok) {
-        setCreatedDeal({ id: res.dealId, companyName: res.companyName, logoUrl: res.logoUrl });
+        setCreatedDeal({
+          id: res.dealId,
+          slug: res.dealSlug,
+          companyName: res.companyName,
+          logoUrl: res.logoUrl,
+        });
       } else {
         setSaveMessage({ ok: false, text: res.message });
       }
@@ -745,7 +752,7 @@ export default function EstimateTool({
                 </p>
               </div>
               <Link
-                href={`/leads/${createdDeal.id}`}
+                href={`/leads/${createdDeal.slug}`}
                 className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
               >
                 Åpne deal
@@ -779,7 +786,7 @@ export default function EstimateTool({
                       <p className="truncate text-[12px] text-ink-soft">{selectedDeal.title}</p>
                     </div>
                     <Link
-                      href={`/leads/${selectedDeal.id}`}
+                      href={`/leads/${selectedDeal.slug}`}
                       className="shrink-0 text-[12.5px] font-medium text-accent hover:underline"
                     >
                       Åpne deal

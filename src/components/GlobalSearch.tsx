@@ -12,6 +12,7 @@ interface DealHit {
   title: string;
   companyName: string;
   logoUrl: string | null;
+  slug: string;
 }
 interface PersonHit {
   id: number;
@@ -94,7 +95,7 @@ function ResultsList({
           {results.deals.map((d) => (
             <ResultRow
               key={d.id}
-              href={`/leads/${d.id}`}
+              href={`/leads/${d.slug}`}
               onNavigate={onNavigate}
               icon={<CompanyLogo logoUrl={d.logoUrl} name={d.companyName} size={24} radius={7} />}
               title={d.title}

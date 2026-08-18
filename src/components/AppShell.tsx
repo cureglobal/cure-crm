@@ -75,9 +75,12 @@ export default function AppShell({
           }`}
         >
           <Link href="/" className="flex items-center gap-2.5" title={collapsed ? "Cure CRM" : undefined}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-chip-dark text-[15px] font-semibold text-white">
-              C
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element -- lite, statisk logobilde, ikke verdt next/image her */}
+            <img
+              src="/cure-logo.png"
+              alt="Cure"
+              className="h-8 w-8 shrink-0 rounded-[9px] object-cover"
+            />
             {!collapsed && (
               <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight">
                 Cure CRM

@@ -5,6 +5,7 @@ import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import PipelineView from "@/components/PipelineView";
 import NewDealButton from "@/components/NewDealButton";
 import type { DealRow } from "@/components/DealsTable";
@@ -59,11 +60,13 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   const stages = await getStages();
   const businessUnits = await getBusinessUnits();
   const lostReasons = await getLostReasons();
+  const slugMap = await getDealSlugMap();
   const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
   const dealRows: DealRow[] = [...rows]
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99))
     .map((d) => ({
       id: d.id,
+      slug: slugMap.get(d.id) ?? String(d.id),
       companyName: d.companyName,
       logoUrl: d.logoUrl,
       companyBusinessUnitId: d.companyBusinessUnitId,
