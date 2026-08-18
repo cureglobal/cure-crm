@@ -129,15 +129,31 @@ export default async function Dashboard() {
     .limit(8);
 
   const stats = [
-    { label: "Oppfølginger denne uken", value: thisWeek.length, icon: <CalendarDays size={16} /> },
+    {
+      label: "Oppfølginger denne uken",
+      value: thisWeek.length,
+      icon: <CalendarDays size={16} />,
+      href: "/leads?view=liste&dato=uke&aktive=1",
+    },
     {
       label: "Oppfølginger forfalt",
       value: overdue.length,
       icon: <TrendingUp size={16} />,
       danger: overdue.length > 0,
+      href: "/leads?view=liste&dato=forfalt&aktive=1",
     },
-    { label: "Verdi i pipeline", value: formatMoney(pipelineValue), icon: <Coins size={16} /> },
-    { label: "Solgt siste 30 dager", value: formatMoney(soldLast30Value), icon: <CircleCheck size={16} /> },
+    {
+      label: "Verdi i pipeline",
+      value: formatMoney(pipelineValue),
+      icon: <Coins size={16} />,
+      href: "/leads?view=liste&aktive=1",
+    },
+    {
+      label: "Solgt siste 30 dager",
+      value: formatMoney(soldLast30Value),
+      icon: <CircleCheck size={16} />,
+      href: "/statistikk?periode=30",
+    },
   ];
 
   return (
@@ -166,7 +182,11 @@ export default async function Dashboard() {
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.label} className="card p-5">
+          <Link
+            key={s.label}
+            href={s.href}
+            className="card p-5 transition hover:bg-mist/[0.03]"
+          >
             <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-[9px] ${s.danger ? "bg-danger/10 text-danger" : "bg-accent-soft text-accent"}`}>
               {s.icon}
             </div>
@@ -174,7 +194,7 @@ export default async function Dashboard() {
               {s.value}
             </p>
             <p className="text-[12.5px] text-ink-soft">{s.label}</p>
-          </div>
+          </Link>
         ))}
       </div>
 

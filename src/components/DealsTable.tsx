@@ -449,62 +449,64 @@ export default function DealsTable({
   return (
     <div>
       {selected.size > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/60 px-4 py-3">
-          <span className="text-[13px] font-medium">{selected.size} valgt</span>
+        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-6">
+          <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-accent/25 bg-accent-soft/95 px-4 py-3 shadow-pop backdrop-blur-xl">
+            <span className="text-[13px] font-medium">{selected.size} valgt</span>
 
-          <select
-            value={stageChoice}
-            onChange={(e) => {
-              setStageChoice(e.target.value);
-              applyStage(e.target.value);
-            }}
-            disabled={pending}
-            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-          >
-            <option value="">Sett fase …</option>
-            {stages.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-
-          <BulkOwnerPicker owners={owners} disabled={pending} onApply={applyBulkOwner} />
-
-          <BulkDateField onChoose={applyBulkDate} disabled={pending} />
-
-          {confirmingDelete ? (
-            <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
-              <span className="text-[12.5px] text-danger">Slette {selected.size} deals?</span>
-              <button onClick={applyDelete} disabled={pending} className="btn btn-danger !py-1">
-                Ja, slett
-              </button>
-              <button
-                onClick={() => setConfirmingDelete(false)}
-                className="text-[12.5px] font-medium text-ink-soft hover:text-ink"
-              >
-                Avbryt
-              </button>
-            </span>
-          ) : (
-            <button
-              onClick={() => setConfirmingDelete(true)}
+            <select
+              value={stageChoice}
+              onChange={(e) => {
+                setStageChoice(e.target.value);
+                applyStage(e.target.value);
+              }}
               disabled={pending}
-              className="btn btn-danger !py-1.5"
+              className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
             >
-              <Trash2 size={13} />
-              Slett
+              <option value="">Sett fase …</option>
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+
+            <BulkOwnerPicker owners={owners} disabled={pending} onApply={applyBulkOwner} />
+
+            <BulkDateField onChoose={applyBulkDate} disabled={pending} />
+
+            {confirmingDelete ? (
+              <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
+                <span className="text-[12.5px] text-danger">Slette {selected.size} deals?</span>
+                <button onClick={applyDelete} disabled={pending} className="btn btn-danger !py-1">
+                  Ja, slett
+                </button>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-[12.5px] font-medium text-ink-soft hover:text-ink"
+                >
+                  Avbryt
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                disabled={pending}
+                className="btn btn-danger !py-1.5"
+              >
+                <Trash2 size={13} />
+                Slett
+              </button>
+            )}
+
+            {bulkMessage && <span className="text-[12.5px] text-ink-soft">{bulkMessage}</span>}
+
+            <button
+              onClick={clearSelection}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/[0.06]"
+            >
+              <X size={15} />
             </button>
-          )}
-
-          {bulkMessage && <span className="text-[12.5px] text-ink-soft">{bulkMessage}</span>}
-
-          <button
-            onClick={clearSelection}
-            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/[0.06]"
-          >
-            <X size={15} />
-          </button>
+          </div>
         </div>
       )}
 
