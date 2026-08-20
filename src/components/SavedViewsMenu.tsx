@@ -14,8 +14,20 @@ import { Bookmark, Plus, Trash2 } from "lucide-react";
 
 // Lagre/gjenåpne navngitte, delbare filterkombinasjoner for Pipeline-siden.
 // Delt/team-synlig — alle ser samme liste. `filters` er gjeldende
-// filtertilstand fra PipelineView, klar til å lagres uendret.
-export default function SavedViewsMenu({ filters }: { filters: SavedViewFilters }) {
+// filtertilstand fra PipelineView, klar til å lagres uendret. Pipeline-
+// bryteren bor her også (ikke som egen alltid-synlig rad) — det er ikke
+// noe man bytter mellom så ofte at det trenger fast plass i verktøylinjen.
+export default function SavedViewsMenu({
+  filters,
+  pipelines,
+  pipelineId,
+  onPipelineChange,
+}: {
+  filters: SavedViewFilters;
+  pipelines: { id: number; name: string }[];
+  pipelineId: number;
+  onPipelineChange: (id: number) => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<SavedViewRow[] | null>(null);
@@ -79,6 +91,33 @@ export default function SavedViewsMenu({ filters }: { filters: SavedViewFilters 
             className="absolute left-0 top-full z-40 mt-1.5 w-72 rounded-xl border border-line bg-surface p-2 shadow-pop"
             onClick={(e) => e.stopPropagation()}
           >
+            {pipelines.length > 1 && (
+              <div className="mb-2 border-b border-line pb-2">
+                <p className="mb-1.5 px-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
+                  Pipeline
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {pipelines.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        onPipelineChange(p.id);
+                        closeMenu();
+                      }}
+                      className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition ${
+                        pipelineId === p.id
+                          ? "bg-accent-soft text-accent"
+                          : "bg-mist/[0.05] text-ink-soft hover:text-ink"
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mb-1 flex items-center justify-between px-1">
               <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
                 Lagrede visninger

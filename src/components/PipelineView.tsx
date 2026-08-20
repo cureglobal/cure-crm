@@ -386,22 +386,6 @@ export default function PipelineView({
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {pipelines.length > 1 && (
-          <div className="flex rounded-full bg-mist/[0.05] p-1">
-            {pipelines.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPipelineId(p.id)}
-                className={`rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-                  pipelineId === p.id ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
-
         <div className="flex rounded-full bg-mist/[0.05] p-1">
           <button
             onClick={() => setView("kanban")}
@@ -442,7 +426,12 @@ export default function PipelineView({
           />
         </button>
 
-        <SavedViewsMenu filters={currentFilters} />
+        <SavedViewsMenu
+          filters={currentFilters}
+          pipelines={pipelines}
+          pipelineId={pipelineId}
+          onPipelineChange={setPipelineId}
+        />
 
         {view === "liste" && (
           <button
