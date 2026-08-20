@@ -17,6 +17,7 @@ import { formatDateTime } from "@/lib/format";
 import SyncButton from "@/components/SyncButton";
 import CalendarSyncButton from "@/components/CalendarSyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
+import DuplicateCompaniesFinder from "@/components/DuplicateCompaniesFinder";
 import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
@@ -37,6 +38,7 @@ import {
   Landmark,
   CalendarDays,
   ThumbsDown,
+  GitMerge,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -353,6 +355,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           </div>
         </div>
         <BrregMatchAll unverified={unverifiedCount} />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <GitMerge size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Dupliserte selskaper</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Slå sammen selskaper som ser ut til å være det samme kundeforholdet.
+            </p>
+          </div>
+        </div>
+        <DuplicateCompaniesFinder />
       </section>
 
       <section className="card p-6">

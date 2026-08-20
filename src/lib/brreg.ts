@@ -118,7 +118,10 @@ const UNLIKELY_FORMS = [
   "enkeltpersonforetak", "kommune", "fylke", "konkursbo",
 ];
 
-function normalizeName(value: string): string {
+// Eksportert for gjenbruk i dupliserte-selskaper-søket (findDuplicateCompanies)
+// — samme normalisering brukes til å sammenligne selskapsnavn internt som til
+// å matche mot Enhetsregisteret.
+export function normalizeName(value: string): string {
   return value
     .toLowerCase()
     .replace(/&/g, " og ")

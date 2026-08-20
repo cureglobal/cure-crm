@@ -40,6 +40,7 @@ import {
   fetchBrregCompany,
   matchBrregCompany,
   searchBrreg,
+  normalizeName,
   type BrregHit,
 } from "@/lib/brreg";
 import { getStages, getDefaultStageId } from "@/lib/stages.server";
@@ -2301,10 +2302,25 @@ export async function mergeCompanies(
 
     await db.delete(companies).where(inArray(companies.id, loserIds));
 
+    // Hent fersk offisiell info fra Enhetsregisteret på det gjenværende
+    // selskapet — sikrer at man alltid ender opp med komplett bedriftsinfo
+    // etter en sammenslåing, ikke bare det som tilfeldigvis lå på ett av de
+    // opprinnelige duplikatene. Beste innsats: feiler oppslaget (f.eks. nett),
+    // skal ikke selve sammenslåingen rapporteres som mislykket.
+    let brregNote = "";
+    const merged = await db.query.companies.findFirst({ where: eq(companies.id, keepId) });
+    if (merged?.orgNumber) {
+      const res = await syncCompanyFromBrreg(keepId).catch(() => null);
+      if (res?.ok) brregNote = " Oppdatert mot Enhetsregisteret.";
+    } else if (merged) {
+      const res = await autoMatchCompany(keepId).catch(() => null);
+      if (res?.matched) brregNote = " Koblet mot Enhetsregisteret.";
+    }
+
     revalidateDealViews();
     revalidatePath("/companies");
     revalidatePath(`/companies/${keepId}`);
-    return { ok: true, message: `Slo sammen ${loserIds.length + 1} selskaper.` };
+    return { ok: true, message: `Slo sammen ${loserIds.length + 1} selskaper.${brregNote}` };
   } catch (err) {
     console.error("mergeCompanies feilet", err);
     return {
@@ -2312,6 +2328,72 @@ export async function mergeCompanies(
       message: "Sammenslåing feilet underveis. Sjekk selskapene og prøv igjen.",
     };
   }
+}
+
+export interface DuplicateGroup {
+  reason: "orgnr" | "domene" | "navn";
+  matchValue: string;
+  companies: {
+    id: number;
+    name: string;
+    orgNumber: string | null;
+    domain: string | null;
+    dealCount: number;
+  }[];
+}
+
+// Finner sannsynlige duplikat-selskaper for hurtig-sammenslåing i
+// innstillinger — sjekker fra sikrest til svakest signal, og lar hvert
+// selskap inngå i maks én gruppe (det sterkeste signalet vinner).
+export async function findDuplicateCompanies(): Promise<DuplicateGroup[]> {
+  await requireUser();
+  const rows = await db.query.companies.findMany({ orderBy: [asc(companies.name)] });
+  const dealRows = await db.query.deals.findMany();
+  const dealCountByCompany = new Map<number, number>();
+  for (const d of dealRows) {
+    dealCountByCompany.set(d.companyId, (dealCountByCompany.get(d.companyId) ?? 0) + 1);
+  }
+
+  function toLite(c: (typeof rows)[number]) {
+    return {
+      id: c.id,
+      name: c.name,
+      orgNumber: c.orgNumber,
+      domain: c.domain,
+      dealCount: dealCountByCompany.get(c.id) ?? 0,
+    };
+  }
+
+  const groups: DuplicateGroup[] = [];
+  const grouped = new Set<number>();
+
+  function collectGroups(
+    reason: DuplicateGroup["reason"],
+    keyFor: (c: (typeof rows)[number]) => string | null
+  ) {
+    const byKey = new Map<string, (typeof rows)[number][]>();
+    for (const c of rows) {
+      if (grouped.has(c.id)) continue;
+      const key = keyFor(c);
+      if (!key) continue;
+      const list = byKey.get(key) ?? [];
+      list.push(c);
+      byKey.set(key, list);
+    }
+    for (const [key, list] of byKey) {
+      if (list.length < 2) continue;
+      groups.push({ reason, matchValue: key, companies: list.map(toLite) });
+      for (const c of list) grouped.add(c.id);
+    }
+  }
+
+  // Sikrest først: samme org.nr, så samme nettside-domene, og til slutt
+  // likt normalisert navn (fjerner AS/ASA/tegnsetting) som svakeste signal.
+  collectGroups("orgnr", (c) => c.orgNumber || null);
+  collectGroups("domene", (c) => c.domain || null);
+  collectGroups("navn", (c) => normalizeName(c.name) || null);
+
+  return groups;
 }
 
 // ---------- Kontakt med selskap ----------
