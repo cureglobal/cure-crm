@@ -37,6 +37,18 @@ export default async function CompaniesPage() {
     peopleByCompany.set(l.companyId, list);
   }
 
+  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
+  const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
+  const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
+
+  const coOwnerRows = await db.query.companyOwners.findMany();
+  const coOwnerIdsByCompany = new Map<number, number[]>();
+  for (const r of coOwnerRows) {
+    const list = coOwnerIdsByCompany.get(r.companyId) ?? [];
+    list.push(r.userId);
+    coOwnerIdsByCompany.set(r.companyId, list);
+  }
+
   const rows: CompanyRow[] = allCompanies.map((c) => {
     const own = allDeals.filter((d) => d.companyId === c.id);
     const open = own.filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage));
@@ -50,18 +62,21 @@ export default async function CompaniesPage() {
       website: c.website,
       dealCount: own.length,
       openCount: open.length,
-      openValue: open.reduce((acc, d) => acc + (d.value ?? 0), 0),
-      wonValue: own
-        .filter((d) => wonStageIds.has(d.stage))
-        .reduce((acc, d) => acc + (d.value ?? 0), 0),
+      ownerId: c.ownerId,
+      ownerName: c.ownerId == null ? "" : (ownerNames.get(c.ownerId) ?? ""),
+      ownerAvatarUrl: c.ownerId == null ? null : (ownerAvatars.get(c.ownerId) ?? null),
+      coOwnerIds: coOwnerIdsByCompany.get(c.id) ?? [],
       people: peopleByCompany.get(c.id) ?? [],
     };
   });
 
-  const totalOpen = rows.reduce((acc, r) => acc + r.openValue, 0);
-  const totalWon = rows.reduce((acc, r) => acc + r.wonValue, 0);
+  const totalOpen = allDeals
+    .filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage))
+    .reduce((acc, d) => acc + (d.value ?? 0), 0);
+  const totalWon = allDeals
+    .filter((d) => wonStageIds.has(d.stage))
+    .reduce((acc, d) => acc + (d.value ?? 0), 0);
 
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const businessUnitRows = await getBusinessUnits();
 
   return (
@@ -79,7 +94,7 @@ export default async function CompaniesPage() {
         rows={rows}
         totalOpen={totalOpen}
         totalWon={totalWon}
-        owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+        owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
         businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
       />
     </div>

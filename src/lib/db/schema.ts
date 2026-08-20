@@ -176,6 +176,22 @@ export const dealOwners = sqliteTable("deal_owners", {
     .$defaultFn(() => new Date()),
 });
 
+// Med-eiere på et selskap ("våre kontakter"), i tillegg til hoved-eieren
+// (companies.ownerId). Speilet etter deal_owners — selve UNIQUE-
+// constrainten ligger i migrate.ts.
+export const companyOwners = sqliteTable("company_owners", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // En person eksisterer på egne bein og kan knyttes til flere selskaper.
 export const people = sqliteTable("people", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -312,6 +328,7 @@ export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;
 export type DealOwner = typeof dealOwners.$inferSelect;
+export type CompanyOwner = typeof companyOwners.$inferSelect;
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type CalendarAccount = typeof calendarAccounts.$inferSelect;
 export type EmailMessage = typeof emailMessages.$inferSelect;

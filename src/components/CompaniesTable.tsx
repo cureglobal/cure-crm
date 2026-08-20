@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
+import CompanyOwnerCell from "@/components/CompanyOwnerCell";
 import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
 import {
   bulkDeleteCompanies,
@@ -38,20 +39,21 @@ export interface CompanyRow {
   website: string | null;
   dealCount: number;
   openCount: number;
-  openValue: number;
-  wonValue: number;
+  ownerId: number | null;
+  ownerName: string;
+  ownerAvatarUrl: string | null;
+  coOwnerIds: number[];
   people: string[];
 }
 
-const GRID = "grid grid-cols-[22px_1.8fr_110px_70px_1fr_1fr_1.3fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.8fr_110px_70px_90px_1.3fr] items-center gap-3";
 
-type SortKey = "navn" | "orgnr" | "deals" | "apen" | "vunnet" | "personer";
+type SortKey = "navn" | "orgnr" | "deals" | "eier" | "personer";
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
   navn: 1,
   orgnr: 1,
   deals: -1,
-  apen: -1,
-  vunnet: -1,
+  eier: 1,
   personer: -1,
 };
 
@@ -102,7 +104,7 @@ export default function CompaniesTable({
   rows: CompanyRow[];
   totalOpen: number;
   totalWon: number;
-  owners: { id: number; name: string }[];
+  owners: { id: number; name: string; avatarDataUrl: string | null }[];
   businessUnits: { id: number; name: string }[];
 }) {
   const [search, setSearch] = useState("");
@@ -149,10 +151,8 @@ export default function CompaniesTable({
             return dir * ((a.orgNumber ?? "").localeCompare(b.orgNumber ?? "", "nb"));
           case "deals":
             return dir * (a.dealCount - b.dealCount);
-          case "apen":
-            return dir * (a.openValue - b.openValue);
-          case "vunnet":
-            return dir * (a.wonValue - b.wonValue);
+          case "eier":
+            return dir * a.ownerName.localeCompare(b.ownerName, "nb");
           case "personer":
             return dir * (a.people.length - b.people.length);
         }
@@ -395,11 +395,8 @@ export default function CompaniesTable({
           <HeaderCell label="Selskap" sortKey="navn" sort={sort} onSort={onSort} />
           <HeaderCell label="Org nr" sortKey="orgnr" sort={sort} onSort={onSort} />
           <HeaderCell label="Deals" sortKey="deals" sort={sort} onSort={onSort} align="center" />
-          <span className="flex justify-end">
-            <HeaderCell label="Åpen verdi" sortKey="apen" sort={sort} onSort={onSort} align="right" />
-          </span>
-          <span className="flex justify-end">
-            <HeaderCell label="Vunnet" sortKey="vunnet" sort={sort} onSort={onSort} align="right" />
+          <span className="flex justify-center">
+            <HeaderCell label="Våre kontakter" sortKey="eier" sort={sort} onSort={onSort} align="center" />
           </span>
           <span className="px-2">
             <HeaderCell label="Personer" sortKey="personer" sort={sort} onSort={onSort} />
@@ -457,15 +454,20 @@ export default function CompaniesTable({
                         <span className="text-ink-faint"> ({c.openCount} åpne)</span>
                       )}
                     </span>
-                    <span className="text-right text-[13px] font-medium tabular-nums">
-                      {c.openValue > 0 ? formatMoney(c.openValue) : "—"}
-                    </span>
-                    <span className="text-right text-[13px] tabular-nums text-ink-soft">
-                      {c.wonValue > 0 ? formatMoney(c.wonValue) : "—"}
-                    </span>
-                    <span className="truncate px-2 text-[12.5px] text-ink-soft">
-                      {c.people.length > 0 ? c.people.join(", ") : "—"}
-                    </span>
+                  </Link>
+                  <CompanyOwnerCell
+                    companyId={c.id}
+                    ownerId={c.ownerId}
+                    ownerName={c.ownerName}
+                    ownerAvatarUrl={c.ownerAvatarUrl}
+                    coOwnerIds={c.coOwnerIds}
+                    owners={owners}
+                  />
+                  <Link
+                    href={`/companies/${c.id}`}
+                    className="truncate px-2 text-[12.5px] text-ink-soft"
+                  >
+                    {c.people.length > 0 ? c.people.join(", ") : "—"}
                   </Link>
                 </div>
               </li>

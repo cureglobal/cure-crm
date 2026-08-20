@@ -20,6 +20,7 @@ import {
   dealLines,
   referenceProjects,
   dealOwners,
+  companyOwners,
   stages,
   businessUnits,
   calendarAccounts,
@@ -2187,6 +2188,38 @@ export async function bulkSetCompanyOwner(companyIds: number[], ownerId: number 
   if (companyIds.length === 0) return;
   await db.update(companies).set({ ownerId }).where(inArray(companies.id, companyIds));
   revalidateDealViews();
+}
+
+// ---------- Med-eiere på selskap ("våre kontakter") ----------
+// Speiler mønsteret fra deal-eiere (updateDealOwner/addDealOwner/
+// removeDealOwner): companies.ownerId er hovedkontakten, company_owners er
+// med-kontaktene, redigerbart fra samme flervalgs-popover som i Pipeline.
+
+export async function updateCompanyOwner(companyId: number, ownerId: number | null) {
+  await requireUser();
+  if (ownerId != null) {
+    const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+    if (!owner) return;
+  }
+  await db.update(companies).set({ ownerId }).where(eq(companies.id, companyId));
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${companyId}`);
+}
+
+export async function addCompanyOwner(companyId: number, userId: number) {
+  await requireUser();
+  await db.insert(companyOwners).values({ companyId, userId }).onConflictDoNothing();
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${companyId}`);
+}
+
+export async function removeCompanyOwner(companyId: number, userId: number) {
+  await requireUser();
+  await db
+    .delete(companyOwners)
+    .where(and(eq(companyOwners.companyId, companyId), eq(companyOwners.userId, userId)));
+  revalidatePath("/companies");
+  revalidatePath(`/companies/${companyId}`);
 }
 
 // Kjører Brreg-oppslag for flere valgte selskaper samtidig (samme logikk som

@@ -104,6 +104,13 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(deal_id, user_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS company_owners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    UNIQUE(company_id, user_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS email_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
@@ -190,6 +197,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_contact_events_company ON contact_events(company_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
+  "CREATE INDEX IF NOT EXISTS idx_company_owners_company ON company_owners(company_id)",
+  "CREATE INDEX IF NOT EXISTS idx_company_owners_user ON company_owners(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_stages_sort_order ON stages(sort_order)",
   "CREATE INDEX IF NOT EXISTS idx_companies_business_unit ON companies(business_unit_id)",
   "CREATE INDEX IF NOT EXISTS idx_users_business_unit ON users(business_unit_id)",
