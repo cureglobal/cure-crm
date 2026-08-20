@@ -487,6 +487,124 @@ export async function createDealForCompany(companyId: number, formData: FormData
   redirect(`/leads/${slug}`);
 }
 
+export interface DealCompanyMatch {
+  id: number;
+  name: string;
+  orgNumber: string | null;
+}
+
+export interface DealCompanyPreviewRow {
+  input: string;
+  matches: DealCompanyMatch[];
+}
+
+// Fjerner en avsluttende parentes ("Firma (notat)") før matching — det er
+// tydelig en kommentar fra den som limte inn listen, ikke del av navnet.
+function stripTrailingAnnotation(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+// Foreslår hvilket eksisterende selskap hvert navn i en limt inn liste mest
+// sannsynlig tilsvarer — brukes til å unngå duplikater ved bulk-opprettelse
+// av deals (se bulkCreateDealsForCompanies). Bruker samme normalisering som
+// Brreg-matchingen (fjerner AS/ASA/tegnsetting), ikke bare eksakt tekstlikhet
+// slik CSV-importen gjør, nettopp for å fange opp "Framo" vs. "Framo AS".
+export async function previewBulkDealCompanies(
+  names: string[]
+): Promise<DealCompanyPreviewRow[]> {
+  await requireUser();
+  const rows = await db.query.companies.findMany({ orderBy: [asc(companies.name)] });
+
+  return names.map((raw) => {
+    const input = stripTrailingAnnotation(raw);
+    const normInput = normalizeName(input);
+    if (!normInput) return { input, matches: [] };
+
+    const matches = rows
+      .map((c) => {
+        const normName = normalizeName(c.name);
+        let score = -1;
+        if (normName === normInput) score = 100;
+        else if (normName.includes(normInput) || normInput.includes(normName)) {
+          score = 50 - Math.abs(normName.length - normInput.length);
+        }
+        return { c, score };
+      })
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map((x) => ({ id: x.c.id, name: x.c.name, orgNumber: x.c.orgNumber }));
+
+    return { input, matches };
+  });
+}
+
+export interface BulkDealItem {
+  name: string;
+  companyId: number | null; // null = opprett nytt selskap med dette navnet
+}
+
+// Oppretter én deal per rad — på et eksisterende selskap hvis valgt, ellers
+// et nytt med akkurat det navnet raden hadde. Med-eiere legges til som
+// dealOwners i tillegg til hovedeieren, samme mønster som addDealOwner.
+export async function bulkCreateDealsForCompanies(
+  items: BulkDealItem[],
+  title: string,
+  ownerId: number,
+  coOwnerIds: number[],
+  followUpAt: string // yyyy-mm-dd, tom streng = ingen dato
+): Promise<{ created: number; companiesCreated: number }> {
+  const me = await requireUser();
+  const dealTitle = title.trim() || "Deal";
+  const followUp = /^\d{4}-\d{2}-\d{2}$/.test(followUpAt)
+    ? new Date(`${followUpAt}T09:00:00`)
+    : null;
+  const defaultStageId = await getDefaultStageId();
+
+  let created = 0;
+  let companiesCreated = 0;
+
+  for (const item of items) {
+    const name = stripTrailingAnnotation(item.name);
+    if (!name) continue;
+
+    let companyId = item.companyId;
+    if (companyId == null) {
+      const [company] = await db.insert(companies).values({ name }).returning();
+      companyId = company.id;
+      companiesCreated++;
+    }
+
+    const [deal] = await db
+      .insert(deals)
+      .values({
+        companyId,
+        title: dealTitle,
+        ownerId,
+        stage: defaultStageId,
+        followUpAt: followUp,
+      })
+      .returning();
+
+    await db.insert(activities).values({
+      dealId: deal.id,
+      userId: me.id,
+      type: "created",
+      content: "Opprettet i bulk",
+    });
+
+    for (const coOwnerId of coOwnerIds) {
+      if (coOwnerId === ownerId) continue;
+      await db.insert(dealOwners).values({ dealId: deal.id, userId: coOwnerId }).onConflictDoNothing();
+    }
+
+    created++;
+  }
+
+  revalidateDealViews();
+  return { created, companiesCreated };
+}
+
 export async function updateDealStage(dealId: number, stage: string) {
   const me = await requireUser();
   const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });

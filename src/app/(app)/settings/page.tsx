@@ -18,6 +18,7 @@ import SyncButton from "@/components/SyncButton";
 import CalendarSyncButton from "@/components/CalendarSyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
 import DuplicateCompaniesFinder from "@/components/DuplicateCompaniesFinder";
+import BulkCreateDeals from "@/components/BulkCreateDeals";
 import ThemePicker from "@/components/ThemePicker";
 import StagesManager from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
@@ -39,6 +40,7 @@ import {
   CalendarDays,
   ThumbsDown,
   GitMerge,
+  ListPlus,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -370,6 +372,25 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           </div>
         </div>
         <DuplicateCompaniesFinder />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <ListPlus size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Bulk-opprett deals</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Lim inn en liste med selskapsnavn og opprett samme deal på alle — matcher mot
+              eksisterende selskaper der det finnes, oppretter nye ellers.
+            </p>
+          </div>
+        </div>
+        <BulkCreateDeals
+          owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+          currentUserId={me.id}
+        />
       </section>
 
       <section className="card p-6">
