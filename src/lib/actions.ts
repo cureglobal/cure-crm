@@ -504,6 +504,31 @@ function stripTrailingAnnotation(name: string): string {
   return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+// Fritt søk i vår egen selskapsdatabase — brukes når forslagene i
+// previewBulkDealCompanies bommer helt (f.eks. et akronym som "NMF" for
+// "Norges Musikkorps Forbund", som normaliseringen ikke fanger opp), slik
+// at man kan finne og velge riktig selskap manuelt i stedet for å opprette
+// en duplikat.
+export async function searchCompaniesAction(query: string): Promise<DealCompanyMatch[]> {
+  await requireUser();
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const needle = `%${q}%`;
+  const rows = await db
+    .select({ id: companies.id, name: companies.name, orgNumber: companies.orgNumber })
+    .from(companies)
+    .where(
+      or(
+        like(companies.name, needle),
+        like(companies.orgName, needle),
+        like(companies.orgNumber, needle)
+      )
+    )
+    .orderBy(asc(companies.name))
+    .limit(8);
+  return rows;
+}
+
 // Foreslår hvilket eksisterende selskap hvert navn i en limt inn liste mest
 // sannsynlig tilsvarer — brukes til å unngå duplikater ved bulk-opprettelse
 // av deals (se bulkCreateDealsForCompanies). Bruker samme normalisering som
