@@ -21,6 +21,7 @@ import {
   referenceProjects,
   dealOwners,
   companyOwners,
+  savedViews,
   stages,
   businessUnits,
   calendarAccounts,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/brreg";
 import { getStages, getDefaultStageId } from "@/lib/stages.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { slugify } from "@/lib/slugify";
 import { firstStageId } from "@/lib/stages";
 import { syncAccount } from "@/lib/imap";
 import { scanWebsite, type SiteScanResult } from "@/lib/siteScan";
@@ -54,6 +56,88 @@ import * as companyInsight from "@/lib/companyInsight";
 import { generateQuotePdf } from "@/lib/pdf";
 import { sendMailFromAccount } from "@/lib/mailer";
 import { formatDateShort, formatMoney } from "@/lib/format";
+
+// ---------- Lagrede visninger (Pipeline) ----------
+// Navngitte, delbare filterkombinasjoner — delt/team-synlig, ingen
+// per-bruker-privatliste. Se PipelineView.tsx for hvordan feltene brukes.
+
+export interface SavedViewFilters {
+  view: string | null;
+  search: string | null;
+  ownerId: number | null;
+  businessUnitId: number | null;
+  datePreset: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  onlyActive: boolean | null;
+  groupByStage: boolean | null;
+}
+
+export interface SavedViewRow extends SavedViewFilters {
+  id: number;
+  slug: string;
+  name: string;
+  createdByName: string | null;
+}
+
+export async function createSavedView(
+  name: string,
+  filters: SavedViewFilters
+): Promise<{ ok: boolean; message: string; slug?: string }> {
+  const me = await requireUser();
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, message: "Gi visningen et navn." };
+
+  const base = slugify(trimmed) || "visning";
+  const existingSlugs = new Set((await db.query.savedViews.findMany()).map((v) => v.slug));
+  let slug = base;
+  let n = 2;
+  while (existingSlugs.has(slug)) {
+    slug = `${base}-${n}`;
+    n++;
+  }
+
+  await db.insert(savedViews).values({
+    slug,
+    name: trimmed,
+    createdByUserId: me.id,
+    ...filters,
+  });
+
+  return { ok: true, message: "Visning lagret.", slug };
+}
+
+export async function listSavedViews(): Promise<SavedViewRow[]> {
+  await requireUser();
+  const rows = await db.query.savedViews.findMany({ orderBy: [desc(savedViews.createdAt)] });
+  const userIds = [
+    ...new Set(rows.map((r) => r.createdByUserId).filter((id): id is number => id != null)),
+  ];
+  const userRows = userIds.length
+    ? await db.query.users.findMany({ where: inArray(users.id, userIds) })
+    : [];
+  const nameById = new Map(userRows.map((u) => [u.id, u.name]));
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    createdByName: r.createdByUserId != null ? (nameById.get(r.createdByUserId) ?? null) : null,
+    view: r.view,
+    search: r.search,
+    ownerId: r.ownerId,
+    businessUnitId: r.businessUnitId,
+    datePreset: r.datePreset,
+    fromDate: r.fromDate,
+    toDate: r.toDate,
+    onlyActive: r.onlyActive,
+    groupByStage: r.groupByStage,
+  }));
+}
+
+export async function deleteSavedView(id: number): Promise<void> {
+  await requireUser();
+  await db.delete(savedViews).where(eq(savedViews.id, id));
+}
 
 // Standard oppfølgingsdato for nyopprettede deals — dagens dato, samme
 // klokkeslett-konvensjon som datofelter ellers bruker ("${dateStr}T09:00:00").

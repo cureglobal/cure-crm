@@ -192,6 +192,29 @@ export const companyOwners = sqliteTable("company_owners", {
     .$defaultFn(() => new Date()),
 });
 
+// Navngitte, delbare filterkombinasjoner på Pipeline-siden ("presets").
+// Delt/team-synlig — ingen per-bruker-privatliste. Alle feltene under er
+// nullable: en tom verdi betyr "ikke satt", altså samme standardoppførsel
+// som når filteret ikke er i URL-en i dag (se PipelineView.tsx).
+export const savedViews = sqliteTable("saved_views", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  view: text("view"), // "liste" | "kanban"
+  search: text("search"),
+  ownerId: integer("owner_id"),
+  businessUnitId: integer("business_unit_id"),
+  datePreset: text("date_preset"),
+  fromDate: text("from_date"), // yyyy-mm-dd
+  toDate: text("to_date"), // yyyy-mm-dd
+  onlyActive: integer("only_active", { mode: "boolean" }),
+  groupByStage: integer("group_by_stage", { mode: "boolean" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // En person eksisterer på egne bein og kan knyttes til flere selskaper.
 export const people = sqliteTable("people", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -329,6 +352,7 @@ export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;
 export type DealOwner = typeof dealOwners.$inferSelect;
 export type CompanyOwner = typeof companyOwners.$inferSelect;
+export type SavedView = typeof savedViews.$inferSelect;
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type CalendarAccount = typeof calendarAccounts.$inferSelect;
 export type EmailMessage = typeof emailMessages.$inferSelect;

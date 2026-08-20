@@ -1,11 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import KanbanBoard, { type KanbanDeal } from "@/components/KanbanBoard";
 import DealsTable, { type DealRow } from "@/components/DealsTable";
+import NewDealButton from "@/components/NewDealButton";
+import SavedViewsMenu from "@/components/SavedViewsMenu";
 import type { LostReasonOption } from "@/components/LostReasonDialog";
+import type { SavedViewFilters } from "@/lib/actions";
 import type { Stage } from "@/lib/stages";
-import { Columns3, List, Search, Layers, CircleDot } from "lucide-react";
+import {
+  Columns3,
+  List,
+  Search,
+  Layers,
+  CircleDot,
+  SlidersHorizontal,
+  ChevronDown,
+} from "lucide-react";
 
 export interface OwnerOption {
   id: number;
@@ -22,13 +34,17 @@ type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "neste7" | "egendefinert
 
 // Husker sist brukte filter i nettleseren, slik at det ligger klart igjen når
 // man kommer tilbake fra en annen fane. Eksplisitte URL-parametre (f.eks. fra
-// "Se alle" på oversikten) vinner ved lasting, og blir da selv det nye
-// "sist valgte" — se applyStored/persist under.
+// "Se alle" på oversikten, eller en lagret visning) vinner ved lasting, og
+// blir da selv det nye "sist valgte" — se applyStored/persist under. Utover
+// dette skrives gjeldende filtertilstand fortløpende til URL-en (se
+// syncToUrl-effekten), slik at enhver filtrert visning er delbar ved å
+// kopiere adressefeltet.
 const STORAGE_KEY = "crm:pipeline-filters";
 const ACTIVE_DAYS = 45;
 
 interface StoredFilters {
   view?: "kanban" | "liste";
+  search?: string;
   ownerId?: "alle" | number;
   businessUnitId?: "alle" | number;
   datePreset?: DatePreset;
@@ -85,11 +101,15 @@ export default function PipelineView({
   businessUnits,
   lostReasons,
   currentUserId,
+  companyOptions,
+  savedViewName,
   initialView,
+  initialSearch,
   initialDatePreset,
   initialFromDate,
   initialToDate,
   initialOwnerId,
+  initialBusinessUnitId,
   initialGroupByStage,
   initialOnlyActive,
 }: {
@@ -100,33 +120,44 @@ export default function PipelineView({
   lostReasons: LostReasonOption[];
   // Brukes som standardeier ("Eier = meg") første gang, før noe er lagret.
   currentUserId: number;
-  // Udefinert = ikke satt eksplisitt via URL; da avgjør lagrede preferanser
-  // (eller de faste standardverdiene under, ved aller første besøk).
+  companyOptions: { id: number; name: string; logoUrl: string | null }[];
+  // Navnet på den lagrede visningen man ser på (/leads/visning/[slug]), om noen.
+  savedViewName?: string;
+  // Udefinert = ikke satt eksplisitt via URL/lagret visning; da avgjør
+  // lagrede preferanser (eller de faste standardverdiene under, ved aller
+  // første besøk).
   initialView?: "kanban" | "liste";
+  initialSearch?: string;
   initialDatePreset?: DatePreset;
   initialFromDate?: string;
   initialToDate?: string;
   initialOwnerId?: "alle" | number;
+  initialBusinessUnitId?: "alle" | number;
   initialGroupByStage?: boolean;
   initialOnlyActive?: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   // Faste standardverdier ved første besøk noensinne (ingenting lagret ennå):
   // liste, gruppert på fase, eier = meg.
   const [view, setView] = useState<"kanban" | "liste">(initialView ?? "liste");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch ?? "");
   const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
-  const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>("alle");
+  const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>(
+    initialBusinessUnitId ?? "alle"
+  );
   const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset ?? "alle");
   const [fromDate, setFromDate] = useState(initialFromDate ?? "");
   const [toDate, setToDate] = useState(initialToDate ?? "");
   const [groupByStage, setGroupByStage] = useState(initialGroupByStage ?? true);
   const [onlyActive, setOnlyActive] = useState(initialOnlyActive ?? false);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Laster lagrede preferanser etter første render (localStorage finnes bare i
   // nettleseren, og lesing under selve renderen ville gitt et hydreringsavvik
-  // mot serverens HTML). URL-parametre som eksplisitt ble gitt til komponenten
-  // vinner over det som er lagret — det er slik "Se alle"-lenker fra
-  // oversikten fungerer.
+  // mot serverens HTML). URL-parametre/lagret visning som eksplisitt ble gitt
+  // til komponenten vinner over det som er lagret.
   //
   // `hydrated` er bevisst React-state og ikke en ref: en ref er umiddelbart
   // synlig (også for lagre-effekten under, i samme flush), så den ville
@@ -142,8 +173,9 @@ export default function PipelineView({
   useEffect(() => {
     const saved = readStored();
     if (initialView === undefined) setView(saved?.view ?? "liste");
+    if (initialSearch === undefined) setSearch(saved?.search ?? "");
     if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? currentUserId);
-    setBusinessUnitId(saved?.businessUnitId ?? "alle");
+    if (initialBusinessUnitId === undefined) setBusinessUnitId(saved?.businessUnitId ?? "alle");
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
     if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
     if (initialOnlyActive === undefined) setOnlyActive(saved?.onlyActive ?? false);
@@ -163,6 +195,7 @@ export default function PipelineView({
         STORAGE_KEY,
         JSON.stringify({
           view,
+          search,
           ownerId,
           businessUnitId,
           datePreset,
@@ -178,6 +211,7 @@ export default function PipelineView({
   }, [
     hydrated,
     view,
+    search,
     ownerId,
     businessUnitId,
     datePreset,
@@ -185,6 +219,41 @@ export default function PipelineView({
     toDate,
     groupByStage,
     onlyActive,
+  ]);
+
+  // Skriver gjeldende filtertilstand til URL-en (uten å hoppe i scroll),
+  // slik at enhver filtrert visning er delbar ved å kopiere adressefeltet —
+  // også helt uten å eksplisitt lagre en visning. Kjøres først etter
+  // hydrering, slik at vi ikke overskriver en innkommende URL/lagret visning
+  // med et før-innlastet standardverdi-øyeblikksbilde.
+  useEffect(() => {
+    if (!hydrated) return;
+    const sp = new URLSearchParams();
+    sp.set("view", view);
+    if (search) sp.set("s", search);
+    sp.set("eier", ownerId === "alle" ? "alle" : String(ownerId));
+    sp.set("enhet", businessUnitId === "alle" ? "alle" : String(businessUnitId));
+    sp.set("dato", datePreset);
+    if (datePreset === "egendefinert") {
+      if (fromDate) sp.set("fra", fromDate);
+      if (toDate) sp.set("til", toDate);
+    }
+    sp.set("aktive", onlyActive ? "1" : "0");
+    sp.set("gruppe", groupByStage ? "fase" : "flat");
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hydrated,
+    view,
+    search,
+    ownerId,
+    businessUnitId,
+    datePreset,
+    fromDate,
+    toDate,
+    onlyActive,
+    groupByStage,
+    pathname,
   ]);
 
   const filtered = useMemo(() => {
@@ -248,9 +317,64 @@ export default function PipelineView({
 
   const selectClass = "field !w-auto !rounded-full !py-1.5 pr-7 text-[12.5px]";
 
+  const activeFilterCount = [
+    ownerId !== "alle",
+    businessUnitId !== "alle",
+    datePreset !== "alle",
+    onlyActive,
+  ].filter(Boolean).length;
+
+  function resetFilters() {
+    setOwnerId("alle");
+    setBusinessUnitId("alle");
+    setDatePreset("alle");
+    setFromDate("");
+    setToDate("");
+    setOnlyActive(false);
+  }
+
+  const currentFilters: SavedViewFilters = {
+    view,
+    search: search || null,
+    ownerId: ownerId === "alle" ? -1 : ownerId,
+    businessUnitId: businessUnitId === "alle" ? -1 : businessUnitId,
+    datePreset,
+    fromDate: fromDate || null,
+    toDate: toDate || null,
+    onlyActive,
+    groupByStage,
+  };
+
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="text-[26px] font-semibold tracking-tight">
+            Pipeline
+            {savedViewName && <span className="text-ink-faint"> · {savedViewName}</span>}
+          </h1>
+          <p className="mt-1 text-ink-soft">
+            Alle deals — filtrer, sorter og rediger rett i tabellen.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Søk i selskap, deal, kommentar …"
+              className="field w-[230px] !rounded-full !py-1.5 !pl-8 text-[12.5px]"
+            />
+          </div>
+          <NewDealButton companies={companyOptions} />
+        </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex rounded-full bg-mist/[0.05] p-1">
           <button
             onClick={() => setView("kanban")}
@@ -272,93 +396,26 @@ export default function PipelineView({
           </button>
         </div>
 
-        <div className="relative">
-          <Search
-            size={13}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-          />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søk i selskap, deal, kommentar …"
-            className="field w-[230px] !rounded-full !py-1.5 !pl-8 text-[12.5px]"
-          />
-        </div>
-
-        <select
-          value={ownerId === "alle" ? "alle" : String(ownerId)}
-          onChange={(e) =>
-            setOwnerId(e.target.value === "alle" ? "alle" : Number(e.target.value))
-          }
-          className={selectClass}
-        >
-          <option value="alle">Alle eiere</option>
-          {owners.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={businessUnitId === "alle" ? "alle" : String(businessUnitId)}
-          onChange={(e) =>
-            setBusinessUnitId(e.target.value === "alle" ? "alle" : Number(e.target.value))
-          }
-          className={selectClass}
-          title="Filtrer på hvilket av våre selskap kunden tilhører"
-        >
-          <option value="alle">Alle selskap</option>
-          {businessUnits.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={datePreset}
-          onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-          className={selectClass}
-        >
-          <option value="alle">Alle datoer</option>
-          <option value="forfalt">Forfalt</option>
-          <option value="idag">I dag (siste 7 dager)</option>
-          <option value="uke">Denne uken</option>
-          <option value="neste7">Neste 7 dager</option>
-          <option value="egendefinert">Fra–til …</option>
-        </select>
-
-        {datePreset === "egendefinert" && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-            />
-            <span className="text-[12px] text-ink-faint">–</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-            />
-          </div>
-        )}
-
         <button
-          onClick={() => setOnlyActive((v) => !v)}
-          title={`Skjul deals uten oppdatering de siste ${ACTIVE_DAYS} dagene`}
+          onClick={() => setFilterOpen((v) => !v)}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-            onlyActive
-              ? "bg-accent-soft text-accent"
-              : "bg-mist/[0.05] text-ink-soft hover:text-ink"
+            filterOpen ? "bg-surface shadow-card" : "bg-mist/[0.05] text-ink-soft hover:text-ink"
           }`}
         >
-          <CircleDot size={13} />
-          Bare aktive
+          <SlidersHorizontal size={13} />
+          Filtrer
+          {activeFilterCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown
+            size={13}
+            className={`transition-transform ${filterOpen ? "rotate-180" : ""}`}
+          />
         </button>
+
+        <SavedViewsMenu filters={currentFilters} />
 
         {view === "liste" && (
           <button
@@ -374,6 +431,94 @@ export default function PipelineView({
           </button>
         )}
       </div>
+
+      {filterOpen && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-mist/[0.02] p-3">
+          <select
+            value={ownerId === "alle" ? "alle" : String(ownerId)}
+            onChange={(e) =>
+              setOwnerId(e.target.value === "alle" ? "alle" : Number(e.target.value))
+            }
+            className={selectClass}
+          >
+            <option value="alle">Alle eiere</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={businessUnitId === "alle" ? "alle" : String(businessUnitId)}
+            onChange={(e) =>
+              setBusinessUnitId(e.target.value === "alle" ? "alle" : Number(e.target.value))
+            }
+            className={selectClass}
+            title="Filtrer på hvilket av våre selskap kunden tilhører"
+          >
+            <option value="alle">Alle selskap</option>
+            {businessUnits.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={datePreset}
+            onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+            className={selectClass}
+          >
+            <option value="alle">Alle datoer</option>
+            <option value="forfalt">Forfalt</option>
+            <option value="idag">I dag (siste 7 dager)</option>
+            <option value="uke">Denne uken</option>
+            <option value="neste7">Neste 7 dager</option>
+            <option value="egendefinert">Fra–til …</option>
+          </select>
+
+          {datePreset === "egendefinert" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+              />
+              <span className="text-[12px] text-ink-faint">–</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+              />
+            </div>
+          )}
+
+          <button
+            onClick={() => setOnlyActive((v) => !v)}
+            title={`Skjul deals uten oppdatering de siste ${ACTIVE_DAYS} dagene`}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
+              onlyActive
+                ? "bg-accent-soft text-accent"
+                : "bg-mist/[0.05] text-ink-soft hover:text-ink"
+            }`}
+          >
+            <CircleDot size={13} />
+            Bare aktive
+          </button>
+
+          {activeFilterCount > 0 && (
+            <button
+              onClick={resetFilters}
+              className="text-[12.5px] font-medium text-ink-faint hover:text-ink"
+            >
+              Nullstill filter
+            </button>
+          )}
+        </div>
+      )}
 
       {(search ||
         ownerId !== "alle" ||

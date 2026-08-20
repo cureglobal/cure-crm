@@ -111,6 +111,22 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(company_id, user_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS saved_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    created_by_user_id INTEGER REFERENCES users(id),
+    view TEXT,
+    search TEXT,
+    owner_id INTEGER,
+    business_unit_id INTEGER,
+    date_preset TEXT,
+    from_date TEXT,
+    to_date TEXT,
+    only_active INTEGER,
+    group_by_stage INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS email_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id INTEGER NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
