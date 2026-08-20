@@ -144,14 +144,33 @@ export default function ImportDialog({
 
     if (kind === "deals") {
       const stageIdx = findColumn(header, "stage", "fase");
-      const nameIdx = findColumn(header, "name", "navn", "selskap", "company");
-      const dealIdx = findColumn(header, "deal", "dealnavn", "tittel", "title");
+      // Selskap: en eksplisitt klient/selskap-kolonne er alltid sikrest.
+      // Enkelte eksporter (f.eks. Productive med en egen "Client"-kolonne)
+      // bruker "Name" til DEALENS navn, ikke selskapet — da må "Client"/
+      // "Selskap"/"Company" sjekkes først, ellers leser vi dealnavnet som
+      // om det var selskapet på hver eneste rad.
+      const clientOrCompanyIdx = findColumn(header, "client", "kunde", "selskap", "company");
+      const genericNameIdx = findColumn(header, "name", "navn");
+      const nameIdx = clientOrCompanyIdx !== -1 ? clientOrCompanyIdx : genericNameIdx;
+
+      // Dealnavn: en eksplisitt dealkolonne er sikrest. Har selskapet
+      // allerede funnet sin EGEN klient/selskap-kolonne over, er "Name"/
+      // "Navn" fri til å bety dealens eget navn i stedet for å bli brukt
+      // til selskapet på nytt.
+      const explicitDealIdx = findColumn(header, "deal", "dealnavn", "tittel", "title");
+      const dealIdx =
+        explicitDealIdx !== -1
+          ? explicitDealIdx
+          : clientOrCompanyIdx !== -1 && genericNameIdx !== -1
+            ? genericNameIdx
+            : -1;
+
       const valueIdx = findColumn(header, "budget total", "verdi", "value", "budget", "sum");
       const dateIdx = findColumn(header, "next action", "dato", "date", "oppfølging");
       const commentIdx = findColumn(header, "kommentar", "comment", "notat");
 
       if (nameIdx === -1) {
-        setError("Fant ingen kolonne for selskap. Forventer «Selskap» eller «Name».");
+        setError("Fant ingen kolonne for selskap. Forventer «Client», «Selskap» eller «Name».");
         return;
       }
 
