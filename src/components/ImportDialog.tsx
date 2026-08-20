@@ -8,6 +8,7 @@ import {
   importProductiveDeals,
   type ImportCompanyRow,
   type ImportDealRow,
+  type ImportDealResult,
   type ImportPersonRow,
 } from "@/lib/actions";
 import { parseCsv, findColumn, cell, parseNumber, parseDate } from "@/lib/csv";
@@ -111,6 +112,7 @@ export default function ImportDialog({
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [dealResults, setDealResults] = useState<ImportDealResult[] | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -125,11 +127,13 @@ export default function ImportDialog({
     setOpen(false);
     reset();
     setResult(null);
+    setDealResults(null);
   }
 
   async function onFile(file: File) {
     setError(null);
     setResult(null);
+    setDealResults(null);
     const rows = parseCsv(await file.text());
     if (rows.length < 2) {
       setError("Fant ingen rader i fila.");
@@ -293,8 +297,9 @@ export default function ImportDialog({
         );
         setResult(
           `Importerte ${res.imported} deals og ${res.companiesCreated} nye selskaper.` +
-            (res.skipped > 0 ? ` ${res.skipped} hoppet over som duplikater.` : "")
+            (res.skipped > 0 ? ` ${res.skipped} hoppet over.` : "")
         );
+        setDealResults(res.results);
       } else if (parsed.kind === "bedrifter") {
         const res = await importCompanies(parsed.companies);
         setResult(
@@ -350,6 +355,7 @@ export default function ImportDialog({
                     setKind(t.id);
                     reset();
                     setResult(null);
+                    setDealResults(null);
                   }}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
                     kind === t.id ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
@@ -382,6 +388,36 @@ export default function ImportDialog({
               <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
                 {result}
               </p>
+            )}
+            {dealResults && dealResults.length > 0 && (
+              <div className="mb-3 rounded-xl border border-line">
+                <div className="grid grid-cols-[1.2fr_1.2fr_1fr] gap-3 border-b border-line bg-mist/[0.03] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                  <span>Selskap</span>
+                  <span>Deal</span>
+                  <span>Status</span>
+                </div>
+                <ul className="max-h-72 overflow-y-auto">
+                  {dealResults.map((r, i) => (
+                    <li
+                      key={i}
+                      className="grid grid-cols-[1.2fr_1.2fr_1fr] items-center gap-3 border-b border-line px-4 py-2 text-[12.5px] last:border-b-0"
+                    >
+                      <span className="truncate">{r.companyName}</span>
+                      <span className="truncate text-ink-soft">{r.dealTitle}</span>
+                      {r.status === "imported" ? (
+                        <span className="flex items-center gap-1 text-success-ink">
+                          <Check size={12} />
+                          Importert
+                        </span>
+                      ) : (
+                        <span className="truncate text-ink-faint" title={r.reason}>
+                          {r.reason ?? "Hoppet over"}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {error && (
               <p className="mb-3 rounded-xl bg-danger/10 px-4 py-2.5 text-[13px] text-danger">

@@ -1597,6 +1597,13 @@ export interface ImportDealRow {
   comment: string | null;
 }
 
+export interface ImportDealResult {
+  companyName: string;
+  dealTitle: string;
+  status: "imported" | "skipped";
+  reason?: string;
+}
+
 export async function importProductiveDeals(
   rows: ImportDealRow[],
   pipelineId: number
@@ -1604,6 +1611,7 @@ export async function importProductiveDeals(
   imported: number;
   skipped: number;
   companiesCreated: number;
+  results: ImportDealResult[];
 }> {
   const me = await requireUser();
   const currentStages = await getStages(pipelineId);
@@ -1614,6 +1622,9 @@ export async function importProductiveDeals(
   for (const c of await db.query.companies.findMany()) {
     companyByName.set(c.name.trim().toLowerCase(), c.id);
   }
+  // Duplikat kun når BÅDE selskap og dealnavn er like — samme dealnavn på
+  // to ulike selskap (f.eks. to forskjellige kunder som begge har en deal
+  // kalt "Anbud") skal ikke regnes som duplikat.
   const existingDeals = new Set<string>();
   for (const d of await db.query.deals.findMany()) {
     existingDeals.add(`${d.companyId}::${d.title.trim().toLowerCase()}`);
@@ -1622,11 +1633,20 @@ export async function importProductiveDeals(
   let imported = 0;
   let skipped = 0;
   let companiesCreated = 0;
+  const results: ImportDealResult[] = [];
 
   for (const row of rows.slice(0, 500)) {
     const companyName = String(row.companyName ?? "").trim();
     const dealTitle = String(row.dealTitle ?? "").trim() || "Deal";
-    if (!companyName) continue;
+    if (!companyName) {
+      results.push({
+        companyName: companyName || "(uten selskap)",
+        dealTitle,
+        status: "skipped",
+        reason: "Mangler selskapsnavn",
+      });
+      continue;
+    }
 
     let companyId = companyByName.get(companyName.toLowerCase());
     if (!companyId) {
@@ -1642,6 +1662,12 @@ export async function importProductiveDeals(
     const dealKey = `${companyId}::${dealTitle.toLowerCase()}`;
     if (existingDeals.has(dealKey)) {
       skipped++;
+      results.push({
+        companyName,
+        dealTitle,
+        status: "skipped",
+        reason: `Finnes fra før på ${companyName}`,
+      });
       continue;
     }
 
@@ -1675,10 +1701,11 @@ export async function importProductiveDeals(
       content: "Importert fra Productive",
     });
     imported++;
+    results.push({ companyName, dealTitle, status: "imported" });
   }
 
   revalidateDealViews();
-  return { imported, skipped, companiesCreated };
+  return { imported, skipped, companiesCreated, results };
 }
 
 // ---------- Import av bedrifter og personer ----------

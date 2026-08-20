@@ -22,6 +22,7 @@ import DuplicateCompaniesFinder from "@/components/DuplicateCompaniesFinder";
 import BulkCreateDeals from "@/components/BulkCreateDeals";
 import ThemePicker from "@/components/ThemePicker";
 import PipelinesAndStagesManager from "@/components/PipelinesAndStagesManager";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import type { StageRow } from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
 import LostReasonsManager from "@/components/LostReasonsManager";
@@ -313,10 +314,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <PipelinesAndStagesManager
-          pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
-          stagesByPipeline={stagesByPipeline}
-        />
+        <CollapsibleSection>
+          <PipelinesAndStagesManager
+            pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
+            stagesByPipeline={stagesByPipeline}
+          />
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">
