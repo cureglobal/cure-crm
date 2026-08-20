@@ -28,11 +28,13 @@ export default function AppShell({
   user,
   logoutAction,
   stages,
+  pipelines,
   children,
 }: {
   user: { name: string; email: string; avatarDataUrl: string | null };
   logoutAction: () => void | Promise<void>;
   stages: Stage[];
+  pipelines: { id: number; name: string }[];
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -148,7 +150,7 @@ export default function AppShell({
         </nav>
 
         <div className="mt-auto px-3 pb-1">
-          <ImportDialog collapsed={collapsed} stages={stages} />
+          <ImportDialog collapsed={collapsed} stages={stages} pipelines={pipelines} />
         </div>
 
         <div className="border-t border-line p-3">

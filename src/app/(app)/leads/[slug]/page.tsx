@@ -81,7 +81,13 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
     .orderBy(asc(dealOwners.createdAt));
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
-  const stages = await getStages();
+  // Bare fasene fra samme pipeline som deal-en allerede står i — en
+  // "Anbud"-deal skal ikke kunne flyttes til en "Salg"-fase eller omvendt.
+  const allStages = await getStages();
+  const currentStage = allStages.find((s) => String(s.id) === deal.stage);
+  const stages = currentStage
+    ? allStages.filter((s) => s.pipelineId === currentStage.pipelineId)
+    : allStages;
   const lostReasons = await getLostReasons();
 
   const otherDeals = await db.query.deals.findMany({

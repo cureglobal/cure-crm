@@ -31,10 +31,19 @@ function SubmitButton({ label }: { label: string }) {
 
 export default function NewDealButton({
   companies = [],
+  pipelines,
+  pipelineId,
 }: {
   companies?: CompanyOption[];
+  pipelines: { id: number; name: string }[];
+  // Satt: låst til denne (brukes fra Pipeline-siden, der pipelinen allerede
+  // er valgt i visningen — ingen grunn til å spørre igjen). Usatt: viser en
+  // velger hvis det finnes mer enn én pipeline (brukes fra dashboardet, som
+  // ikke har noen "gjeldende" pipeline å arve fra).
+  pipelineId?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId ?? pipelines[0]?.id ?? 1);
   const [mode, setMode] = useState<"eksisterende" | "nytt">(
     companies.length > 0 ? "eksisterende" : "nytt"
   );
@@ -131,6 +140,29 @@ export default function NewDealButton({
             )}
 
             <form action={createDeal} className="flex flex-col gap-3">
+              {pipelineId != null ? (
+                <input type="hidden" name="pipelineId" value={pipelineId} />
+              ) : (
+                pipelines.length > 1 && (
+                  <input type="hidden" name="pipelineId" value={selectedPipelineId} />
+                )
+              )}
+              {pipelineId == null && pipelines.length > 1 && (
+                <label className="text-[12px] font-medium text-ink-soft">
+                  Pipeline
+                  <select
+                    value={selectedPipelineId}
+                    onChange={(e) => setSelectedPipelineId(Number(e.target.value))}
+                    className="field mt-1"
+                  >
+                    {pipelines.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {mode === "eksisterende" ? (
                 <>
                   <input type="hidden" name="companyId" value={selected?.id ?? ""} />

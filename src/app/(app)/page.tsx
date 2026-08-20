@@ -10,6 +10,7 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import { formatDateTime, formatMoney, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
@@ -99,6 +100,7 @@ export default async function Dashboard() {
   const companyOptions = (
     await db.query.companies.findMany({ orderBy: [asc(companies.name)] })
   ).map((c) => ({ id: c.id, name: c.name, logoUrl: c.logoUrl }));
+  const pipelineOptions = (await getPipelines()).map((p) => ({ id: p.id, name: p.name }));
 
   const dealForCompany = new Map<number, number>();
   for (const d of allDeals) {
@@ -163,7 +165,7 @@ export default async function Dashboard() {
           <h1 className="text-[26px] font-semibold tracking-tight">{greeting(me.name)}</h1>
           <p className="mt-1 text-ink-soft">Her er status i salgsarbeidet.</p>
         </div>
-        <NewDealButton companies={companyOptions} />
+        <NewDealButton companies={companyOptions} pipelines={pipelineOptions} />
       </div>
 
       {pendingRequests.length > 0 && (

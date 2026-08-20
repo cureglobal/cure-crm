@@ -3,6 +3,7 @@ import { db, deals as dealsTable, companies, users, activities } from "@/lib/db"
 import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
+import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
@@ -22,6 +23,12 @@ export default async function PipelinePageContent({
   savedViewName?: string;
 }) {
   const me = await requireUser();
+
+  const pipelines = await getPipelines();
+  const pipelineId =
+    filters.pipelineId != null && pipelines.some((p) => p.id === filters.pipelineId)
+      ? filters.pipelineId
+      : await getDefaultPipelineId();
 
   const rows = await db
     .select({
@@ -77,12 +84,14 @@ export default async function PipelinePageContent({
     return uid != null ? (ownerNames.get(uid) ?? null) : null;
   }
 
-  const stages = await getStages();
+  const stages = await getStages(pipelineId);
+  const pipelineStageIds = new Set(stages.map((s) => String(s.id)));
   const businessUnits = await getBusinessUnits();
   const lostReasons = await getLostReasons();
   const slugMap = await getDealSlugMap();
   const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
-  const dealRows: DealRow[] = [...rows]
+  const dealRows: DealRow[] = rows
+    .filter((d) => pipelineStageIds.has(d.stage))
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99))
     .map((d) => ({
       id: d.id,
@@ -115,6 +124,8 @@ export default async function PipelinePageContent({
       currentUserId={me.id}
       companyOptions={companyOptions}
       savedViewName={savedViewName}
+      pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}
+      pipelineId={pipelineId}
       initialView={filters.view}
       initialSearch={filters.search}
       initialDatePreset={filters.datePreset}

@@ -7,6 +7,7 @@ export type DatePreset = "alle" | "forfalt" | "idag" | "uke" | "neste7" | "egend
 export interface ResolvedFilters {
   view?: "kanban" | "liste";
   search?: string;
+  pipelineId?: number;
   ownerId?: "alle" | number;
   businessUnitId?: "alle" | number;
   datePreset?: DatePreset;
@@ -33,9 +34,11 @@ export function parseFiltersFromParams(params: RawParams): ResolvedFilters {
   const enhet = str(params, "enhet");
   const aktive = str(params, "aktive");
   const gruppe = str(params, "gruppe");
+  const pipeline = str(params, "pipeline");
   return {
     view: view === "liste" || view === "kanban" ? view : undefined,
     search: str(params, "s"),
+    pipelineId: pipeline != null && /^\d+$/.test(pipeline) ? Number(pipeline) : undefined,
     ownerId:
       eier === "alle" ? "alle" : eier != null && /^\d+$/.test(eier) ? Number(eier) : undefined,
     businessUnitId:
@@ -63,6 +66,7 @@ export function mergeFilters(base: ResolvedFilters, override: ResolvedFilters): 
   return {
     view: override.view ?? base.view,
     search: override.search ?? base.search,
+    pipelineId: override.pipelineId ?? base.pipelineId,
     ownerId: override.ownerId ?? base.ownerId,
     businessUnitId: override.businessUnitId ?? base.businessUnitId,
     datePreset: override.datePreset ?? base.datePreset,
@@ -80,6 +84,7 @@ export function savedViewToFilters(v: SavedViewFilters): ResolvedFilters {
   return {
     view: v.view === "liste" || v.view === "kanban" ? v.view : undefined,
     search: v.search ?? undefined,
+    pipelineId: v.pipelineId ?? undefined,
     ownerId: v.ownerId === -1 ? "alle" : (v.ownerId ?? undefined),
     businessUnitId: v.businessUnitId === -1 ? "alle" : (v.businessUnitId ?? undefined),
     datePreset:

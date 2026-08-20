@@ -103,6 +103,8 @@ export default function PipelineView({
   currentUserId,
   companyOptions,
   savedViewName,
+  pipelines,
+  pipelineId: initialPipelineId,
   initialView,
   initialSearch,
   initialDatePreset,
@@ -123,6 +125,11 @@ export default function PipelineView({
   companyOptions: { id: number; name: string; logoUrl: string | null }[];
   // Navnet på den lagrede visningen man ser på (/leads/visning/[slug]), om noen.
   savedViewName?: string;
+  pipelines: { id: number; name: string }[];
+  // Alltid en gyldig, server-utledet verdi (standard-pipeline hvis ikke
+  // eksplisitt satt via URL/lagret visning) — ikke "initial" i samme
+  // forstand som feltene under.
+  pipelineId: number;
   // Udefinert = ikke satt eksplisitt via URL/lagret visning; da avgjør
   // lagrede preferanser (eller de faste standardverdiene under, ved aller
   // første besøk).
@@ -143,6 +150,7 @@ export default function PipelineView({
   // liste, gruppert på fase, eier = meg.
   const [view, setView] = useState<"kanban" | "liste">(initialView ?? "liste");
   const [search, setSearch] = useState(initialSearch ?? "");
+  const [pipelineId, setPipelineId] = useState(initialPipelineId);
   const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
   const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>(
     initialBusinessUnitId ?? "alle"
@@ -231,6 +239,7 @@ export default function PipelineView({
     const sp = new URLSearchParams();
     sp.set("view", view);
     if (search) sp.set("s", search);
+    sp.set("pipeline", String(pipelineId));
     sp.set("eier", ownerId === "alle" ? "alle" : String(ownerId));
     sp.set("enhet", businessUnitId === "alle" ? "alle" : String(businessUnitId));
     sp.set("dato", datePreset);
@@ -246,6 +255,7 @@ export default function PipelineView({
     hydrated,
     view,
     search,
+    pipelineId,
     ownerId,
     businessUnitId,
     datePreset,
@@ -336,6 +346,7 @@ export default function PipelineView({
   const currentFilters: SavedViewFilters = {
     view,
     search: search || null,
+    pipelineId,
     ownerId: ownerId === "alle" ? -1 : ownerId,
     businessUnitId: businessUnitId === "alle" ? -1 : businessUnitId,
     datePreset,
@@ -370,11 +381,27 @@ export default function PipelineView({
               className="field w-[230px] !rounded-full !py-1.5 !pl-8 text-[12.5px]"
             />
           </div>
-          <NewDealButton companies={companyOptions} />
+          <NewDealButton companies={companyOptions} pipelines={pipelines} pipelineId={pipelineId} />
         </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        {pipelines.length > 1 && (
+          <div className="flex rounded-full bg-mist/[0.05] p-1">
+            {pipelines.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPipelineId(p.id)}
+                className={`rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
+                  pipelineId === p.id ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex rounded-full bg-mist/[0.05] p-1">
           <button
             onClick={() => setView("kanban")}

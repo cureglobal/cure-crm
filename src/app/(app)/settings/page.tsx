@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, emailAccounts, calendarAccounts, companies } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getPipelines } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
@@ -20,7 +21,8 @@ import BrregMatchAll from "@/components/BrregMatchAll";
 import DuplicateCompaniesFinder from "@/components/DuplicateCompaniesFinder";
 import BulkCreateDeals from "@/components/BulkCreateDeals";
 import ThemePicker from "@/components/ThemePicker";
-import StagesManager from "@/components/StagesManager";
+import PipelinesAndStagesManager from "@/components/PipelinesAndStagesManager";
+import type { StageRow } from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
 import LostReasonsManager from "@/components/LostReasonsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
@@ -63,8 +65,22 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     await db.query.companies.findMany({ where: eq(companies.brregVerified, false) })
   ).length;
   const stageRows = await getStages();
+  const pipelineRows = await getPipelines();
   const businessUnitRows = await getBusinessUnits();
   const lostReasonRows = await getLostReasons();
+
+  const stagesByPipeline: Record<number, StageRow[]> = {};
+  for (const p of pipelineRows) {
+    stagesByPipeline[p.id] = stageRows
+      .filter((s) => s.pipelineId === p.id)
+      .map((s) => ({
+        id: s.id,
+        label: s.label,
+        color: s.color,
+        isWon: s.isWon,
+        isLost: s.isLost,
+      }));
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -289,21 +305,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             <Layers size={16} />
           </span>
           <div>
-            <h2 className="text-[15px] font-semibold tracking-tight">Faser i pipelinen</h2>
+            <h2 className="text-[15px] font-semibold tracking-tight">Pipelines og faser</h2>
             <p className="text-[12.5px] text-ink-soft">
-              Legg til, rediger, slett eller endre rekkefølgen. Merk fasene som betyr
-              «vunnet» eller «tapt» — det styrer konfetti og nøkkeltallene på oversikten.
+              Hver pipeline har sitt eget sett faser — for salg som følger en annen
+              prosess enn vanlig, f.eks. anbud. Merk fasene som betyr «vunnet» eller
+              «tapt» — det styrer konfetti og nøkkeltallene på oversikten.
             </p>
           </div>
         </div>
-        <StagesManager
-          stages={stageRows.map((s) => ({
-            id: s.id,
-            label: s.label,
-            color: s.color,
-            isWon: s.isWon,
-            isLost: s.isLost,
-          }))}
+        <PipelinesAndStagesManager
+          pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
+          stagesByPipeline={stagesByPipeline}
         />
       </section>
 
@@ -390,6 +402,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <BulkCreateDeals
           owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
           currentUserId={me.id}
+          pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
         />
       </section>
 

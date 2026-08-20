@@ -17,7 +17,13 @@ const SWATCHES = [
   "#ff9f0a", "#ffd60a", "#30d158", "#64d2ff", "#5ac8fa", "#a2845e",
 ];
 
-export default function StagesManager({ stages: initial }: { stages: StageRow[] }) {
+export default function StagesManager({
+  stages: initial,
+  pipelineId,
+}: {
+  stages: StageRow[];
+  pipelineId: number;
+}) {
   const [stages, setStages] = useState(initial);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +91,7 @@ export default function StagesManager({ stages: initial }: { stages: StageRow[] 
     fd.set("label", label);
     fd.set("color", SWATCHES[stages.length % SWATCHES.length]);
     startAdd(async () => {
-      const created = await createStage(fd);
+      const created = await createStage(pipelineId, fd);
       if (created) {
         setStages((prev) => [
           ...prev,

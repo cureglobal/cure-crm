@@ -22,6 +22,7 @@ import {
   dealOwners,
   companyOwners,
   savedViews,
+  pipelines,
   stages,
   businessUnits,
   calendarAccounts,
@@ -46,6 +47,7 @@ import {
   type BrregHit,
 } from "@/lib/brreg";
 import { getStages, getDefaultStageId } from "@/lib/stages.server";
+import { getDefaultPipelineId } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import { slugify } from "@/lib/slugify";
 import { firstStageId } from "@/lib/stages";
@@ -64,6 +66,7 @@ import { formatDateShort, formatMoney } from "@/lib/format";
 export interface SavedViewFilters {
   view: string | null;
   search: string | null;
+  pipelineId: number | null;
   ownerId: number | null;
   businessUnitId: number | null;
   datePreset: string | null;
@@ -124,6 +127,7 @@ export async function listSavedViews(): Promise<SavedViewRow[]> {
     createdByName: r.createdByUserId != null ? (nameById.get(r.createdByUserId) ?? null) : null,
     view: r.view,
     search: r.search,
+    pipelineId: r.pipelineId,
     ownerId: r.ownerId,
     businessUnitId: r.businessUnitId,
     datePreset: r.datePreset,
@@ -463,6 +467,10 @@ export async function createDeal(formData: FormData) {
   const companyIdRaw = String(formData.get("companyId") ?? "").trim();
   const newCompanyName = String(formData.get("companyName") ?? "").trim();
   const orgNumber = String(formData.get("orgNumber") ?? "").replace(/\D/g, "");
+  const pipelineIdRaw = Number(formData.get("pipelineId"));
+  const pipelineId = Number.isFinite(pipelineIdRaw) && pipelineIdRaw > 0
+    ? pipelineIdRaw
+    : await getDefaultPipelineId();
 
   const chosenId = Number(companyIdRaw);
   let company =
@@ -519,7 +527,7 @@ export async function createDeal(formData: FormData) {
       companyId: company.id,
       title: dealTitle || "Ny deal",
       ownerId: me.id,
-      stage: await getDefaultStageId(),
+      stage: await getDefaultStageId(pipelineId),
       followUpAt: todayFollowUpDate(),
     })
     .returning();
@@ -547,6 +555,10 @@ export async function createDealForCompany(companyId: number, formData: FormData
   const title = String(formData.get("dealTitle") ?? "").trim() || "Ny deal";
   const valueRaw = String(formData.get("value") ?? "").replace(/[^\d]/g, "");
   const dateStr = String(formData.get("followUpAt") ?? "");
+  const pipelineIdRaw = Number(formData.get("pipelineId"));
+  const pipelineId = Number.isFinite(pipelineIdRaw) && pipelineIdRaw > 0
+    ? pipelineIdRaw
+    : await getDefaultPipelineId();
 
   const [deal] = await db
     .insert(deals)
@@ -554,7 +566,7 @@ export async function createDealForCompany(companyId: number, formData: FormData
       companyId,
       title,
       ownerId: me.id,
-      stage: await getDefaultStageId(),
+      stage: await getDefaultStageId(pipelineId),
       value: valueRaw ? Number(valueRaw) : null,
       followUpAt: dateStr ? new Date(`${dateStr}T09:00:00`) : null,
     })
@@ -662,14 +674,15 @@ export async function bulkCreateDealsForCompanies(
   title: string,
   ownerId: number,
   coOwnerIds: number[],
-  followUpAt: string // yyyy-mm-dd, tom streng = ingen dato
+  followUpAt: string, // yyyy-mm-dd, tom streng = ingen dato
+  pipelineId: number
 ): Promise<{ created: number; companiesCreated: number }> {
   const me = await requireUser();
   const dealTitle = title.trim() || "Deal";
   const followUp = /^\d{4}-\d{2}-\d{2}$/.test(followUpAt)
     ? new Date(`${followUpAt}T09:00:00`)
     : null;
-  const defaultStageId = await getDefaultStageId();
+  const defaultStageId = await getDefaultStageId(pipelineId);
 
   let created = 0;
   let companiesCreated = 0;
@@ -895,16 +908,17 @@ export async function reorderLostReasons(orderedIds: number[]) {
 
 // ---------- Faser (pipeline-stages) ----------
 
-export async function createStage(formData: FormData) {
+export async function createStage(pipelineId: number, formData: FormData) {
   await requireUser();
   const label = String(formData.get("label") ?? "").trim();
   if (!label) return null;
   const color = String(formData.get("color") ?? "").trim() || "#8e8e93";
-  const maxOrder = await db.query.stages.findMany({ orderBy: [asc(stages.sortOrder)] });
-  const nextOrder = maxOrder.length > 0 ? maxOrder[maxOrder.length - 1].sortOrder + 1 : 0;
+  const existing = await db.query.stages.findMany({ orderBy: [asc(stages.sortOrder)] });
+  const inPipeline = existing.filter((s) => s.pipelineId === pipelineId);
+  const nextOrder = inPipeline.length > 0 ? inPipeline[inPipeline.length - 1].sortOrder + 1 : 0;
   const [stage] = await db
     .insert(stages)
-    .values({ label, color, sortOrder: nextOrder })
+    .values({ pipelineId, label, color, sortOrder: nextOrder })
     .returning();
   revalidatePath("/settings");
   revalidateDealViews();
@@ -954,6 +968,66 @@ export async function reorderStages(orderedIds: number[]) {
   }
   revalidatePath("/settings");
   revalidateDealViews();
+}
+
+// ---------- Pipelines ----------
+// Egne pipeline-løp (f.eks. "Salg", "Anbud"), hver med sitt eget sett
+// stages — se stages.pipelineId. Samme CRUD-mønster som business_units.
+
+export async function createPipeline(formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return null;
+  const existing = await db.query.pipelines.findMany({ orderBy: [asc(pipelines.sortOrder)] });
+  const nextOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+  const [pipeline] = await db
+    .insert(pipelines)
+    .values({ name, sortOrder: nextOrder })
+    .returning();
+  revalidatePath("/settings");
+  return pipeline;
+}
+
+export async function renamePipeline(id: number, formData: FormData) {
+  await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  await db.update(pipelines).set({ name }).where(eq(pipelines.id, id));
+  revalidatePath("/settings");
+}
+
+export async function deletePipeline(id: number): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const all = await db.query.pipelines.findMany();
+  if (all.length <= 1) {
+    return { ok: false, message: "Kan ikke slette den siste pipelinen." };
+  }
+  const stageIds = (
+    await db.query.stages.findMany({ where: eq(stages.pipelineId, id) })
+  ).map((s) => String(s.id));
+  if (stageIds.length > 0) {
+    const inUse = await db.query.deals.findFirst({ where: inArray(deals.stage, stageIds) });
+    if (inUse) {
+      return {
+        ok: false,
+        message: "Kan ikke slette — flytt deals ut av pipelinens faser først.",
+      };
+    }
+  }
+  await db.delete(stages).where(eq(stages.pipelineId, id));
+  await db.delete(pipelines).where(eq(pipelines.id, id));
+  revalidatePath("/settings");
+  revalidateDealViews();
+  return { ok: true, message: "Pipelinen ble slettet." };
+}
+
+// `orderedIds` er hele pipeline-listen i sin nye rekkefølge.
+export async function reorderPipelines(orderedIds: number[]) {
+  await requireUser();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(pipelines).set({ sortOrder: i }).where(eq(pipelines.id, orderedIds[i]));
+  }
+  revalidatePath("/settings");
 }
 
 export async function updateDealDetails(dealId: number, formData: FormData) {
@@ -1446,7 +1520,7 @@ export async function createDealFromEstimate(
       companyId: company.id,
       title: dealTitle || "Ny deal",
       ownerId: me.id,
-      stage: await getDefaultStageId(),
+      stage: await getDefaultStageId(await getDefaultPipelineId()),
       followUpAt: todayFollowUpDate(),
     })
     .returning();
@@ -1523,13 +1597,16 @@ export interface ImportDealRow {
   comment: string | null;
 }
 
-export async function importProductiveDeals(rows: ImportDealRow[]): Promise<{
+export async function importProductiveDeals(
+  rows: ImportDealRow[],
+  pipelineId: number
+): Promise<{
   imported: number;
   skipped: number;
   companiesCreated: number;
 }> {
   const me = await requireUser();
-  const currentStages = await getStages();
+  const currentStages = await getStages(pipelineId);
   const validStageIds = new Set(currentStages.map((s) => String(s.id)));
   const fallbackStageId = firstStageId(currentStages);
 

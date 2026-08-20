@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   importCompanies,
@@ -92,9 +92,22 @@ function guessStage(value: string, stages: Stage[]): string {
   return firstStageId(stages);
 }
 
-export default function ImportDialog({ collapsed, stages }: { collapsed?: boolean; stages: Stage[] }) {
+export default function ImportDialog({
+  collapsed,
+  stages,
+  pipelines,
+}: {
+  collapsed?: boolean;
+  stages: Stage[];
+  pipelines: { id: number; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("deals");
+  const [pipelineId, setPipelineId] = useState(pipelines[0]?.id ?? 1);
+  const pipelineStages = useMemo(
+    () => stages.filter((s) => s.pipelineId === pipelineId),
+    [stages, pipelineId]
+  );
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -159,7 +172,7 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
         deals.push({
           companyName,
           dealTitle,
-          stage: firstStageId(stages),
+          stage: firstStageId(pipelineStages),
           value: value && value > 0 ? Math.round(value) : null,
           followUpAt: parseDate(cell(r, dateIdx)),
           comment: cell(r, commentIdx) || null,
@@ -173,7 +186,7 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
       const stageMap: Record<string, string> = {};
       for (const d of deals) {
         if (!(d.productiveStage in stageMap)) {
-          stageMap[d.productiveStage] = guessStage(d.productiveStage, stages);
+          stageMap[d.productiveStage] = guessStage(d.productiveStage, pipelineStages);
         }
       }
       setParsed({
@@ -271,11 +284,12 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
           parsed.deals.map((d) => ({
             companyName: d.companyName,
             dealTitle: d.dealTitle,
-            stage: parsed.stageMap[d.productiveStage] ?? firstStageId(stages),
+            stage: parsed.stageMap[d.productiveStage] ?? firstStageId(pipelineStages),
             value: d.value,
             followUpAt: d.followUpAt,
             comment: d.comment,
-          }))
+          })),
+          pipelineId
         );
         setResult(
           `Importerte ${res.imported} deals og ${res.companiesCreated} nye selskaper.` +
@@ -346,6 +360,23 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
                 </button>
               ))}
             </div>
+
+            {kind === "deals" && pipelines.length > 1 && (
+              <label className="mb-3 block text-[12px] font-medium text-ink-soft">
+                Pipeline
+                <select
+                  value={pipelineId}
+                  onChange={(e) => setPipelineId(Number(e.target.value))}
+                  className="field mt-1"
+                >
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {result && (
               <p className="mb-3 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
@@ -445,7 +476,7 @@ export default function ImportDialog({ collapsed, stages }: { collapsed?: boolea
                             }
                             className="field !py-1.5 text-[13px]"
                           >
-                            {stages.map((s) => (
+                            {pipelineStages.map((s) => (
                               <option key={s.id} value={String(s.id)}>
                                 {s.label}
                               </option>

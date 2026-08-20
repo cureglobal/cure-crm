@@ -119,10 +119,25 @@ export const companies = sqliteTable("companies", {
     .$defaultFn(() => new Date()),
 });
 
+// Et pipeline-løp, f.eks. "Salg" eller "Anbud" — hver har sitt eget sett
+// stages (se pipelineId under). Alltid minst én rad (seedet i migrate.ts).
+export const pipelines = sqliteTable("pipelines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // Fasene i pipelinen — fritt redigerbare av admin (navn, farge, rekkefølge).
 // `deals.stage` lagrer denne radens `id` (som tekst, se kommentar der).
+// `pipelineId` er nullable i skjemaet fordi kolonnen legges til på en
+// eksisterende tabell (se addMissingColumns i migrate.ts) — den fylles
+// alltid inn ved seeding/oppretting, se seedPipelinesAndBackfillStages.
 export const stages = sqliteTable("stages", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  pipelineId: integer("pipeline_id").references(() => pipelines.id),
   label: text("label").notNull(),
   color: text("color").notNull().default("#8e8e93"),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -201,6 +216,7 @@ export const savedViews = sqliteTable("saved_views", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   createdByUserId: integer("created_by_user_id").references(() => users.id),
+  pipelineId: integer("pipeline_id").references(() => pipelines.id),
   view: text("view"), // "liste" | "kanban"
   search: text("search"),
   ownerId: integer("owner_id"),
@@ -347,6 +363,7 @@ export type Company = typeof companies.$inferSelect;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type LostReason = typeof lostReasons.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
+export type Pipeline = typeof pipelines.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;

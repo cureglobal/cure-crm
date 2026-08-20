@@ -2,6 +2,7 @@ import { asc } from "drizzle-orm";
 import { db, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
+import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
 import { parseDateStr } from "@/components/CalendarPopover";
 import Avatar from "@/components/Avatar";
@@ -94,12 +95,21 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const til = typeof params.til === "string" ? params.til : "";
   const { start, end } = periodRange(periode, fra, til);
 
-  const stages = await getStages();
+  const pipelines = await getPipelines();
+  const pipelineParam = typeof params.pipeline === "string" ? Number(params.pipeline) : NaN;
+  const pipelineId = pipelines.some((p) => p.id === pipelineParam)
+    ? pipelineParam
+    : await getDefaultPipelineId();
+
+  const stages = await getStages(pipelineId);
+  const pipelineStageIds = new Set(stages.map((s) => String(s.id)));
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
-  const allDeals = await db.query.deals.findMany();
+  const allDeals = (await db.query.deals.findMany()).filter((d) =>
+    pipelineStageIds.has(d.stage)
+  );
 
   const sellerStats: SellerStat[] = allUsers
     .map((user) => {
@@ -201,7 +211,13 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           <h1 className="text-[26px] font-semibold tracking-tight">Statistikk</h1>
           <p className="mt-1 text-ink-soft">Selgerne rangert per målestørrelse.</p>
         </div>
-        <StatistikkPeriodPicker periode={periode} fra={fra} til={til} />
+        <StatistikkPeriodPicker
+          periode={periode}
+          fra={fra}
+          til={til}
+          pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}
+          pipelineId={pipelineId}
+        />
       </div>
 
       {sellerStats.length === 0 ? (

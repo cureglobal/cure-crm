@@ -60,6 +60,12 @@ const CREATE_STATEMENTS = [
     primary_contact_id INTEGER,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS pipelines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS stages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
@@ -248,6 +254,8 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   },
   people: { notes: "TEXT" },
   deals: { comment: "TEXT", lost_reason_id: "INTEGER", closed_at: "INTEGER" },
+  stages: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
+  saved_views: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
   users: {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",
@@ -311,6 +319,35 @@ async function seedStagesAndMigrateLegacy(client: Client) {
       args: [String(newId), legacyKey],
     });
   }
+}
+
+// Innfører flere pipelines: seeder én "Salg"-pipeline (idempotent — hopper
+// over hvis pipelines-tabellen ikke er tom) og etterkobler alle stages/
+// lagrede visninger som ennå ikke peker på noen pipeline dit. Kjøres etter
+// at både pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
+// (addMissingColumns) og selve fasene (seedStagesAndMigrateLegacy) finnes.
+async function seedPipelinesAndBackfillStages(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM pipelines");
+  let salgId: number;
+  if (Number(existing.rows[0].c) > 0) {
+    const row = await client.execute("SELECT id FROM pipelines ORDER BY sort_order LIMIT 1");
+    salgId = Number(row.rows[0].id);
+  } else {
+    const res = await client.execute({
+      sql: "INSERT INTO pipelines (name, sort_order, created_at) VALUES (?, ?, ?)",
+      args: ["Salg", 0, Date.now()],
+    });
+    salgId = Number(res.lastInsertRowid);
+  }
+
+  await client.execute({
+    sql: "UPDATE stages SET pipeline_id = ? WHERE pipeline_id IS NULL",
+    args: [salgId],
+  });
+  await client.execute({
+    sql: "UPDATE saved_views SET pipeline_id = ? WHERE pipeline_id IS NULL",
+    args: [salgId],
+  });
 }
 
 // Våre tre juridiske enheter ved innføringen av dette. Fritt redigerbart
@@ -462,6 +499,9 @@ export async function migrate(client: Client) {
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
   // Må kjøre etter at både stages- og deals-tabellen finnes.
   await seedStagesAndMigrateLegacy(client);
+  // Må kjøre etter at pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
+  // (addMissingColumns) og fasene over finnes.
+  await seedPipelinesAndBackfillStages(client);
   // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
   await seedBusinessUnits(client);
   await seedLostReasons(client);

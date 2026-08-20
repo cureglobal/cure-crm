@@ -95,15 +95,18 @@ function RowCompanySearch({ onPick }: { onPick: (m: DealCompanyMatch) => void })
 export default function BulkCreateDeals({
   owners,
   currentUserId,
+  pipelines,
 }: {
   owners: { id: number; name: string }[];
   currentUserId: number;
+  pipelines: { id: number; name: string }[];
 }) {
   const [title, setTitle] = useState("");
   const [namesText, setNamesText] = useState("");
   const [ownerId, setOwnerId] = useState(currentUserId);
   const [coOwnerId, setCoOwnerId] = useState<number | "">("");
   const [followUpAt, setFollowUpAt] = useState(() => toDateStr(new Date()));
+  const [pipelineId, setPipelineId] = useState(pipelines[0]?.id ?? 1);
 
   const [preview, setPreview] = useState<DealCompanyPreviewRow[] | null>(null);
   const [resolved, setResolved] = useState<Record<number, Resolution>>({});
@@ -145,7 +148,14 @@ export default function BulkCreateDeals({
     }));
     startCreate(async () => {
       const coOwnerIds = coOwnerId ? [coOwnerId] : [];
-      const res = await bulkCreateDealsForCompanies(items, title, ownerId, coOwnerIds, followUpAt);
+      const res = await bulkCreateDealsForCompanies(
+        items,
+        title,
+        ownerId,
+        coOwnerIds,
+        followUpAt,
+        pipelineId
+      );
       setResult(res);
       setPreview(null);
       setNamesText("");
@@ -204,6 +214,22 @@ export default function BulkCreateDeals({
               ))}
           </select>
         </label>
+        {pipelines.length > 1 && (
+          <label className="text-[12px] font-medium text-ink-soft">
+            Pipeline
+            <select
+              value={pipelineId}
+              onChange={(e) => setPipelineId(Number(e.target.value))}
+              className="field mt-1"
+            >
+              {pipelines.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       <label className="text-[12px] font-medium text-ink-soft">

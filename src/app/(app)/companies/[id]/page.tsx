@@ -23,6 +23,7 @@ import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import CompanyLogoUpload from "@/components/CompanyLogoUpload";
 import Avatar from "@/components/Avatar";
@@ -159,6 +160,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
   // knyttet hit, og da kobles de automatisk (se updateCompany).
   const allPeopleOptions = await db.query.people.findMany({ orderBy: [asc(people.name)] });
   const businessUnitRows = await getBusinessUnits();
+  const pipelineRows = await getPipelines();
 
   const stages = await getStages();
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
@@ -242,7 +244,11 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             <span>Lagt inn {formatDate(company.createdAt)}</span>
           </div>
         </div>
-        <NewDealOnCompanyButton companyId={company.id} companyName={company.name} />
+        <NewDealOnCompanyButton
+          companyId={company.id}
+          companyName={company.name}
+          pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
+        />
       </div>
 
       <div className="mb-6 grid grid-cols-4 gap-4">

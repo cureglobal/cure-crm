@@ -18,9 +18,11 @@ function SubmitButton() {
 export default function NewDealOnCompanyButton({
   companyId,
   companyName,
+  pipelines,
 }: {
   companyId: number;
   companyName: string;
+  pipelines: { id: number; name: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const action = createDealForCompany.bind(null, companyId);
@@ -62,6 +64,18 @@ export default function NewDealOnCompanyButton({
                 placeholder="Hva gjelder dealen? (f.eks. Nettsider)"
                 className="field"
               />
+              {pipelines.length > 1 && (
+                <label className="text-[12px] font-medium text-ink-soft">
+                  Pipeline
+                  <select name="pipelineId" defaultValue={pipelines[0]?.id} className="field mt-1">
+                    {pipelines.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[12px] font-medium text-ink-soft">
                   Verdi (kr)
