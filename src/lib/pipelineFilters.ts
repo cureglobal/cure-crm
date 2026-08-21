@@ -13,7 +13,10 @@ export interface ResolvedFilters {
   datePreset?: DatePreset;
   fromDate?: string;
   toDate?: string;
-  onlyActive?: boolean;
+  // Antall dager siden siste oppdatering — "Bare aktive" bruker en fast
+  // standardverdi, men lagrede visninger kan sette et annet tall (f.eks. 7
+  // for "Aktiv siste uken").
+  activeDays?: number;
   groupByStage?: boolean;
 }
 
@@ -53,7 +56,9 @@ export function parseFiltersFromParams(params: RawParams): ResolvedFilters {
         : undefined,
     fromDate: str(params, "fra"),
     toDate: str(params, "til"),
-    onlyActive: aktive === "1" ? true : aktive === "0" ? false : undefined,
+    // 0 = eksplisitt av (skiller seg fra undefined = ikke satt i det hele
+    // tatt), samme mønster som datePreset/gruppe hadde med boolean før.
+    activeDays: aktive != null && /^\d+$/.test(aktive) ? Number(aktive) : undefined,
     groupByStage: gruppe === "fase" ? true : gruppe === "flat" ? false : undefined,
   };
 }
@@ -72,7 +77,7 @@ export function mergeFilters(base: ResolvedFilters, override: ResolvedFilters): 
     datePreset: override.datePreset ?? base.datePreset,
     fromDate: override.fromDate ?? base.fromDate,
     toDate: override.toDate ?? base.toDate,
-    onlyActive: override.onlyActive ?? base.onlyActive,
+    activeDays: override.activeDays ?? base.activeDays,
     groupByStage: override.groupByStage ?? base.groupByStage,
   };
 }
@@ -97,7 +102,7 @@ export function savedViewToFilters(v: SavedViewFilters): ResolvedFilters {
         : undefined,
     fromDate: v.fromDate ?? undefined,
     toDate: v.toDate ?? undefined,
-    onlyActive: v.onlyActive ?? undefined,
+    activeDays: v.activeDays ?? undefined,
     groupByStage: v.groupByStage ?? undefined,
   };
 }

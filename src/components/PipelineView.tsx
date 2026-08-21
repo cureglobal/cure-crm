@@ -51,7 +51,7 @@ interface StoredFilters {
   fromDate?: string;
   toDate?: string;
   groupByStage?: boolean;
-  onlyActive?: boolean;
+  activeDays?: number | null;
 }
 
 function readStored(): StoredFilters | null {
@@ -113,7 +113,7 @@ export default function PipelineView({
   initialOwnerId,
   initialBusinessUnitId,
   initialGroupByStage,
-  initialOnlyActive,
+  initialActiveDays,
 }: {
   rows: DealRow[];
   stages: Stage[];
@@ -141,7 +141,10 @@ export default function PipelineView({
   initialOwnerId?: "alle" | number;
   initialBusinessUnitId?: "alle" | number;
   initialGroupByStage?: boolean;
-  initialOnlyActive?: boolean;
+  // Udefinert = ikke satt; 0 = eksplisitt av; >0 = filtrer på nettopp så
+  // mange dager siden siste oppdatering (se ACTIVE_DAYS for standardverdien
+  // "Bare aktive"-knappen selv bruker).
+  initialActiveDays?: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -159,7 +162,10 @@ export default function PipelineView({
   const [fromDate, setFromDate] = useState(initialFromDate ?? "");
   const [toDate, setToDate] = useState(initialToDate ?? "");
   const [groupByStage, setGroupByStage] = useState(initialGroupByStage ?? true);
-  const [onlyActive, setOnlyActive] = useState(initialOnlyActive ?? false);
+  // null = av, et tall = "vis bare deals oppdatert de siste N dagene".
+  const [activeDays, setActiveDays] = useState<number | null>(
+    initialActiveDays === undefined ? null : initialActiveDays || null
+  );
   const [filterOpen, setFilterOpen] = useState(false);
 
   // Laster lagrede preferanser etter første render (localStorage finnes bare i
@@ -186,7 +192,7 @@ export default function PipelineView({
     if (initialBusinessUnitId === undefined) setBusinessUnitId(saved?.businessUnitId ?? "alle");
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
     if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
-    if (initialOnlyActive === undefined) setOnlyActive(saved?.onlyActive ?? false);
+    if (initialActiveDays === undefined) setActiveDays(saved?.activeDays ?? null);
     if (initialFromDate === undefined && saved?.fromDate) setFromDate(saved.fromDate);
     if (initialToDate === undefined && saved?.toDate) setToDate(saved.toDate);
     setHydrated(true);
@@ -210,7 +216,7 @@ export default function PipelineView({
           fromDate,
           toDate,
           groupByStage,
-          onlyActive,
+          activeDays,
         })
       );
     } catch {
@@ -226,7 +232,7 @@ export default function PipelineView({
     fromDate,
     toDate,
     groupByStage,
-    onlyActive,
+    activeDays,
   ]);
 
   // Skriver gjeldende filtertilstand til URL-en (uten å hoppe i scroll),
@@ -247,7 +253,7 @@ export default function PipelineView({
       if (fromDate) sp.set("fra", fromDate);
       if (toDate) sp.set("til", toDate);
     }
-    sp.set("aktive", onlyActive ? "1" : "0");
+    sp.set("aktive", activeDays != null ? String(activeDays) : "0");
     sp.set("gruppe", groupByStage ? "fase" : "flat");
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,7 +267,7 @@ export default function PipelineView({
     datePreset,
     fromDate,
     toDate,
-    onlyActive,
+    activeDays,
     groupByStage,
     pathname,
   ]);
@@ -270,7 +276,7 @@ export default function PipelineView({
     const q = search.trim().toLowerCase();
     const today = todayStr();
     const [monday, sunday] = weekRange();
-    const activeCutoff = activeCutoffTs(ACTIVE_DAYS);
+    const activeCutoff = activeDays != null ? activeCutoffTs(activeDays) : null;
     const sevenDaysAgo = offsetDateStr(-7);
     const sevenDaysAhead = offsetDateStr(7);
 
@@ -282,7 +288,7 @@ export default function PipelineView({
       if (businessUnitId !== "alle" && r.companyBusinessUnitId !== businessUnitId) {
         return false;
       }
-      if (onlyActive && r.updatedAt < activeCutoff) return false;
+      if (activeCutoff != null && r.updatedAt < activeCutoff) return false;
 
       if (q) {
         const haystack = `${r.companyName} ${r.title} ${r.comment} ${r.ownerName}`.toLowerCase();
@@ -305,7 +311,7 @@ export default function PipelineView({
       }
       return true;
     });
-  }, [rows, search, ownerId, businessUnitId, datePreset, fromDate, toDate, onlyActive]);
+  }, [rows, search, ownerId, businessUnitId, datePreset, fromDate, toDate, activeDays]);
 
   const kanbanItems: KanbanDeal[] = useMemo(
     () =>
@@ -331,7 +337,7 @@ export default function PipelineView({
     ownerId !== "alle",
     businessUnitId !== "alle",
     datePreset !== "alle",
-    onlyActive,
+    activeDays != null,
   ].filter(Boolean).length;
 
   function resetFilters() {
@@ -340,7 +346,7 @@ export default function PipelineView({
     setDatePreset("alle");
     setFromDate("");
     setToDate("");
-    setOnlyActive(false);
+    setActiveDays(null);
   }
 
   const currentFilters: SavedViewFilters = {
@@ -352,7 +358,7 @@ export default function PipelineView({
     datePreset,
     fromDate: fromDate || null,
     toDate: toDate || null,
-    onlyActive,
+    activeDays: activeDays ?? 0,
     groupByStage,
   };
 
@@ -513,16 +519,22 @@ export default function PipelineView({
           )}
 
           <button
-            onClick={() => setOnlyActive((v) => !v)}
-            title={`Skjul deals uten oppdatering de siste ${ACTIVE_DAYS} dagene`}
+            onClick={() => setActiveDays((v) => (v != null ? null : ACTIVE_DAYS))}
+            title={
+              activeDays != null
+                ? `Skjuler deals uten oppdatering de siste ${activeDays} dagene`
+                : `Skjul deals uten oppdatering de siste ${ACTIVE_DAYS} dagene`
+            }
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition ${
-              onlyActive
+              activeDays != null
                 ? "bg-accent-soft text-accent"
                 : "bg-mist/[0.05] text-ink-soft hover:text-ink"
             }`}
           >
             <CircleDot size={13} />
-            Bare aktive
+            {activeDays != null && activeDays !== ACTIVE_DAYS
+              ? `Aktiv siste ${activeDays} dager`
+              : "Bare aktive"}
           </button>
 
           {activeFilterCount > 0 && (
@@ -540,7 +552,7 @@ export default function PipelineView({
         ownerId !== "alle" ||
         businessUnitId !== "alle" ||
         datePreset !== "alle" ||
-        onlyActive) && (
+        activeDays != null) && (
         <p className="mb-3 text-[12.5px] text-ink-faint">
           Viser {filtered.length} av {rows.length} deals
         </p>

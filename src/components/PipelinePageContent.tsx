@@ -133,7 +133,7 @@ export default async function PipelinePageContent({
       initialToDate={filters.toDate}
       initialOwnerId={filters.ownerId}
       initialBusinessUnitId={filters.businessUnitId}
-      initialOnlyActive={filters.onlyActive}
+      initialActiveDays={filters.activeDays}
       initialGroupByStage={filters.groupByStage}
     />
   );

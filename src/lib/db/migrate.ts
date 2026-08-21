@@ -255,7 +255,10 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   people: { notes: "TEXT" },
   deals: { comment: "TEXT", lost_reason_id: "INTEGER", closed_at: "INTEGER" },
   stages: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
-  saved_views: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
+  saved_views: {
+    pipeline_id: "INTEGER REFERENCES pipelines(id)",
+    active_days: "INTEGER",
+  },
   users: {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",
@@ -347,6 +350,34 @@ async function seedPipelinesAndBackfillStages(client: Client) {
   await client.execute({
     sql: "UPDATE saved_views SET pipeline_id = ? WHERE pipeline_id IS NULL",
     args: [salgId],
+  });
+}
+
+// Engangs-etterkobling fra den gamle boolske only_active-kolonnen til den
+// nye active_days (se schema.ts) — lagrede visninger som brukte "Bare
+// aktive" fikk før alltid nøyaktig 45 dager.
+async function backfillActiveDays(client: Client) {
+  await client.execute(
+    "UPDATE saved_views SET active_days = 45 WHERE only_active = 1 AND active_days IS NULL"
+  );
+}
+
+// Seeder en delt standardvisning "Aktiv siste uken" (deals oppdatert de
+// siste 7 dagene, alle eiere/selskap) — idempotent på slug, så en bruker
+// som senere sletter den ikke får den tilbake ved neste redeploy... med
+// mindre navnet/slugen gjenbrukes. Kjøres etter at saved_views-tabellen og
+// active_days-kolonnen finnes.
+async function seedActiveLastWeekView(client: Client) {
+  const existing = await client.execute({
+    sql: "SELECT id FROM saved_views WHERE slug = ?",
+    args: ["aktiv-siste-uken"],
+  });
+  if (existing.rows.length > 0) return;
+  await client.execute({
+    sql: `INSERT INTO saved_views
+      (slug, name, view, search, owner_id, business_unit_id, date_preset, from_date, to_date, active_days, group_by_stage, created_at)
+      VALUES (?, ?, NULL, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+    args: ["aktiv-siste-uken", "Aktiv siste uken", -1, -1, "alle", 7, 1, Date.now()],
   });
 }
 
@@ -502,6 +533,9 @@ export async function migrate(client: Client) {
   // Må kjøre etter at pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
   // (addMissingColumns) og fasene over finnes.
   await seedPipelinesAndBackfillStages(client);
+  // Må kjøre etter at active_days-kolonnen (addMissingColumns) finnes.
+  await backfillActiveDays(client);
+  await seedActiveLastWeekView(client);
   // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
   await seedBusinessUnits(client);
   await seedLostReasons(client);

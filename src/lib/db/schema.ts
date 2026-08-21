@@ -224,7 +224,11 @@ export const savedViews = sqliteTable("saved_views", {
   datePreset: text("date_preset"),
   fromDate: text("from_date"), // yyyy-mm-dd
   toDate: text("to_date"), // yyyy-mm-dd
-  onlyActive: integer("only_active", { mode: "boolean" }),
+  // Antall dager siden siste oppdatering et filter skal godta (f.eks. 7 for
+  // "aktiv siste uken", 45 for standard "Bare aktive") — null = ikke satt.
+  // Erstatter den gamle boolske only_active-kolonnen (fortsatt i databasen,
+  // men ikke lenger i bruk — se migrate.ts for engangs-etterkoblingen).
+  activeDays: integer("active_days"),
   groupByStage: integer("group_by_stage", { mode: "boolean" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()

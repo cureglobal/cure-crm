@@ -72,7 +72,7 @@ export interface SavedViewFilters {
   datePreset: string | null;
   fromDate: string | null;
   toDate: string | null;
-  onlyActive: boolean | null;
+  activeDays: number | null;
   groupByStage: boolean | null;
 }
 
@@ -133,7 +133,7 @@ export async function listSavedViews(): Promise<SavedViewRow[]> {
     datePreset: r.datePreset,
     fromDate: r.fromDate,
     toDate: r.toDate,
-    onlyActive: r.onlyActive,
+    activeDays: r.activeDays,
     groupByStage: r.groupByStage,
   }));
 }
