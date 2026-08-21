@@ -10,7 +10,6 @@ import {
   LogOut,
   Building2,
   Contact,
-  Calculator,
   BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
@@ -130,12 +129,6 @@ export default function AppShell({
             collapsed={collapsed}
           />
           <NavLink
-            href="/estimat"
-            label="Prisverktøy"
-            icon={<Calculator size={17} strokeWidth={1.8} />}
-            collapsed={collapsed}
-          />
-          <NavLink
             href="/statistikk"
             label="Statistikk"
             icon={<BarChart3 size={17} strokeWidth={1.8} />}
@@ -154,7 +147,9 @@ export default function AppShell({
         </div>
 
         <div className="border-t border-line p-3">
-          <div className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? "justify-center" : ""}`}>
+          <div
+            className={`group relative flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? "justify-center" : ""}`}
+          >
             <Avatar
               name={user.name}
               imageUrl={user.avatarDataUrl}
@@ -162,20 +157,51 @@ export default function AppShell({
               title={collapsed ? `${user.name} · ${user.email}` : user.name}
             />
             {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium">{user.name}</p>
-                <p className="truncate text-[11.5px] text-ink-soft">{user.email}</p>
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium">{user.name}</p>
+                  <p className="truncate text-[11.5px] text-ink-soft">{user.email}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                  <Link
+                    href="/settings"
+                    title="Innstillinger"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
+                  >
+                    <Settings size={15} strokeWidth={1.8} />
+                  </Link>
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      title="Logg ut"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
+                    >
+                      <LogOut size={15} strokeWidth={1.8} />
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
+            {collapsed && (
+              <div className="pointer-events-none absolute bottom-1 left-full z-40 ml-2 flex items-center gap-1 rounded-full border border-line bg-surface p-1 opacity-0 shadow-pop transition group-hover:pointer-events-auto group-hover:opacity-100">
+                <Link
+                  href="/settings"
+                  title="Innstillinger"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
+                >
+                  <Settings size={15} strokeWidth={1.8} />
+                </Link>
+                <form action={logoutAction}>
+                  <button
+                    type="submit"
+                    title="Logg ut"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
+                  >
+                    <LogOut size={15} strokeWidth={1.8} />
+                  </button>
+                </form>
               </div>
             )}
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                title="Logg ut"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-mist/5 hover:text-ink"
-              >
-                <LogOut size={15} strokeWidth={1.8} />
-              </button>
-            </form>
           </div>
         </div>
       </aside>
