@@ -164,6 +164,8 @@ const CREATE_STATEMENTS = [
     title TEXT NOT NULL,
     hours REAL NOT NULL DEFAULT 0,
     rate INTEGER NOT NULL DEFAULT 0,
+    billing_type TEXT NOT NULL DEFAULT 'once',
+    months INTEGER,
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS contact_events (
@@ -280,6 +282,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   },
   people: { notes: "TEXT" },
   deals: { comment: "TEXT", lost_reason_id: "INTEGER", closed_at: "INTEGER" },
+  deal_lines: { billing_type: "TEXT NOT NULL DEFAULT 'once'", months: "INTEGER" },
   stages: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
   saved_views: {
     pipeline_id: "INTEGER REFERENCES pipelines(id)",

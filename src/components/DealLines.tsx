@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { addDealLine, deleteDealLine, updateDealLine } from "@/lib/actions";
 import { formatMoney } from "@/lib/format";
 import { Plus, Trash2 } from "lucide-react";
@@ -10,65 +10,125 @@ export interface DealLineItem {
   title: string;
   hours: number;
   rate: number;
+  billingType: "once" | "recurring";
+  months: number | null;
 }
 
 const SUGGESTIONS = ["Oppstartsworkshop", "Design", "Utvikling", "SEO", "Møter"];
+const GRID = "grid grid-cols-[1fr_76px_96px_100px_28px] items-center gap-2";
+
+function lineMultiplier(billingType: "once" | "recurring", months: number | null): number {
+  return billingType === "recurring" ? Math.max(1, months ?? 1) : 1;
+}
+
+function BillingTypeToggle({
+  value,
+  onChange,
+}: {
+  value: "once" | "recurring";
+  onChange: (v: "once" | "recurring") => void;
+}) {
+  return (
+    <div className="inline-flex rounded-full bg-mist/[0.05] p-0.5 text-[11.5px] font-medium">
+      {(["once", "recurring"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`rounded-full px-2.5 py-1 transition ${
+            value === v ? "bg-surface shadow-card text-ink" : "text-ink-soft hover:text-ink"
+          }`}
+        >
+          {v === "once" ? "Engang" : "Løpende"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function LineRow({ line, dealId }: { line: DealLineItem; dealId: number }) {
   const [pending, startTransition] = useTransition();
+  const [billingType, setBillingType] = useState<"once" | "recurring">(line.billingType);
   const formRef = useRef<HTMLFormElement>(null);
 
-  function save() {
+  function save(overrides?: Record<string, string>) {
     const form = formRef.current;
     if (!form) return;
     const data = new FormData(form);
+    if (overrides) for (const [k, v] of Object.entries(overrides)) data.set(k, v);
     startTransition(async () => {
       await updateDealLine(line.id, dealId, data);
     });
   }
 
+  const sum = line.hours * line.rate * lineMultiplier(billingType, line.months);
+
   return (
     <form
       ref={formRef}
-      className={`group grid grid-cols-[1fr_76px_96px_100px_28px] items-center gap-2 ${
-        pending ? "opacity-60" : ""
-      }`}
+      className={`group flex flex-col gap-1.5 ${pending ? "opacity-60" : ""}`}
     >
-      <input
-        name="title"
-        defaultValue={line.title}
-        onBlur={save}
-        className="field !py-1.5 text-[13px]"
-      />
-      <input
-        name="hours"
-        defaultValue={line.hours}
-        inputMode="decimal"
-        onBlur={save}
-        className="field !py-1.5 text-right text-[13px]"
-      />
-      <input
-        name="rate"
-        defaultValue={line.rate}
-        inputMode="numeric"
-        onBlur={save}
-        className="field !py-1.5 text-right text-[13px]"
-      />
-      <span className="text-right text-[13px] font-medium tabular-nums">
-        {formatMoney(Math.round(line.hours * line.rate))}
-      </span>
-      <button
-        type="button"
-        title="Fjern linje"
-        onClick={() =>
-          startTransition(async () => {
-            await deleteDealLine(line.id, dealId);
-          })
-        }
-        className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger"
-      >
-        <Trash2 size={13} />
-      </button>
+      <div className={GRID}>
+        <input
+          name="title"
+          defaultValue={line.title}
+          onBlur={() => save()}
+          className="field !py-1.5 text-[13px]"
+        />
+        <input
+          name="hours"
+          defaultValue={line.hours}
+          inputMode="decimal"
+          onBlur={() => save()}
+          className="field !py-1.5 text-right text-[13px]"
+        />
+        <input
+          name="rate"
+          defaultValue={line.rate}
+          inputMode="numeric"
+          onBlur={() => save()}
+          className="field !py-1.5 text-right text-[13px]"
+        />
+        <span className="text-right text-[13px] font-medium tabular-nums">
+          {formatMoney(Math.round(sum))}
+        </span>
+        <button
+          type="button"
+          title="Fjern linje"
+          onClick={() =>
+            startTransition(async () => {
+              await deleteDealLine(line.id, dealId);
+            })
+          }
+          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-faint opacity-0 transition group-hover:opacity-100 hover:bg-danger/10 hover:text-danger"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+      <div className="flex items-center gap-2 pl-0.5">
+        <input type="hidden" name="billingType" value={billingType} />
+        <BillingTypeToggle
+          value={billingType}
+          onChange={(v) => {
+            setBillingType(v);
+            save({ billingType: v, months: v === "recurring" ? String(line.months ?? 1) : "" });
+          }}
+        />
+        {billingType === "recurring" && (
+          <span className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+            i
+            <input
+              name="months"
+              type="number"
+              min={1}
+              defaultValue={line.months ?? 1}
+              onBlur={() => save()}
+              className="field !w-14 !py-1 text-center text-[12px]"
+            />
+            måneder
+          </span>
+        )}
+      </div>
     </form>
   );
 }
@@ -82,7 +142,11 @@ export default function DealLines({
 }) {
   const [pending, startTransition] = useTransition();
   const addFormRef = useRef<HTMLFormElement>(null);
-  const total = lines.reduce((acc, l) => acc + l.hours * l.rate, 0);
+  const [newBillingType, setNewBillingType] = useState<"once" | "recurring">("once");
+  const total = lines.reduce(
+    (acc, l) => acc + l.hours * l.rate * lineMultiplier(l.billingType, l.months),
+    0
+  );
 
   return (
     <div>
@@ -119,6 +183,7 @@ export default function DealLines({
           startTransition(async () => {
             await addDealLine(dealId, data);
             addFormRef.current?.reset();
+            setNewBillingType("once");
           });
         }}
         className="mt-4 border-t border-line pt-4"
@@ -150,6 +215,23 @@ export default function DealLines({
             placeholder="Timepris"
             className="field !py-1.5 text-right text-[13px]"
           />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input type="hidden" name="billingType" value={newBillingType} />
+          <BillingTypeToggle value={newBillingType} onChange={setNewBillingType} />
+          {newBillingType === "recurring" && (
+            <span className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+              i
+              <input
+                name="months"
+                type="number"
+                min={1}
+                defaultValue={1}
+                className="field !w-14 !py-1 text-center text-[12px]"
+              />
+              måneder
+            </span>
+          )}
         </div>
         <div className="mt-2 flex items-center justify-between">
           <div className="flex flex-wrap gap-1.5">

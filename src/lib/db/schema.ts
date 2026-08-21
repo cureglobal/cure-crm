@@ -351,6 +351,8 @@ export const dealLines = sqliteTable("deal_lines", {
   title: text("title").notNull(),
   hours: real("hours").notNull().default(0),
   rate: integer("rate").notNull().default(0),
+  billingType: text("billing_type").notNull().default("once"), // "once" | "recurring"
+  months: integer("months"), // antall måneder linjen løper, kun brukt når billingType er "recurring"
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

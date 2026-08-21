@@ -13,24 +13,45 @@ export default function BulkOwnerPicker({
   owners,
   disabled,
   onApply,
+  currentOwnerId,
 }: {
   owners: { id: number; name: string; avatarDataUrl: string | null }[];
   disabled?: boolean;
   onApply: (mainOwnerId: number | null, addOwnerIds: number[]) => void;
+  currentOwnerId?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [mainId, setMainId] = useState<number | null>(null);
   const [addIds, setAddIds] = useState<number[]>([]);
+  const [search, setSearch] = useState("");
+
+  const filtered = owners.filter((o) =>
+    o.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   function openPopover() {
     setMainId(null);
     setAddIds([]);
+    setSearch("");
     setOpen(true);
   }
 
   function closePopover() {
     setOpen(false);
     if (mainId != null || addIds.length > 0) onApply(mainId, addIds);
+  }
+
+  function chooseMain(userId: number) {
+    setOpen(false);
+    setSearch("");
+    onApply(userId, []);
+  }
+
+  function onSearchKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && filtered.length === 1) {
+      e.preventDefault();
+      chooseMain(filtered[0].id);
+    }
   }
 
   function toggleAdd(userId: number) {
@@ -63,14 +84,23 @@ export default function BulkOwnerPicker({
         <>
           <div className="fixed inset-0 z-30" onClick={closePopover} />
           <div className="absolute left-0 bottom-full z-40 mb-1.5 w-60 rounded-xl border border-line bg-surface p-1.5 shadow-pop">
-            <p className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
-              Eiere
-            </p>
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={onSearchKeyDown}
+              placeholder="Søk eier …"
+              className="field mb-1.5 !py-1.5 text-[12.5px]"
+            />
             <ul className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
-              {owners.map((o) => {
+              {filtered.length === 0 && (
+                <li className="px-2 py-1.5 text-[12px] text-ink-faint">Ingen treff.</li>
+              )}
+              {filtered.map((o) => {
                 const isMain = o.id === mainId;
                 const isAdd = addIds.includes(o.id);
                 const checked = isMain || isAdd;
+                const isCurrent = !isMain && o.id === currentOwnerId;
                 return (
                   <li
                     key={o.id}
@@ -92,6 +122,9 @@ export default function BulkOwnerPicker({
                       <span className="min-w-0 flex-1 truncate">{o.name}</span>
                       {isMain && (
                         <span className="shrink-0 text-[10.5px] text-ink-faint">Hovedeier</span>
+                      )}
+                      {isCurrent && (
+                        <span className="shrink-0 text-[10.5px] text-ink-faint">Nåværende</span>
                       )}
                     </button>
                     <button

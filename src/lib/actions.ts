@@ -1451,6 +1451,22 @@ export async function bulkDeleteDeals(dealIds: number[]): Promise<{ deleted: num
 
 // ---------- Varelinjer ----------
 
+function lineMultiplier(line: { billingType: string; months: number | null }): number {
+  return line.billingType === "recurring" ? Math.max(1, line.months ?? 1) : 1;
+}
+
+function parseBillingFields(formData: FormData): { billingType: "once" | "recurring"; months: number | null } {
+  const billingType = formData.get("billingType") === "recurring" ? "recurring" : "once";
+  const monthsRaw = Number(String(formData.get("months") ?? ""));
+  const months =
+    billingType === "recurring" && Number.isFinite(monthsRaw) && monthsRaw >= 1
+      ? Math.round(monthsRaw)
+      : billingType === "recurring"
+        ? 1
+        : null;
+  return { billingType, months };
+}
+
 async function recalcDealValue(dealId: number) {
   const lines = await db.query.dealLines.findMany({
     where: eq(dealLines.dealId, dealId),
@@ -1458,7 +1474,7 @@ async function recalcDealValue(dealId: number) {
   const total =
     lines.length === 0
       ? null
-      : Math.round(lines.reduce((acc, l) => acc + l.hours * l.rate, 0));
+      : Math.round(lines.reduce((acc, l) => acc + l.hours * l.rate * lineMultiplier(l), 0));
   await db
     .update(deals)
     .set({ value: total, updatedAt: new Date() })
@@ -1471,7 +1487,8 @@ export async function addDealLine(dealId: number, formData: FormData) {
   const hours = Number(String(formData.get("hours") ?? "0").replace(",", "."));
   const rate = Number(String(formData.get("rate") ?? "0").replace(/[^\d]/g, ""));
   if (!title || !Number.isFinite(hours) || hours < 0) return;
-  await db.insert(dealLines).values({ dealId, title, hours, rate });
+  const { billingType, months } = parseBillingFields(formData);
+  await db.insert(dealLines).values({ dealId, title, hours, rate, billingType, months });
   await recalcDealValue(dealId);
   revalidateDealViews(dealId);
 }
@@ -1482,9 +1499,10 @@ export async function updateDealLine(lineId: number, dealId: number, formData: F
   const hours = Number(String(formData.get("hours") ?? "0").replace(",", "."));
   const rate = Number(String(formData.get("rate") ?? "0").replace(/[^\d]/g, ""));
   if (!title || !Number.isFinite(hours) || hours < 0) return;
+  const { billingType, months } = parseBillingFields(formData);
   await db
     .update(dealLines)
-    .set({ title, hours, rate })
+    .set({ title, hours, rate, billingType, months })
     .where(eq(dealLines.id, lineId));
   await recalcDealValue(dealId);
   revalidateDealViews(dealId);
@@ -3132,7 +3150,10 @@ export async function sendQuoteEmail(
     companyName: company.name,
     dealTitle: deal.title,
     dateLabel,
-    lines: lines.map((l) => ({ title: l.title, sum: l.hours * l.rate })),
+    lines: lines.map((l) => ({
+      title: l.billingType === "recurring" ? `${l.title} (× ${lineMultiplier(l)} mnd)` : l.title,
+      sum: l.hours * l.rate * lineMultiplier(l),
+    })),
   });
 
   const filename = `${company.name} - ${deal.title}, ${dateLabel}.pdf`;

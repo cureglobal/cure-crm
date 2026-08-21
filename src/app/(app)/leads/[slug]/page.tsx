@@ -507,6 +507,8 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
                 title: l.title,
                 hours: l.hours,
                 rate: l.rate,
+                billingType: l.billingType === "recurring" ? "recurring" : "once",
+                months: l.months,
               }))}
             />
             {lines.length > 0 && (

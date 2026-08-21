@@ -101,6 +101,10 @@ function Row({
   draggable = false,
   onDragStart,
   onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  dragOver = false,
 }: {
   deal: DealRow;
   selected: boolean;
@@ -109,6 +113,10 @@ function Row({
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: () => void;
+  onDrop?: (e: React.DragEvent) => void;
+  dragOver?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [dateVal, setDateVal] = useState(deal.followUpInput);
@@ -127,9 +135,12 @@ function Row({
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""} ${
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`border-b border-line last:border-b-0 transition-colors ${pending ? "opacity-60" : ""} ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+      } ${dragOver ? "bg-accent-soft/40" : ""}`}
     >
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
@@ -268,6 +279,7 @@ export default function DealsTable({
   const [pendingLostStageId, setPendingLostStageId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
+  const [dragOverDealId, setDragOverDealId] = useState<number | null>(null);
   const [pendingLostDrop, setPendingLostDrop] = useState<{
     dealId: number;
     stageId: string;
@@ -285,6 +297,18 @@ export default function DealsTable({
   }, [rows, sort]);
 
   const allVisibleSelected = sorted.length > 0 && sorted.every((r) => selected.has(r.id));
+
+  // Vis nåværende fase/eier i bulk-velgerne kun når hele det valgte utvalget
+  // deler samme verdi — ellers er "nåværende" udefinert for et blandet utvalg.
+  const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
+  const currentStageId =
+    selectedRows.length > 0 && selectedRows.every((r) => r.stage === selectedRows[0].stage)
+      ? selectedRows[0].stage
+      : null;
+  const currentOwnerId =
+    selectedRows.length > 0 && selectedRows.every((r) => r.ownerId === selectedRows[0].ownerId)
+      ? selectedRows[0].ownerId
+      : null;
 
   function toggleAll() {
     setSelected((prev) => {
@@ -359,6 +383,7 @@ export default function DealsTable({
   function handleDragEnd() {
     setIsDragging(false);
     setDragOverStageId(null);
+    setDragOverDealId(null);
   }
 
   function handleDrop(stage: Stage, e: React.DragEvent) {
@@ -477,9 +502,19 @@ export default function DealsTable({
           <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-line bg-canvas/95 px-4 py-3 shadow-pop backdrop-blur-xl">
             <span className="text-[13px] font-medium">{selected.size} valgt</span>
 
-            <BulkStagePicker stages={stages} disabled={pending} onApply={applyStage} />
+            <BulkStagePicker
+              stages={stages}
+              disabled={pending}
+              onApply={applyStage}
+              currentStageId={currentStageId}
+            />
 
-            <BulkOwnerPicker owners={owners} disabled={pending} onApply={applyBulkOwner} />
+            <BulkOwnerPicker
+              owners={owners}
+              disabled={pending}
+              onApply={applyBulkOwner}
+              currentOwnerId={currentOwnerId}
+            />
 
             <BulkTagPicker tags={tags} disabled={pending} onApply={applyBulkTags} />
 
@@ -584,15 +619,32 @@ export default function DealsTable({
           })
         ) : (
           <ul>
-            {sorted.map((deal) => (
-              <Row
-                key={deal.id}
-                deal={deal}
-                selected={selected.has(deal.id)}
-                onToggle={() => toggleOne(deal.id)}
-                owners={owners}
-              />
-            ))}
+            {sorted.map((deal) => {
+              const dealStage = stages.find((s) => String(s.id) === deal.stage);
+              return (
+                <Row
+                  key={deal.id}
+                  deal={deal}
+                  selected={selected.has(deal.id)}
+                  onToggle={() => toggleOne(deal.id)}
+                  owners={owners}
+                  draggable
+                  onDragStart={(e) => handleDragStart(deal.id, e)}
+                  onDragEnd={handleDragEnd}
+                  dragOver={dragOverDealId === deal.id}
+                  onDragOver={(e) => {
+                    if (!dealStage) return;
+                    e.preventDefault();
+                    setDragOverDealId(deal.id);
+                  }}
+                  onDragLeave={() => setDragOverDealId((id) => (id === deal.id ? null : id))}
+                  onDrop={(e) => {
+                    setDragOverDealId(null);
+                    if (dealStage) handleDrop(dealStage, e);
+                  }}
+                />
+              );
+            })}
           </ul>
         )}
       </div>
