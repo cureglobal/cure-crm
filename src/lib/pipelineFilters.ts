@@ -10,6 +10,7 @@ export interface ResolvedFilters {
   pipelineId?: number;
   ownerId?: "alle" | number;
   businessUnitId?: "alle" | number;
+  tagId?: "alle" | number;
   datePreset?: DatePreset;
   fromDate?: string;
   toDate?: string;
@@ -38,6 +39,7 @@ export function parseFiltersFromParams(params: RawParams): ResolvedFilters {
   const aktive = str(params, "aktive");
   const gruppe = str(params, "gruppe");
   const pipeline = str(params, "pipeline");
+  const tag = str(params, "tag");
   return {
     view: view === "liste" || view === "kanban" ? view : undefined,
     search: str(params, "s"),
@@ -46,6 +48,7 @@ export function parseFiltersFromParams(params: RawParams): ResolvedFilters {
       eier === "alle" ? "alle" : eier != null && /^\d+$/.test(eier) ? Number(eier) : undefined,
     businessUnitId:
       enhet === "alle" ? "alle" : enhet != null && /^\d+$/.test(enhet) ? Number(enhet) : undefined,
+    tagId: tag === "alle" ? "alle" : tag != null && /^\d+$/.test(tag) ? Number(tag) : undefined,
     datePreset:
       dato === "uke" ||
       dato === "forfalt" ||
@@ -74,6 +77,7 @@ export function mergeFilters(base: ResolvedFilters, override: ResolvedFilters): 
     pipelineId: override.pipelineId ?? base.pipelineId,
     ownerId: override.ownerId ?? base.ownerId,
     businessUnitId: override.businessUnitId ?? base.businessUnitId,
+    tagId: override.tagId ?? base.tagId,
     datePreset: override.datePreset ?? base.datePreset,
     fromDate: override.fromDate ?? base.fromDate,
     toDate: override.toDate ?? base.toDate,
@@ -92,6 +96,7 @@ export function savedViewToFilters(v: SavedViewFilters): ResolvedFilters {
     pipelineId: v.pipelineId ?? undefined,
     ownerId: v.ownerId === -1 ? "alle" : (v.ownerId ?? undefined),
     businessUnitId: v.businessUnitId === -1 ? "alle" : (v.businessUnitId ?? undefined),
+    tagId: v.tagId === -1 ? "alle" : (v.tagId ?? undefined),
     datePreset:
       v.datePreset === "uke" ||
       v.datePreset === "forfalt" ||

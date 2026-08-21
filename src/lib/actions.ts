@@ -27,6 +27,9 @@ import {
   businessUnits,
   calendarAccounts,
   lostReasons,
+  tags,
+  dealTags,
+  personTags,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -69,6 +72,7 @@ export interface SavedViewFilters {
   pipelineId: number | null;
   ownerId: number | null;
   businessUnitId: number | null;
+  tagId: number | null;
   datePreset: string | null;
   fromDate: string | null;
   toDate: string | null;
@@ -130,6 +134,7 @@ export async function listSavedViews(): Promise<SavedViewRow[]> {
     pipelineId: r.pipelineId,
     ownerId: r.ownerId,
     businessUnitId: r.businessUnitId,
+    tagId: r.tagId,
     datePreset: r.datePreset,
     fromDate: r.fromDate,
     toDate: r.toDate,
@@ -904,6 +909,108 @@ export async function reorderLostReasons(orderedIds: number[]) {
     await db.update(lostReasons).set({ sortOrder: i }).where(eq(lostReasons.id, orderedIds[i]));
   }
   revalidatePath("/settings");
+}
+
+// ---------- Tagger (deals og personer) ----------
+// Fritt redigerbare per entitetstype, samme mønster som tapt-grunner —
+// forhåndsdefinerte via seedTags i migrate.ts, men kan utvides/omdøpes/
+// slettes fra Innstillinger etterpå.
+
+export async function createTag(
+  entityType: "deal" | "person",
+  formData: FormData
+) {
+  await requireUser();
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return null;
+  const existing = await db.query.tags.findMany({
+    where: eq(tags.entityType, entityType),
+    orderBy: [asc(tags.sortOrder)],
+  });
+  const nextOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0;
+  const [tag] = await db
+    .insert(tags)
+    .values({ entityType, label, sortOrder: nextOrder })
+    .returning();
+  revalidatePath("/settings");
+  return tag;
+}
+
+export async function updateTag(id: number, formData: FormData) {
+  await requireUser();
+  const label = String(formData.get("label") ?? "").trim();
+  if (!label) return;
+  await db.update(tags).set({ label }).where(eq(tags.id, id));
+  revalidatePath("/settings");
+}
+
+// Ingen "i bruk"-sperre som på tapt-grunner — en tag er trygg å slette når
+// den er i bruk, siden den bare fjernes fra det den var koblet til
+// (fremmednøklene har ON DELETE CASCADE på selve koblingstabellene).
+export async function deleteTag(id: number): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  await db.delete(tags).where(eq(tags.id, id));
+  revalidatePath("/settings");
+  revalidateDealViews();
+  revalidatePath("/people");
+  return { ok: true, message: "Taggen ble slettet." };
+}
+
+// `orderedIds` er hele lista (for én entitetstype) i sin nye rekkefølge.
+export async function reorderTags(orderedIds: number[]) {
+  await requireUser();
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db.update(tags).set({ sortOrder: i }).where(eq(tags.id, orderedIds[i]));
+  }
+  revalidatePath("/settings");
+}
+
+export async function addDealTag(dealId: number, tagId: number) {
+  await requireUser();
+  await db.insert(dealTags).values({ dealId, tagId }).onConflictDoNothing();
+  revalidateDealViews(dealId);
+}
+
+export async function removeDealTag(dealId: number, tagId: number) {
+  await requireUser();
+  await db.delete(dealTags).where(and(eq(dealTags.dealId, dealId), eq(dealTags.tagId, tagId)));
+  revalidateDealViews(dealId);
+}
+
+// Brukes fra bulk-verktøylinjen i Pipeline-listen — legger til (ikke
+// fjerner) samme tag på flere valgte deals samtidig.
+export async function bulkAddDealTag(dealIds: number[], tagId: number) {
+  await requireUser();
+  for (const dealId of dealIds) {
+    await db.insert(dealTags).values({ dealId, tagId }).onConflictDoNothing();
+  }
+  revalidateDealViews();
+}
+
+export async function addPersonTag(personId: number, tagId: number) {
+  await requireUser();
+  await db.insert(personTags).values({ personId, tagId }).onConflictDoNothing();
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/people");
+}
+
+export async function removePersonTag(personId: number, tagId: number) {
+  await requireUser();
+  await db
+    .delete(personTags)
+    .where(and(eq(personTags.personId, personId), eq(personTags.tagId, tagId)));
+  revalidatePath(`/people/${personId}`);
+  revalidatePath("/people");
+}
+
+// Brukes fra bulk-verktøylinjen i Personer-listen — samme "legg til, ikke
+// fjern"-oppførsel som bulkAddDealTag.
+export async function bulkAddPersonTag(personIds: number[], tagId: number) {
+  await requireUser();
+  for (const personId of personIds) {
+    await db.insert(personTags).values({ personId, tagId }).onConflictDoNothing();
+  }
+  revalidatePath("/people");
 }
 
 // ---------- Faser (pipeline-stages) ----------

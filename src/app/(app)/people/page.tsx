@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db, people, companies, companyPeople } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getTags } from "@/lib/tags.server";
 import PeopleTable, { type PersonRow } from "@/components/PeopleTable";
 
 export default async function PeoplePage() {
@@ -21,6 +22,15 @@ export default async function PeoplePage() {
     .innerJoin(companies, eq(companyPeople.companyId, companies.id))
     .orderBy(asc(companies.name));
 
+  const tagOptions = await getTags("person");
+  const tagLinks = await db.query.personTags.findMany();
+  const tagIdsByPerson = new Map<number, number[]>();
+  for (const l of tagLinks) {
+    const list = tagIdsByPerson.get(l.personId) ?? [];
+    list.push(l.tagId);
+    tagIdsByPerson.set(l.personId, list);
+  }
+
   const rows: PersonRow[] = allPeople.map((p) => ({
     id: p.id,
     name: p.name,
@@ -34,6 +44,7 @@ export default async function PeoplePage() {
         logoUrl: l.logoUrl,
         role: l.role,
       })),
+    tagIds: tagIdsByPerson.get(p.id) ?? [],
   }));
 
   return (
@@ -47,6 +58,7 @@ export default async function PeoplePage() {
       <PeopleTable
         rows={rows}
         companies={allCompanies.map((c) => ({ id: c.id, name: c.name }))}
+        tags={tagOptions.map((t) => ({ id: t.id, label: t.label }))}
       />
     </div>
   );

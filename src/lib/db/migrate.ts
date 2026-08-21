@@ -204,6 +204,27 @@ const CREATE_STATEMENTS = [
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS deal_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(deal_id, tag_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS person_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(person_id, tag_id)
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -227,6 +248,11 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_calendar_accounts_user ON calendar_accounts(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_lost_reasons_sort_order ON lost_reasons(sort_order)",
   "CREATE INDEX IF NOT EXISTS idx_deals_lost_reason ON deals(lost_reason_id)",
+  "CREATE INDEX IF NOT EXISTS idx_tags_entity_type ON tags(entity_type)",
+  "CREATE INDEX IF NOT EXISTS idx_deal_tags_deal ON deal_tags(deal_id)",
+  "CREATE INDEX IF NOT EXISTS idx_deal_tags_tag ON deal_tags(tag_id)",
+  "CREATE INDEX IF NOT EXISTS idx_person_tags_person ON person_tags(person_id)",
+  "CREATE INDEX IF NOT EXISTS idx_person_tags_tag ON person_tags(tag_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -258,6 +284,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
   saved_views: {
     pipeline_id: "INTEGER REFERENCES pipelines(id)",
     active_days: "INTEGER",
+    tag_id: "INTEGER",
   },
   users: {
     signature: "TEXT",
@@ -445,6 +472,30 @@ async function seedLostReasons(client: Client) {
   }
 }
 
+const DEFAULT_DEAL_TAGS = ["Inbound marketing", "Outbound", "Anbud"];
+const DEFAULT_PERSON_TAGS = ["Relasjon", "Tidligere kunde av Pål og Martin"];
+
+// Seeder de forhåndsdefinerte taggene for deals og personer. Idempotent på
+// samme måte som fasene/tapt-grunnene — hopper over hvis tags-tabellen
+// ikke er tom (så en slettet tag ikke kommer tilbake ved neste redeploy).
+async function seedTags(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM tags");
+  if (Number(existing.rows[0].c) > 0) return;
+
+  for (let i = 0; i < DEFAULT_DEAL_TAGS.length; i++) {
+    await client.execute({
+      sql: "INSERT INTO tags (entity_type, label, sort_order, created_at) VALUES (?, ?, ?, ?)",
+      args: ["deal", DEFAULT_DEAL_TAGS[i], i, Date.now()],
+    });
+  }
+  for (let i = 0; i < DEFAULT_PERSON_TAGS.length; i++) {
+    await client.execute({
+      sql: "INSERT INTO tags (entity_type, label, sort_order, created_at) VALUES (?, ?, ?, ?)",
+      args: ["person", DEFAULT_PERSON_TAGS[i], i, Date.now()],
+    });
+  }
+}
+
 // deals.owner_id var opprinnelig NOT NULL — en deal kan nå stå uten
 // hovedeier, men SQLite støtter ikke ALTER COLUMN, så tabellen bygges om.
 // Idempotent: sjekker PRAGMA table_info først og hopper over hvis kolonnen
@@ -539,4 +590,5 @@ export async function migrate(client: Client) {
   // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
   await seedBusinessUnits(client);
   await seedLostReasons(client);
+  await seedTags(client);
 }

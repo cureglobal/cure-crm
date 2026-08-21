@@ -15,6 +15,7 @@ import {
   dealLines as dealLinesTable,
   contactEvents,
   dealOwners,
+  dealTags,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import {
@@ -23,6 +24,8 @@ import {
   unlinkPersonFromCompany,
   setFollowUp,
   updateDealDetails,
+  addDealTag,
+  removeDealTag,
 } from "@/lib/actions";
 import {
   formatDate,
@@ -48,6 +51,8 @@ import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getDealSlugMap, resolveDealSlugToId } from "@/lib/dealSlugs.server";
+import { getTags } from "@/lib/tags.server";
+import TagsEditor from "@/components/TagsEditor";
 
 export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   const me = await requireUser();
@@ -89,6 +94,9 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
     ? allStages.filter((s) => s.pipelineId === currentStage.pipelineId)
     : allStages;
   const lostReasons = await getLostReasons();
+  const dealTagOptions = await getTags("deal");
+  const dealTagRows = await db.query.dealTags.findMany({ where: eq(dealTags.dealId, dealId) });
+  const dealTagIds = dealTagRows.map((t) => t.tagId);
 
   const otherDeals = await db.query.deals.findMany({
     where: and(eq(deals.companyId, company.id), ne(deals.id, deal.id)),
@@ -264,6 +272,17 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
           lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
         />
       </div>
+
+      {dealTagOptions.length > 0 && (
+        <div className="mb-8">
+          <TagsEditor
+            allTags={dealTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+            initialSelectedIds={dealTagIds}
+            onAdd={addDealTag.bind(null, deal.id)}
+            onRemove={removeDealTag.bind(null, deal.id)}
+          />
+        </div>
+      )}
 
       {myPendingRequests.map((r) => (
         <div key={r.id} className="mb-4">

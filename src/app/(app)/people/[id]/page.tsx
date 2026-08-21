@@ -8,16 +8,25 @@ import {
   companyPeople,
   deals,
   users,
+  personTags,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { linkPersonToCompany, unlinkPersonFromCompany, updatePerson } from "@/lib/actions";
+import {
+  linkPersonToCompany,
+  unlinkPersonFromCompany,
+  updatePerson,
+  addPersonTag,
+  removePersonTag,
+} from "@/lib/actions";
 import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { getTags } from "@/lib/tags.server";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import DeletePersonButton from "@/components/DeletePersonButton";
+import TagsEditor from "@/components/TagsEditor";
 import { ArrowLeft, Mail, Phone, Plus, Trash2, TriangleAlert } from "lucide-react";
 
 export default async function PersonPage({ params }: PageProps<"/people/[id]">) {
@@ -29,6 +38,11 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
   const person = await db.query.people.findFirst({ where: eq(people.id, personId) });
   if (!person) notFound();
   const stages = await getStages();
+  const personTagOptions = await getTags("person");
+  const personTagRows = await db.query.personTags.findMany({
+    where: eq(personTags.personId, personId),
+  });
+  const personTagIds = personTagRows.map((t) => t.tagId);
 
   const links = await db
     .select({
@@ -108,6 +122,17 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
           </div>
         </div>
       </div>
+
+      {personTagOptions.length > 0 && (
+        <div className="mb-6">
+          <TagsEditor
+            allTags={personTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+            initialSelectedIds={personTagIds}
+            onAdd={addPersonTag.bind(null, person.id)}
+            onRemove={removePersonTag.bind(null, person.id)}
+          />
+        </div>
+      )}
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
         <div className="flex flex-col gap-6">

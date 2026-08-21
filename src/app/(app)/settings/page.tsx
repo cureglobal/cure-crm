@@ -5,6 +5,7 @@ import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
+import { getTags } from "@/lib/tags.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
@@ -26,6 +27,7 @@ import CollapsibleSection from "@/components/CollapsibleSection";
 import type { StageRow } from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
 import LostReasonsManager from "@/components/LostReasonsManager";
+import TagsManager from "@/components/TagsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
 import UserNameEdit from "@/components/UserNameEdit";
@@ -44,6 +46,7 @@ import {
   ThumbsDown,
   GitMerge,
   ListPlus,
+  Tag,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -69,6 +72,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const pipelineRows = await getPipelines();
   const businessUnitRows = await getBusinessUnits();
   const lostReasonRows = await getLostReasons();
+  const dealTagRows = await getTags("deal");
+  const personTagRows = await getTags("person");
 
   const stagesByPipeline: Record<number, StageRow[]> = {};
   for (const p of pipelineRows) {
@@ -337,6 +342,43 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <LostReasonsManager
           reasons={lostReasonRows.map((r) => ({ id: r.id, label: r.label }))}
         />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Tag size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Tagger</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Frie tagger for deals og personer — redigeres her, brukes fra
+              detaljsidene og i bulk fra listevisningene.
+            </p>
+          </div>
+        </div>
+        <CollapsibleSection>
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-[12.5px] font-semibold uppercase tracking-wide text-ink-faint">
+                Deals
+              </h3>
+              <TagsManager
+                entityType="deal"
+                tags={dealTagRows.map((t) => ({ id: t.id, label: t.label }))}
+              />
+            </div>
+            <div>
+              <h3 className="mb-2 text-[12.5px] font-semibold uppercase tracking-wide text-ink-faint">
+                Personer
+              </h3>
+              <TagsManager
+                entityType="person"
+                tags={personTagRows.map((t) => ({ id: t.id, label: t.label }))}
+              />
+            </div>
+          </div>
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">

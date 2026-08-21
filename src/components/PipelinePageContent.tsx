@@ -7,6 +7,7 @@ import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { getTags } from "@/lib/tags.server";
 import type { ResolvedFilters } from "@/lib/pipelineFilters";
 import PipelineView from "@/components/PipelineView";
 import type { DealRow } from "@/components/DealsTable";
@@ -61,6 +62,15 @@ export default async function PipelinePageContent({
     coOwnerIdsByDeal.set(r.dealId, list);
   }
 
+  const dealTagOptions = await getTags("deal");
+  const dealTagRows = await db.query.dealTags.findMany();
+  const tagIdsByDeal = new Map<number, number[]>();
+  for (const r of dealTagRows) {
+    const list = tagIdsByDeal.get(r.dealId) ?? [];
+    list.push(r.tagId);
+    tagIdsByDeal.set(r.dealId, list);
+  }
+
   const companyOptions = (
     await db.query.companies.findMany({ orderBy: [asc(companies.name)] })
   ).map((c) => ({ id: c.id, name: c.name, logoUrl: c.logoUrl }));
@@ -75,13 +85,18 @@ export default async function PipelinePageContent({
     .from(activities)
     .where(inArray(activities.type, ["comment", "lost"]))
     .orderBy(desc(activities.createdAt));
-  const commentedByDeal = new Map<number, number | null>();
+  const commentActivityByDeal = new Map<number, { userId: number | null; createdAt: Date }>();
   for (const a of commentActivity) {
-    if (!commentedByDeal.has(a.dealId)) commentedByDeal.set(a.dealId, a.userId);
+    if (!commentActivityByDeal.has(a.dealId)) {
+      commentActivityByDeal.set(a.dealId, { userId: a.userId, createdAt: a.createdAt });
+    }
   }
   function commentAuthor(dealId: number): string | null {
-    const uid = commentedByDeal.get(dealId);
+    const uid = commentActivityByDeal.get(dealId)?.userId;
     return uid != null ? (ownerNames.get(uid) ?? null) : null;
+  }
+  function commentedAt(dealId: number): number | null {
+    return commentActivityByDeal.get(dealId)?.createdAt.getTime() ?? null;
   }
 
   const stages = await getStages(pipelineId);
@@ -112,6 +127,8 @@ export default async function PipelinePageContent({
       followUpInput: toDateInputValue(d.followUpAt),
       comment: d.comment ?? "",
       commentedBy: d.comment ? commentAuthor(d.id) : null,
+      commentedAt: d.comment ? commentedAt(d.id) : null,
+      tagIds: tagIdsByDeal.get(d.id) ?? [],
     }));
 
   return (
@@ -126,6 +143,7 @@ export default async function PipelinePageContent({
       savedViewName={savedViewName}
       pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}
       pipelineId={pipelineId}
+      tags={dealTagOptions.map((t) => ({ id: t.id, label: t.label }))}
       initialView={filters.view}
       initialSearch={filters.search}
       initialDatePreset={filters.datePreset}
@@ -133,6 +151,7 @@ export default async function PipelinePageContent({
       initialToDate={filters.toDate}
       initialOwnerId={filters.ownerId}
       initialBusinessUnitId={filters.businessUnitId}
+      initialTagId={filters.tagId}
       initialActiveDays={filters.activeDays}
       initialGroupByStage={filters.groupByStage}
     />

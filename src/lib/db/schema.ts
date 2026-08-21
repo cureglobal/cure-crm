@@ -48,6 +48,45 @@ export const lostReasons = sqliteTable("lost_reasons", {
     .$defaultFn(() => new Date()),
 });
 
+// Frie tagger for deals og personer — "entityType" holder de to listene
+// atskilt (samme selskap kan f.eks. ikke få en person-tag). Fritt
+// redigerbare fra Innstillinger, samme mønster som lost_reasons.
+export const tags = sqliteTable("tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull(), // "deal" | "person"
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const dealTags = sqliteTable("deal_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dealId: integer("deal_id")
+    .notNull()
+    .references(() => deals.id, { onDelete: "cascade" }),
+  tagId: integer("tag_id")
+    .notNull()
+    .references(() => tags.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const personTags = sqliteTable("person_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  personId: integer("person_id")
+    .notNull()
+    .references(() => people.id, { onDelete: "cascade" }),
+  tagId: integer("tag_id")
+    .notNull()
+    .references(() => tags.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // Google Kalender-tilkobling per bruker (samme idé som email_accounts, men
 // OAuth-refresh-token i stedet for et IMAP-app-passord). Brukes til å
 // synkronisere møter og logge dem som kontakthistorikk (contact_events) når
@@ -221,6 +260,7 @@ export const savedViews = sqliteTable("saved_views", {
   search: text("search"),
   ownerId: integer("owner_id"),
   businessUnitId: integer("business_unit_id"),
+  tagId: integer("tag_id"), // -1 = "alle tagger", samme sentinel-mønster som eier/enhet
   datePreset: text("date_preset"),
   fromDate: text("from_date"), // yyyy-mm-dd
   toDate: text("to_date"), // yyyy-mm-dd
@@ -366,6 +406,9 @@ export type User = typeof users.$inferSelect;
 export type Company = typeof companies.$inferSelect;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type LostReason = typeof lostReasons.$inferSelect;
+export type Tag = typeof tags.$inferSelect;
+export type DealTag = typeof dealTags.$inferSelect;
+export type PersonTag = typeof personTags.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
 export type Pipeline = typeof pipelines.$inferSelect;
 export type Deal = typeof deals.$inferSelect;

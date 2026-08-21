@@ -47,6 +47,7 @@ interface StoredFilters {
   search?: string;
   ownerId?: "alle" | number;
   businessUnitId?: "alle" | number;
+  tagId?: "alle" | number;
   datePreset?: DatePreset;
   fromDate?: string;
   toDate?: string;
@@ -105,6 +106,7 @@ export default function PipelineView({
   savedViewName,
   pipelines,
   pipelineId: initialPipelineId,
+  tags,
   initialView,
   initialSearch,
   initialDatePreset,
@@ -112,6 +114,7 @@ export default function PipelineView({
   initialToDate,
   initialOwnerId,
   initialBusinessUnitId,
+  initialTagId,
   initialGroupByStage,
   initialActiveDays,
 }: {
@@ -130,6 +133,7 @@ export default function PipelineView({
   // eksplisitt satt via URL/lagret visning) — ikke "initial" i samme
   // forstand som feltene under.
   pipelineId: number;
+  tags: { id: number; label: string }[];
   // Udefinert = ikke satt eksplisitt via URL/lagret visning; da avgjør
   // lagrede preferanser (eller de faste standardverdiene under, ved aller
   // første besøk).
@@ -140,6 +144,7 @@ export default function PipelineView({
   initialToDate?: string;
   initialOwnerId?: "alle" | number;
   initialBusinessUnitId?: "alle" | number;
+  initialTagId?: "alle" | number;
   initialGroupByStage?: boolean;
   // Udefinert = ikke satt; 0 = eksplisitt av; >0 = filtrer på nettopp så
   // mange dager siden siste oppdatering (se ACTIVE_DAYS for standardverdien
@@ -158,6 +163,7 @@ export default function PipelineView({
   const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>(
     initialBusinessUnitId ?? "alle"
   );
+  const [tagId, setTagId] = useState<"alle" | number>(initialTagId ?? "alle");
   const [datePreset, setDatePreset] = useState<DatePreset>(initialDatePreset ?? "alle");
   const [fromDate, setFromDate] = useState(initialFromDate ?? "");
   const [toDate, setToDate] = useState(initialToDate ?? "");
@@ -190,6 +196,7 @@ export default function PipelineView({
     if (initialSearch === undefined) setSearch(saved?.search ?? "");
     if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? currentUserId);
     if (initialBusinessUnitId === undefined) setBusinessUnitId(saved?.businessUnitId ?? "alle");
+    if (initialTagId === undefined) setTagId(saved?.tagId ?? "alle");
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
     if (initialGroupByStage === undefined) setGroupByStage(saved?.groupByStage ?? true);
     if (initialActiveDays === undefined) setActiveDays(saved?.activeDays ?? null);
@@ -212,6 +219,7 @@ export default function PipelineView({
           search,
           ownerId,
           businessUnitId,
+          tagId,
           datePreset,
           fromDate,
           toDate,
@@ -228,6 +236,7 @@ export default function PipelineView({
     search,
     ownerId,
     businessUnitId,
+    tagId,
     datePreset,
     fromDate,
     toDate,
@@ -248,6 +257,7 @@ export default function PipelineView({
     sp.set("pipeline", String(pipelineId));
     sp.set("eier", ownerId === "alle" ? "alle" : String(ownerId));
     sp.set("enhet", businessUnitId === "alle" ? "alle" : String(businessUnitId));
+    sp.set("tag", tagId === "alle" ? "alle" : String(tagId));
     sp.set("dato", datePreset);
     if (datePreset === "egendefinert") {
       if (fromDate) sp.set("fra", fromDate);
@@ -264,6 +274,7 @@ export default function PipelineView({
     pipelineId,
     ownerId,
     businessUnitId,
+    tagId,
     datePreset,
     fromDate,
     toDate,
@@ -288,6 +299,7 @@ export default function PipelineView({
       if (businessUnitId !== "alle" && r.companyBusinessUnitId !== businessUnitId) {
         return false;
       }
+      if (tagId !== "alle" && !r.tagIds.includes(tagId)) return false;
       if (activeCutoff != null && r.updatedAt < activeCutoff) return false;
 
       if (q) {
@@ -311,7 +323,7 @@ export default function PipelineView({
       }
       return true;
     });
-  }, [rows, search, ownerId, businessUnitId, datePreset, fromDate, toDate, activeDays]);
+  }, [rows, search, ownerId, businessUnitId, tagId, datePreset, fromDate, toDate, activeDays]);
 
   const kanbanItems: KanbanDeal[] = useMemo(
     () =>
@@ -336,6 +348,7 @@ export default function PipelineView({
   const activeFilterCount = [
     ownerId !== "alle",
     businessUnitId !== "alle",
+    tagId !== "alle",
     datePreset !== "alle",
     activeDays != null,
   ].filter(Boolean).length;
@@ -343,6 +356,7 @@ export default function PipelineView({
   function resetFilters() {
     setOwnerId("alle");
     setBusinessUnitId("alle");
+    setTagId("alle");
     setDatePreset("alle");
     setFromDate("");
     setToDate("");
@@ -355,6 +369,7 @@ export default function PipelineView({
     pipelineId,
     ownerId: ownerId === "alle" ? -1 : ownerId,
     businessUnitId: businessUnitId === "alle" ? -1 : businessUnitId,
+    tagId: tagId === "alle" ? -1 : tagId,
     datePreset,
     fromDate: fromDate || null,
     toDate: toDate || null,
@@ -487,6 +502,21 @@ export default function PipelineView({
             ))}
           </select>
 
+          {tags.length > 0 && (
+            <select
+              value={tagId === "alle" ? "alle" : String(tagId)}
+              onChange={(e) => setTagId(e.target.value === "alle" ? "alle" : Number(e.target.value))}
+              className={selectClass}
+            >
+              <option value="alle">Alle tagger</option>
+              {tags.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
             value={datePreset}
             onChange={(e) => setDatePreset(e.target.value as DatePreset)}
@@ -551,6 +581,7 @@ export default function PipelineView({
       {(search ||
         ownerId !== "alle" ||
         businessUnitId !== "alle" ||
+        tagId !== "alle" ||
         datePreset !== "alle" ||
         activeDays != null) && (
         <p className="mb-3 text-[12.5px] text-ink-faint">
@@ -586,6 +617,7 @@ export default function PipelineView({
           stages={stages}
           owners={owners}
           lostReasons={lostReasons}
+          tags={tags}
           groupByStage={groupByStage}
         />
       )}

@@ -7,9 +7,11 @@ import {
   updatePerson,
   bulkLinkPeopleToCompany,
   bulkDeletePeople,
+  bulkAddPersonTag,
 } from "@/lib/actions";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
+import BulkTagPicker from "@/components/BulkTagPicker";
 import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, Trash2, X } from "lucide-react";
 
 export interface PersonRow {
@@ -18,6 +20,7 @@ export interface PersonRow {
   email: string | null;
   phone: string | null;
   companies: { id: number; name: string; logoUrl: string | null; role: string | null }[];
+  tagIds: number[];
 }
 
 const GRID = "grid grid-cols-[22px_1.5fr_1.4fr_1fr_1.8fr] items-center gap-3";
@@ -144,11 +147,14 @@ function PersonRowItem({
 export default function PeopleTable({
   rows,
   companies,
+  tags,
 }: {
   rows: PersonRow[];
   companies: { id: number; name: string }[];
+  tags: { id: number; label: string }[];
 }) {
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<"alle" | number>("alle");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
     key: "navn",
     dir: 1,
@@ -177,6 +183,9 @@ export default function PeopleTable({
             p.companies.some((c) => c.name.toLowerCase().includes(q))
         )
       : rows;
+    if (tagFilter !== "alle") {
+      list = list.filter((p) => p.tagIds.includes(tagFilter));
+    }
     if (sort) {
       const dir = sort.dir;
       list = [...list].sort((a, b) => {
@@ -193,7 +202,7 @@ export default function PeopleTable({
       });
     }
     return list;
-  }, [rows, search, sort]);
+  }, [rows, search, tagFilter, sort]);
 
   const allVisibleSelected = visible.length > 0 && visible.every((p) => selected.has(p.id));
 
@@ -242,6 +251,16 @@ export default function PeopleTable({
     });
   }
 
+  function applyBulkTags(tagIds: number[]) {
+    const ids = [...selected];
+    startTransition(async () => {
+      for (const tagId of tagIds) {
+        await bulkAddPersonTag(ids, tagId);
+      }
+      setBulkMessage(`Tagget ${ids.length} personer.`);
+    });
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
@@ -257,6 +276,20 @@ export default function PeopleTable({
             className="field !rounded-full !py-1.5 !pl-8 text-[12.5px]"
           />
         </div>
+        {tags.length > 0 && (
+          <select
+            value={tagFilter === "alle" ? "alle" : String(tagFilter)}
+            onChange={(e) => setTagFilter(e.target.value === "alle" ? "alle" : Number(e.target.value))}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="alle">Alle tagger</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        )}
         <button onClick={() => setShowNew((v) => !v)} className="btn btn-primary ml-auto">
           <Plus size={15} strokeWidth={2.2} />
           Ny person
@@ -328,6 +361,8 @@ export default function PeopleTable({
           >
             Bruk
           </button>
+
+          <BulkTagPicker tags={tags} disabled={pending} onApply={applyBulkTags} />
 
           {confirmingDelete ? (
             <span className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1.5">
