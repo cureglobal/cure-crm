@@ -39,7 +39,7 @@ function BillingTypeToggle({
             value === v ? "bg-surface shadow-card text-ink" : "text-ink-soft hover:text-ink"
           }`}
         >
-          {v === "once" ? "Engang" : "Løpende"}
+          {v === "once" ? "Engang" : "Recurring"}
         </button>
       ))}
     </div>
@@ -61,7 +61,9 @@ function LineRow({ line, dealId }: { line: DealLineItem; dealId: number }) {
     });
   }
 
-  const sum = line.hours * line.rate * lineMultiplier(billingType, line.months);
+  // Linjens egen Sum viser timer × pris uavbryddet av antall måneder — kun
+  // totalen nederst i lista ganges med måneder for recurring-linjer.
+  const sum = line.hours * line.rate;
 
   return (
     <form
@@ -212,6 +214,7 @@ export default function DealLines({
             name="rate"
             required
             inputMode="numeric"
+            defaultValue={1550}
             placeholder="Timepris"
             className="field !py-1.5 text-right text-[13px]"
           />
