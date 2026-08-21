@@ -182,6 +182,12 @@ function Row({
           <input
             defaultValue={deal.comment}
             placeholder="Legg til kommentar …"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
             onBlur={(e) => {
               if (e.target.value.trim() !== deal.comment) {
                 save("comment", e.target.value.trim());
