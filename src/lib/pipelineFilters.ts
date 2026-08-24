@@ -8,7 +8,8 @@ export interface ResolvedFilters {
   view?: "kanban" | "liste";
   search?: string;
   pipelineId?: number;
-  ownerId?: "alle" | number;
+  // "meg" løser dynamisk til den innloggede brukeren — se PipelineView.tsx.
+  ownerId?: "alle" | "meg" | number;
   businessUnitId?: "alle" | number;
   tagId?: "alle" | number;
   datePreset?: DatePreset;
@@ -45,7 +46,13 @@ export function parseFiltersFromParams(params: RawParams): ResolvedFilters {
     search: str(params, "s"),
     pipelineId: pipeline != null && /^\d+$/.test(pipeline) ? Number(pipeline) : undefined,
     ownerId:
-      eier === "alle" ? "alle" : eier != null && /^\d+$/.test(eier) ? Number(eier) : undefined,
+      eier === "alle"
+        ? "alle"
+        : eier === "meg"
+          ? "meg"
+          : eier != null && /^\d+$/.test(eier)
+            ? Number(eier)
+            : undefined,
     businessUnitId:
       enhet === "alle" ? "alle" : enhet != null && /^\d+$/.test(enhet) ? Number(enhet) : undefined,
     tagId: tag === "alle" ? "alle" : tag != null && /^\d+$/.test(tag) ? Number(tag) : undefined,
@@ -88,13 +95,16 @@ export function mergeFilters(base: ResolvedFilters, override: ResolvedFilters): 
 
 // -1 er brukt som sentinel for "alle" i saved_views sine eier/enhet-
 // kolonner (rene heltallskolonner kan ikke skille NULL="ikke satt" fra en
-// eksplisitt "alle" uten dette) — se createSavedView i actions.ts.
+// eksplisitt "alle" uten dette) — se createSavedView i actions.ts. -2 på
+// eier-kolonnen betyr "meg" — løses dynamisk til den innloggede brukeren
+// hver gang visningen åpnes, slik at en delt visning viser riktig persons
+// egne deals uansett hvem som åpner den.
 export function savedViewToFilters(v: SavedViewFilters): ResolvedFilters {
   return {
     view: v.view === "liste" || v.view === "kanban" ? v.view : undefined,
     search: v.search ?? undefined,
     pipelineId: v.pipelineId ?? undefined,
-    ownerId: v.ownerId === -1 ? "alle" : (v.ownerId ?? undefined),
+    ownerId: v.ownerId === -1 ? "alle" : v.ownerId === -2 ? "meg" : (v.ownerId ?? undefined),
     businessUnitId: v.businessUnitId === -1 ? "alle" : (v.businessUnitId ?? undefined),
     tagId: v.tagId === -1 ? "alle" : (v.tagId ?? undefined),
     datePreset:

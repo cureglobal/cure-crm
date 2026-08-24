@@ -45,7 +45,7 @@ const ACTIVE_DAYS = 45;
 interface StoredFilters {
   view?: "kanban" | "liste";
   search?: string;
-  ownerId?: "alle" | number;
+  ownerId?: "alle" | "meg" | number;
   businessUnitId?: "alle" | number;
   tagId?: "alle" | number;
   datePreset?: DatePreset;
@@ -142,7 +142,7 @@ export default function PipelineView({
   initialDatePreset?: DatePreset;
   initialFromDate?: string;
   initialToDate?: string;
-  initialOwnerId?: "alle" | number;
+  initialOwnerId?: "alle" | "meg" | number;
   initialBusinessUnitId?: "alle" | number;
   initialTagId?: "alle" | number;
   initialGroupByStage?: boolean;
@@ -159,7 +159,7 @@ export default function PipelineView({
   const [view, setView] = useState<"kanban" | "liste">(initialView ?? "liste");
   const [search, setSearch] = useState(initialSearch ?? "");
   const [pipelineId, setPipelineId] = useState(initialPipelineId);
-  const [ownerId, setOwnerId] = useState<"alle" | number>(initialOwnerId ?? currentUserId);
+  const [ownerId, setOwnerId] = useState<"alle" | "meg" | number>(initialOwnerId ?? "meg");
   const [businessUnitId, setBusinessUnitId] = useState<"alle" | number>(
     initialBusinessUnitId ?? "alle"
   );
@@ -194,7 +194,7 @@ export default function PipelineView({
     const saved = readStored();
     if (initialView === undefined) setView(saved?.view ?? "liste");
     if (initialSearch === undefined) setSearch(saved?.search ?? "");
-    if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? currentUserId);
+    if (initialOwnerId === undefined) setOwnerId(saved?.ownerId ?? "meg");
     if (initialBusinessUnitId === undefined) setBusinessUnitId(saved?.businessUnitId ?? "alle");
     if (initialTagId === undefined) setTagId(saved?.tagId ?? "alle");
     if (initialDatePreset === undefined) setDatePreset(saved?.datePreset ?? "alle");
@@ -255,7 +255,7 @@ export default function PipelineView({
     sp.set("view", view);
     if (search) sp.set("s", search);
     sp.set("pipeline", String(pipelineId));
-    sp.set("eier", ownerId === "alle" ? "alle" : String(ownerId));
+    sp.set("eier", ownerId === "alle" || ownerId === "meg" ? ownerId : String(ownerId));
     sp.set("enhet", businessUnitId === "alle" ? "alle" : String(businessUnitId));
     sp.set("tag", tagId === "alle" ? "alle" : String(tagId));
     sp.set("dato", datePreset);
@@ -291,9 +291,15 @@ export default function PipelineView({
     const sevenDaysAgo = offsetDateStr(-7);
     const sevenDaysAhead = offsetDateStr(7);
 
+    const effectiveOwnerId = ownerId === "meg" ? currentUserId : ownerId;
+
     return rows.filter((r) => {
       // En deal regnes som "eid" av en bruker enten som hoved-eier eller som med-eier.
-      if (ownerId !== "alle" && r.ownerId !== ownerId && !r.coOwnerIds.includes(ownerId)) {
+      if (
+        effectiveOwnerId !== "alle" &&
+        r.ownerId !== effectiveOwnerId &&
+        !r.coOwnerIds.includes(effectiveOwnerId)
+      ) {
         return false;
       }
       if (businessUnitId !== "alle" && r.companyBusinessUnitId !== businessUnitId) {
@@ -323,7 +329,18 @@ export default function PipelineView({
       }
       return true;
     });
-  }, [rows, search, ownerId, businessUnitId, tagId, datePreset, fromDate, toDate, activeDays]);
+  }, [
+    rows,
+    search,
+    ownerId,
+    currentUserId,
+    businessUnitId,
+    tagId,
+    datePreset,
+    fromDate,
+    toDate,
+    activeDays,
+  ]);
 
   const kanbanItems: KanbanDeal[] = useMemo(
     () =>
@@ -367,7 +384,7 @@ export default function PipelineView({
     view,
     search: search || null,
     pipelineId,
-    ownerId: ownerId === "alle" ? -1 : ownerId,
+    ownerId: ownerId === "alle" ? -1 : ownerId === "meg" ? -2 : ownerId,
     businessUnitId: businessUnitId === "alle" ? -1 : businessUnitId,
     tagId: tagId === "alle" ? -1 : tagId,
     datePreset,
@@ -472,13 +489,16 @@ export default function PipelineView({
       {filterOpen && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-mist/[0.02] p-3">
           <select
-            value={ownerId === "alle" ? "alle" : String(ownerId)}
-            onChange={(e) =>
-              setOwnerId(e.target.value === "alle" ? "alle" : Number(e.target.value))
-            }
+            value={ownerId === "alle" || ownerId === "meg" ? ownerId : String(ownerId)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setOwnerId(v === "alle" || v === "meg" ? v : Number(v));
+            }}
             className={selectClass}
+            title="«Meg» viser alltid dine egne deals — også når visningen er delt med andre"
           >
             <option value="alle">Alle eiere</option>
+            <option value="meg">Meg</option>
             {owners.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
