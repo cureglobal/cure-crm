@@ -22,39 +22,170 @@ import {
   Building2,
   Contact,
   Check,
+  Download,
+  ArrowLeft,
 } from "lucide-react";
 
 type Kind = "deals" | "bedrifter" | "personer";
 
-const TABS: { id: Kind; label: string; icon: React.ReactNode; columns: string }[] = [
-  {
-    id: "deals",
-    label: "Deals",
-    icon: <Columns3 size={14} />,
-    columns: "Selskap, Deal, Verdi, Dato, Kommentar, Fase — eller en Productive-eksport",
-  },
-  {
-    id: "bedrifter",
-    label: "Bedrifter",
-    icon: <Building2 size={14} />,
-    columns: "Navn, Org.nr, Nettside, Telefon",
-  },
-  {
-    id: "personer",
-    label: "Personer",
-    icon: <Contact size={14} />,
-    columns: "Navn, E-post, Telefon, Selskap, Rolle",
-  },
+interface FieldDef {
+  key: string;
+  label: string;
+  required: boolean;
+  aliases: string[];
+  templateExample: string;
+}
+
+// Feltene som kan mappes per import-type — brukt til å (1) gjette
+// kolonnematch automatisk, (2) bygge mappingssteget, og (3) generere
+// nedlastbar mal. `label` er også kolonnenavnet i malen.
+const FIELDS: Record<Kind, FieldDef[]> = {
+  deals: [
+    {
+      key: "selskap",
+      label: "Selskap",
+      required: true,
+      aliases: ["client", "kunde", "selskap", "company", "navn", "name"],
+      templateExample: "Eksempel AS",
+    },
+    {
+      key: "deal",
+      label: "Deal",
+      required: false,
+      aliases: ["deal", "dealnavn", "tittel", "title"],
+      templateExample: "Nettside",
+    },
+    {
+      key: "verdi",
+      label: "Verdi",
+      required: false,
+      aliases: ["budget total", "verdi", "value", "budget", "sum"],
+      templateExample: "50000",
+    },
+    {
+      key: "dato",
+      label: "Dato",
+      required: false,
+      aliases: ["next action", "dato", "date", "oppfølging"],
+      templateExample: "2026-09-01",
+    },
+    {
+      key: "kommentar",
+      label: "Kommentar",
+      required: false,
+      aliases: ["kommentar", "comment", "notat"],
+      templateExample: "Ring opp igjen etter sommeren",
+    },
+    {
+      key: "fase",
+      label: "Fase",
+      required: false,
+      aliases: ["stage", "fase"],
+      templateExample: "Kontaktfase",
+    },
+  ],
+  bedrifter: [
+    {
+      key: "navn",
+      label: "Navn",
+      required: true,
+      aliases: ["navn", "name", "selskap", "company", "firma"],
+      templateExample: "Eksempel AS",
+    },
+    {
+      key: "orgnr",
+      label: "Org.nr",
+      required: false,
+      aliases: ["orgnr", "org nr", "organisasjonsnummer", "org number"],
+      templateExample: "923456789",
+    },
+    {
+      key: "nettside",
+      label: "Nettside",
+      required: false,
+      aliases: ["nettside", "website", "web", "url", "hjemmeside"],
+      templateExample: "eksempel.no",
+    },
+    {
+      key: "telefon",
+      label: "Telefon",
+      required: false,
+      aliases: ["telefon", "phone", "tlf", "mobil"],
+      templateExample: "12345678",
+    },
+  ],
+  personer: [
+    {
+      key: "navn",
+      label: "Navn",
+      required: false,
+      aliases: ["navn", "name", "fullt navn", "kontakt"],
+      templateExample: "Kari Nordmann",
+    },
+    {
+      key: "epost",
+      label: "E-post",
+      required: false,
+      aliases: ["e-post", "epost", "email", "mail"],
+      templateExample: "kari@eksempel.no",
+    },
+    {
+      key: "telefon",
+      label: "Telefon",
+      required: false,
+      aliases: ["telefon", "phone", "tlf", "mobil"],
+      templateExample: "12345678",
+    },
+    {
+      key: "selskap",
+      label: "Selskap",
+      required: false,
+      aliases: ["selskap", "company", "firma", "bedrift"],
+      templateExample: "Eksempel AS",
+    },
+    {
+      key: "rolle",
+      label: "Rolle",
+      required: false,
+      aliases: ["rolle", "role", "tittel", "stilling"],
+      templateExample: "Daglig leder",
+    },
+  ],
+};
+
+const TABS: { id: Kind; label: string; icon: React.ReactNode }[] = [
+  { id: "deals", label: "Deals", icon: <Columns3 size={14} /> },
+  { id: "bedrifter", label: "Bedrifter", icon: <Building2 size={14} /> },
+  { id: "personer", label: "Personer", icon: <Contact size={14} /> },
 ];
 
-interface Parsed {
-  kind: Kind;
-  fileName: string;
-  deals: (ImportDealRow & { productiveStage: string })[];
-  companies: ImportCompanyRow[];
-  people: ImportPersonRow[];
-  stageMap: Record<string, string>;
-  count: number;
+function csvField(value: string): string {
+  return /[",;\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+// Genererer og laster ned en tom mal (header + ett eksempel) for valgt
+// import-type, slik at brukeren har de eksakte kolonnenavnene å konvertere
+// egne data til i stedet for å måtte gjette.
+function downloadTemplate(kind: Kind) {
+  const fields = FIELDS[kind];
+  const header = fields.map((f) => csvField(f.label)).join(",");
+  const example = fields.map((f) => csvField(f.templateExample)).join(",");
+  const csv = `${header}\n${example}\n`;
+  const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `mal-${kind}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function guessMapping(header: string[], kind: Kind): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const f of FIELDS[kind]) map[f.key] = findColumn(header, ...f.aliases);
+  return map;
 }
 
 // Fasene er nå fritt redigerbare, så vi kan ikke lenger matche på faste
@@ -93,6 +224,22 @@ function guessStage(value: string, stages: Stage[]): string {
   return firstStageId(stages);
 }
 
+interface RawFile {
+  fileName: string;
+  header: string[];
+  body: string[][];
+}
+
+interface Parsed {
+  kind: Kind;
+  fileName: string;
+  deals: (ImportDealRow & { productiveStage: string })[];
+  companies: ImportCompanyRow[];
+  people: ImportPersonRow[];
+  stageMap: Record<string, string>;
+  count: number;
+}
+
 export default function ImportDialog({
   collapsed,
   stages,
@@ -109,6 +256,8 @@ export default function ImportDialog({
     () => stages.filter((s) => s.pipelineId === pipelineId),
     [stages, pipelineId]
   );
+  const [rawFile, setRawFile] = useState<RawFile | null>(null);
+  const [mapping, setMapping] = useState<Record<string, number>>({});
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -118,6 +267,8 @@ export default function ImportDialog({
   const [dragActive, setDragActive] = useState(false);
 
   function reset() {
+    setRawFile(null);
+    setMapping({});
     setParsed(null);
     setError(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -141,40 +292,30 @@ export default function ImportDialog({
     }
     const header = rows[0];
     const body = rows.slice(1);
+    setRawFile({ fileName: file.name, header, body });
+    setMapping(guessMapping(header, kind));
+  }
+
+  // Bygger de faktiske import-radene ut fra gjeldende mapping — kalt når
+  // brukeren bekrefter mappingssteget.
+  function confirmMapping() {
+    if (!rawFile) return;
+    const { body, fileName } = rawFile;
 
     if (kind === "deals") {
-      const stageIdx = findColumn(header, "stage", "fase");
-      // Selskap: en eksplisitt klient/selskap-kolonne er alltid sikrest.
-      // Enkelte eksporter (f.eks. Productive med en egen "Client"-kolonne)
-      // bruker "Name" til DEALENS navn, ikke selskapet — da må "Client"/
-      // "Selskap"/"Company" sjekkes først, ellers leser vi dealnavnet som
-      // om det var selskapet på hver eneste rad.
-      const clientOrCompanyIdx = findColumn(header, "client", "kunde", "selskap", "company");
-      const genericNameIdx = findColumn(header, "name", "navn");
-      const nameIdx = clientOrCompanyIdx !== -1 ? clientOrCompanyIdx : genericNameIdx;
-
-      // Dealnavn: en eksplisitt dealkolonne er sikrest. Har selskapet
-      // allerede funnet sin EGEN klient/selskap-kolonne over, er "Name"/
-      // "Navn" fri til å bety dealens eget navn i stedet for å bli brukt
-      // til selskapet på nytt.
-      const explicitDealIdx = findColumn(header, "deal", "dealnavn", "tittel", "title");
-      const dealIdx =
-        explicitDealIdx !== -1
-          ? explicitDealIdx
-          : clientOrCompanyIdx !== -1 && genericNameIdx !== -1
-            ? genericNameIdx
-            : -1;
-
-      const valueIdx = findColumn(header, "budget total", "verdi", "value", "budget", "sum");
-      const dateIdx = findColumn(header, "next action", "dato", "date", "oppfølging");
-      const commentIdx = findColumn(header, "kommentar", "comment", "notat");
+      const nameIdx = mapping.selskap ?? -1;
+      const dealIdx = mapping.deal ?? -1;
+      const valueIdx = mapping.verdi ?? -1;
+      const dateIdx = mapping.dato ?? -1;
+      const commentIdx = mapping.kommentar ?? -1;
+      const stageIdx = mapping.fase ?? -1;
 
       if (nameIdx === -1) {
-        setError("Fant ingen kolonne for selskap. Forventer «Client», «Selskap» eller «Name».");
+        setError("Du må velge hvilken kolonne som er Selskap.");
         return;
       }
 
-      const deals: (ImportDealRow & { productiveStage: string })[] = [];
+      const dealsOut: (ImportDealRow & { productiveStage: string })[] = [];
       for (const r of body) {
         const raw = cell(r, nameIdx);
         if (!raw) continue; // Productive har gruppelinjer med tomt navn
@@ -192,7 +333,7 @@ export default function ImportDialog({
           }
         }
         const value = parseNumber(cell(r, valueIdx));
-        deals.push({
+        dealsOut.push({
           companyName,
           dealTitle,
           stage: firstStageId(pipelineStages),
@@ -202,36 +343,36 @@ export default function ImportDialog({
           productiveStage: cell(r, stageIdx),
         });
       }
-      if (deals.length === 0) {
+      if (dealsOut.length === 0) {
         setError("Fant ingen deals i fila.");
         return;
       }
       const stageMap: Record<string, string> = {};
-      for (const d of deals) {
+      for (const d of dealsOut) {
         if (!(d.productiveStage in stageMap)) {
           stageMap[d.productiveStage] = guessStage(d.productiveStage, pipelineStages);
         }
       }
       setParsed({
         kind,
-        fileName: file.name,
-        deals,
+        fileName,
+        deals: dealsOut,
         companies: [],
         people: [],
         stageMap,
-        count: deals.length,
+        count: dealsOut.length,
       });
       return;
     }
 
     if (kind === "bedrifter") {
-      const nameIdx = findColumn(header, "navn", "name", "selskap", "company", "firma");
-      const orgIdx = findColumn(header, "orgnr", "org nr", "organisasjonsnummer", "org number");
-      const siteIdx = findColumn(header, "nettside", "website", "web", "url", "hjemmeside");
-      const phoneIdx = findColumn(header, "telefon", "phone", "tlf", "mobil");
+      const nameIdx = mapping.navn ?? -1;
+      const orgIdx = mapping.orgnr ?? -1;
+      const siteIdx = mapping.nettside ?? -1;
+      const phoneIdx = mapping.telefon ?? -1;
 
       if (nameIdx === -1) {
-        setError("Fant ingen kolonne for navn. Forventer «Navn» eller «Name».");
+        setError("Du må velge hvilken kolonne som er Navn.");
         return;
       }
       const list: ImportCompanyRow[] = [];
@@ -251,7 +392,7 @@ export default function ImportDialog({
       }
       setParsed({
         kind,
-        fileName: file.name,
+        fileName,
         deals: [],
         companies: list,
         people: [],
@@ -261,14 +402,14 @@ export default function ImportDialog({
       return;
     }
 
-    const nameIdx = findColumn(header, "navn", "name", "fullt navn", "kontakt");
-    const emailIdx = findColumn(header, "e-post", "epost", "email", "mail");
-    const phoneIdx = findColumn(header, "telefon", "phone", "tlf", "mobil");
-    const companyIdx = findColumn(header, "selskap", "company", "firma", "bedrift");
-    const roleIdx = findColumn(header, "rolle", "role", "tittel", "stilling");
+    const nameIdx = mapping.navn ?? -1;
+    const emailIdx = mapping.epost ?? -1;
+    const phoneIdx = mapping.telefon ?? -1;
+    const companyIdx = mapping.selskap ?? -1;
+    const roleIdx = mapping.rolle ?? -1;
 
     if (nameIdx === -1 && emailIdx === -1) {
-      setError("Fant verken navn- eller e-postkolonne.");
+      setError("Du må velge minst én av kolonnene Navn eller E-post.");
       return;
     }
     const list: ImportPersonRow[] = [];
@@ -290,7 +431,7 @@ export default function ImportDialog({
     }
     setParsed({
       kind,
-      fileName: file.name,
+      fileName,
       deals: [],
       companies: [],
       people: list,
@@ -338,6 +479,8 @@ export default function ImportDialog({
   }
 
   const activeTab = TABS.find((t) => t.id === kind)!;
+  const activeFields = FIELDS[kind];
+  const canContinueMapping = activeFields.every((f) => !f.required || (mapping[f.key] ?? -1) !== -1);
 
   // Sidebaren har backdrop-blur, som lager en ny referanseramme for
   // position: fixed. Modalen må derfor rendres utenfor den, via en portal.
@@ -355,7 +498,7 @@ export default function ImportDialog({
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">Importer fra CSV</h2>
                 <p className="mt-0.5 text-[13px] text-ink-soft">
-                  Kolonnenavn gjenkjennes automatisk, på norsk eller engelsk.
+                  Last ned malen, fyll den ut, og match egne kolonner mot CRM-feltene.
                 </p>
               </div>
               <button
@@ -455,11 +598,18 @@ export default function ImportDialog({
               }}
             />
 
-            {!parsed ? (
+            {!rawFile ? (
               <div>
-                <p className="mb-3 rounded-xl bg-mist/[0.03] px-4 py-3 text-[12.5px] text-ink-soft">
-                  <span className="font-medium text-ink">Kolonner:</span> {activeTab.columns}
-                </p>
+                <button
+                  onClick={() => downloadTemplate(kind)}
+                  className="mb-3 flex w-full items-center gap-2.5 rounded-xl bg-mist/[0.03] px-4 py-3 text-left text-[12.5px] text-ink-soft transition hover:bg-mist/[0.06] hover:text-ink"
+                >
+                  <Download size={15} className="shrink-0" />
+                  <span className="flex-1">
+                    <span className="font-medium text-ink">Last ned mal</span> — riktige
+                    kolonnenavn for {activeTab.label.toLowerCase()}, klar til å fylles ut
+                  </span>
+                </button>
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -488,6 +638,67 @@ export default function ImportDialog({
                   </button>
                 </div>
               </div>
+            ) : !parsed ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2.5 rounded-xl bg-mist/[0.03] px-4 py-3">
+                  <FileSpreadsheet size={16} className="shrink-0 text-ink-soft" />
+                  <span className="flex-1 truncate text-[13px] font-medium">
+                    {rawFile.fileName}
+                  </span>
+                  <span className="shrink-0 text-[12.5px] text-ink-soft">
+                    {rawFile.body.length} rader
+                  </span>
+                  <button
+                    onClick={reset}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-[13px] font-semibold">Match kolonner</h3>
+                  <p className="mb-3 text-[12px] text-ink-soft">
+                    Velg hvilken kolonne i fila di som tilsvarer hvert felt i CRM-et.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {activeFields.map((f) => (
+                      <div key={f.key} className="grid grid-cols-[1fr_1.4fr] items-center gap-3">
+                        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+                          {f.label}
+                          {f.required && (
+                            <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                              Påkrevd
+                            </span>
+                          )}
+                        </span>
+                        <select
+                          value={mapping[f.key] ?? -1}
+                          onChange={(e) =>
+                            setMapping((prev) => ({ ...prev, [f.key]: Number(e.target.value) }))
+                          }
+                          className="field !py-1.5 text-[13px]"
+                        >
+                          <option value={-1}>— Ikke i bruk —</option>
+                          {rawFile.header.map((h, i) => (
+                            <option key={i} value={i}>
+                              {h || `Kolonne ${i + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={confirmMapping}
+                  disabled={!canContinueMapping}
+                  className="btn btn-primary w-full py-2.5"
+                >
+                  Fortsett
+                </button>
+              </div>
             ) : (
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2.5 rounded-xl bg-mist/[0.03] px-4 py-3">
@@ -498,6 +709,13 @@ export default function ImportDialog({
                   <span className="shrink-0 text-[12.5px] text-ink-soft">
                     {parsed.count} rader
                   </span>
+                  <button
+                    onClick={() => setParsed(null)}
+                    title="Tilbake til kolonnematching"
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
+                  >
+                    <ArrowLeft size={14} />
+                  </button>
                   <button
                     onClick={reset}
                     className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft hover:bg-mist/5"
