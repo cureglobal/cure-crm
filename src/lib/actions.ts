@@ -30,6 +30,7 @@ import {
   tags,
   dealTags,
   personTags,
+  companyTags,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -913,13 +914,13 @@ export async function reorderLostReasons(orderedIds: number[]) {
   revalidatePath("/settings");
 }
 
-// ---------- Tagger (deals og personer) ----------
+// ---------- Tagger (deals, personer og bedrifter) ----------
 // Fritt redigerbare per entitetstype, samme mønster som tapt-grunner —
 // forhåndsdefinerte via seedTags i migrate.ts, men kan utvides/omdøpes/
 // slettes fra Innstillinger etterpå.
 
 export async function createTag(
-  entityType: "deal" | "person",
+  entityType: "deal" | "person" | "company",
   formData: FormData
 ) {
   await requireUser();
@@ -1013,6 +1014,32 @@ export async function bulkAddPersonTag(personIds: number[], tagId: number) {
     await db.insert(personTags).values({ personId, tagId }).onConflictDoNothing();
   }
   revalidatePath("/people");
+}
+
+export async function addCompanyTag(companyId: number, tagId: number) {
+  await requireUser();
+  await db.insert(companyTags).values({ companyId, tagId }).onConflictDoNothing();
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/companies");
+}
+
+export async function removeCompanyTag(companyId: number, tagId: number) {
+  await requireUser();
+  await db
+    .delete(companyTags)
+    .where(and(eq(companyTags.companyId, companyId), eq(companyTags.tagId, tagId)));
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/companies");
+}
+
+// Brukes fra bulk-verktøylinjen i Bedrifter-listen — samme "legg til, ikke
+// fjern"-oppførsel som bulkAddDealTag/bulkAddPersonTag.
+export async function bulkAddCompanyTag(companyIds: number[], tagId: number) {
+  await requireUser();
+  for (const companyId of companyIds) {
+    await db.insert(companyTags).values({ companyId, tagId }).onConflictDoNothing();
+  }
+  revalidatePath("/companies");
 }
 
 // ---------- Faser (pipeline-stages) ----------
@@ -1745,7 +1772,8 @@ export interface ImportDealResult {
 
 export async function importProductiveDeals(
   rows: ImportDealRow[],
-  pipelineId: number
+  pipelineId: number,
+  tagIds: number[] = []
 ): Promise<{
   imported: number;
   skipped: number;
@@ -1773,6 +1801,7 @@ export async function importProductiveDeals(
   let skipped = 0;
   let companiesCreated = 0;
   const results: ImportDealResult[] = [];
+  const importedDealIds: number[] = [];
 
   for (const row of rows.slice(0, 500)) {
     const companyName = String(row.companyName ?? "").trim();
@@ -1840,7 +1869,14 @@ export async function importProductiveDeals(
       content: "Importert fra Productive",
     });
     imported++;
+    importedDealIds.push(deal.id);
     results.push({ companyName, dealTitle, status: "imported" });
+  }
+
+  for (const tagId of tagIds) {
+    for (const dealId of importedDealIds) {
+      await db.insert(dealTags).values({ dealId, tagId }).onConflictDoNothing();
+    }
   }
 
   revalidateDealViews();
@@ -1856,7 +1892,10 @@ export interface ImportCompanyRow {
   phone: string | null;
 }
 
-export async function importCompanies(rows: ImportCompanyRow[]): Promise<{
+export async function importCompanies(
+  rows: ImportCompanyRow[],
+  tagIds: number[] = []
+): Promise<{
   created: number;
   skipped: number;
   verified: number;
@@ -1872,6 +1911,7 @@ export async function importCompanies(rows: ImportCompanyRow[]): Promise<{
   let created = 0;
   let skipped = 0;
   let verified = 0;
+  const createdCompanyIds: number[] = [];
 
   for (const row of rows.slice(0, 500)) {
     const name = row.name.trim();
@@ -1907,6 +1947,7 @@ export async function importCompanies(rows: ImportCompanyRow[]): Promise<{
     existing.set(key, company.id);
     if (orgNumber.length === 9) existing.set(orgNumber, company.id);
     created++;
+    createdCompanyIds.push(company.id);
 
     // Hent offisielle data: direkte når orgnummer finnes, ellers prøv å matche.
     if (orgNumber.length === 9) {
@@ -1915,6 +1956,12 @@ export async function importCompanies(rows: ImportCompanyRow[]): Promise<{
     } else {
       const res = await autoMatchCompany(company.id);
       if (res.matched) verified++;
+    }
+  }
+
+  for (const tagId of tagIds) {
+    for (const companyId of createdCompanyIds) {
+      await db.insert(companyTags).values({ companyId, tagId }).onConflictDoNothing();
     }
   }
 
@@ -1930,7 +1977,10 @@ export interface ImportPersonRow {
   role: string | null;
 }
 
-export async function importPeople(rows: ImportPersonRow[]): Promise<{
+export async function importPeople(
+  rows: ImportPersonRow[],
+  tagIds: number[] = []
+): Promise<{
   created: number;
   linked: number;
   skipped: number;
@@ -1955,6 +2005,7 @@ export async function importPeople(rows: ImportPersonRow[]): Promise<{
   let linked = 0;
   let skipped = 0;
   let companiesCreated = 0;
+  const createdPersonIds: number[] = [];
 
   for (const row of rows.slice(0, 1000)) {
     const name = row.name.trim();
@@ -1973,6 +2024,7 @@ export async function importPeople(rows: ImportPersonRow[]): Promise<{
       if (email) peopleByEmail.set(email, personId);
       peopleByName.set(name.toLowerCase(), personId);
       created++;
+      createdPersonIds.push(personId);
     } else {
       skipped++;
     }
@@ -2001,6 +2053,12 @@ export async function importPeople(rows: ImportPersonRow[]): Promise<{
         .values({ companyId, personId, role: row.role?.trim() || null })
         .onConflictDoNothing();
       linked++;
+    }
+  }
+
+  for (const tagId of tagIds) {
+    for (const personId of createdPersonIds) {
+      await db.insert(personTags).values({ personId, tagId }).onConflictDoNothing();
     }
   }
 

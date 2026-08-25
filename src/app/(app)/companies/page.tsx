@@ -3,6 +3,7 @@ import { db, companies, deals, people, companyPeople, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getTags } from "@/lib/tags.server";
 import CompaniesTable, { type CompanyRow } from "@/components/CompaniesTable";
 import NewCompanyButton from "@/components/NewCompanyButton";
 
@@ -49,6 +50,15 @@ export default async function CompaniesPage() {
     coOwnerIdsByCompany.set(r.companyId, list);
   }
 
+  const tagOptions = await getTags("company");
+  const tagLinks = await db.query.companyTags.findMany();
+  const tagIdsByCompany = new Map<number, number[]>();
+  for (const l of tagLinks) {
+    const list = tagIdsByCompany.get(l.companyId) ?? [];
+    list.push(l.tagId);
+    tagIdsByCompany.set(l.companyId, list);
+  }
+
   const rows: CompanyRow[] = allCompanies.map((c) => {
     const own = allDeals.filter((d) => d.companyId === c.id);
     const open = own.filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage));
@@ -67,6 +77,8 @@ export default async function CompaniesPage() {
       ownerAvatarUrl: c.ownerId == null ? null : (ownerAvatars.get(c.ownerId) ?? null),
       coOwnerIds: coOwnerIdsByCompany.get(c.id) ?? [],
       people: peopleByCompany.get(c.id) ?? [],
+      tagIds: tagIdsByCompany.get(c.id) ?? [],
+      createdAt: c.createdAt.getTime(),
     };
   });
 
@@ -96,6 +108,7 @@ export default async function CompaniesPage() {
         totalWon={totalWon}
         owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
         businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
+        tags={tagOptions.map((t) => ({ id: t.id, label: t.label }))}
       />
     </div>
   );

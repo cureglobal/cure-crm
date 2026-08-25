@@ -228,6 +228,13 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(person_id, tag_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS company_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(company_id, tag_id)
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -256,6 +263,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_deal_tags_tag ON deal_tags(tag_id)",
   "CREATE INDEX IF NOT EXISTS idx_person_tags_person ON person_tags(person_id)",
   "CREATE INDEX IF NOT EXISTS idx_person_tags_tag ON person_tags(tag_id)",
+  "CREATE INDEX IF NOT EXISTS idx_company_tags_company ON company_tags(company_id)",
+  "CREATE INDEX IF NOT EXISTS idx_company_tags_tag ON company_tags(tag_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har

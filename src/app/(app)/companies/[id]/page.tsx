@@ -12,9 +12,15 @@ import {
   emailMessages,
   emailAccounts,
   emailAccessGrants,
+  companyTags,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { addPersonToCompany, unlinkPersonFromCompany } from "@/lib/actions";
+import {
+  addPersonToCompany,
+  unlinkPersonFromCompany,
+  addCompanyTag,
+  removeCompanyTag,
+} from "@/lib/actions";
 import CompanyFacts from "@/components/CompanyFacts";
 import CompanyEditForm from "@/components/CompanyEditForm";
 import NewDealOnCompanyButton from "@/components/NewDealOnCompanyButton";
@@ -25,10 +31,12 @@ import { stageDot, stageLabel } from "@/lib/stages";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { getTags } from "@/lib/tags.server";
 import CompanyLogoUpload from "@/components/CompanyLogoUpload";
 import Avatar from "@/components/Avatar";
 import EmailThread from "@/components/EmailThread";
 import RequestAccessButton from "@/components/RequestAccessButton";
+import TagsEditor from "@/components/TagsEditor";
 import {
   ArrowLeft,
   Globe,
@@ -51,6 +59,12 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     where: eq(companies.id, companyId),
   });
   if (!company) notFound();
+
+  const companyTagOptions = await getTags("company");
+  const companyTagRows = await db.query.companyTags.findMany({
+    where: eq(companyTags.companyId, companyId),
+  });
+  const companyTagIds = companyTagRows.map((t) => t.tagId);
 
   const companyDeals = await db
     .select({
@@ -250,6 +264,17 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
         />
       </div>
+
+      {companyTagOptions.length > 0 && (
+        <div className="mb-6">
+          <TagsEditor
+            allTags={companyTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+            initialSelectedIds={companyTagIds}
+            onAdd={addCompanyTag.bind(null, company.id)}
+            onRemove={removeCompanyTag.bind(null, company.id)}
+          />
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-4 gap-4">
         {[

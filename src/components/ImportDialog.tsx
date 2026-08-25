@@ -244,10 +244,12 @@ export default function ImportDialog({
   collapsed,
   stages,
   pipelines,
+  tagsByKind,
 }: {
   collapsed?: boolean;
   stages: Stage[];
   pipelines: { id: number; name: string }[];
+  tagsByKind: Record<Kind, { id: number; label: string }[]>;
 }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("deals");
@@ -259,6 +261,7 @@ export default function ImportDialog({
   const [rawFile, setRawFile] = useState<RawFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, number>>({});
   const [parsed, setParsed] = useState<Parsed | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [dealResults, setDealResults] = useState<ImportDealResult[] | null>(null);
@@ -270,8 +273,15 @@ export default function ImportDialog({
     setRawFile(null);
     setMapping({});
     setParsed(null);
+    setSelectedTagIds([]);
     setError(null);
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function toggleTag(id: number) {
+    setSelectedTagIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }
 
   function close() {
@@ -453,7 +463,8 @@ export default function ImportDialog({
             followUpAt: d.followUpAt,
             comment: d.comment,
           })),
-          pipelineId
+          pipelineId,
+          selectedTagIds
         );
         setResult(
           `Importerte ${res.imported} deals og ${res.companiesCreated} nye selskaper.` +
@@ -461,13 +472,13 @@ export default function ImportDialog({
         );
         setDealResults(res.results);
       } else if (parsed.kind === "bedrifter") {
-        const res = await importCompanies(parsed.companies);
+        const res = await importCompanies(parsed.companies, selectedTagIds);
         setResult(
           `Opprettet ${res.created} bedrifter, ${res.verified} ble bekreftet mot Enhetsregisteret.` +
             (res.skipped > 0 ? ` ${res.skipped} fantes fra før.` : "")
         );
       } else {
-        const res = await importPeople(parsed.people);
+        const res = await importPeople(parsed.people, selectedTagIds);
         setResult(
           `Opprettet ${res.created} personer og ${res.linked} selskapskoblinger.` +
             (res.companiesCreated > 0 ? ` ${res.companiesCreated} nye selskaper.` : "") +
@@ -801,6 +812,34 @@ export default function ImportDialog({
                     )}
                   </ul>
                 </div>
+
+                {tagsByKind[kind].length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-[13px] font-semibold">Tagger (valgfritt)</h3>
+                    <p className="mb-2 text-[12px] text-ink-soft">
+                      Legges på alle {parsed.count} som importeres nå.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tagsByKind[kind].map((t) => {
+                        const active = selectedTagIds.includes(t.id);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => toggleTag(t.id)}
+                            className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition ${
+                              active
+                                ? "bg-accent text-accent-ink"
+                                : "bg-mist/[0.05] text-ink-soft hover:bg-mist/[0.08] hover:text-ink"
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={runImport}

@@ -2,15 +2,17 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import CompanyOwnerCell from "@/components/CompanyOwnerCell";
 import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
+import BulkTagPicker from "@/components/BulkTagPicker";
 import {
   bulkDeleteCompanies,
   bulkSetCompanyOwner,
   bulkSetCompanyBusinessUnit,
   bulkMatchCompaniesBrreg,
+  bulkAddCompanyTag,
   getCompaniesForMerge,
   mergeCompanies,
   type MergeCandidate,
@@ -44,17 +46,20 @@ export interface CompanyRow {
   ownerAvatarUrl: string | null;
   coOwnerIds: number[];
   people: string[];
+  tagIds: number[];
+  createdAt: number;
 }
 
-const GRID = "grid grid-cols-[22px_1.8fr_110px_70px_90px_1.3fr] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.6fr_100px_70px_90px_1.1fr_90px] items-center gap-3";
 
-type SortKey = "navn" | "orgnr" | "deals" | "eier" | "personer";
+type SortKey = "navn" | "orgnr" | "deals" | "eier" | "personer" | "lagttil";
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
   navn: 1,
   orgnr: 1,
   deals: -1,
   eier: 1,
   personer: -1,
+  lagttil: -1,
 };
 
 function formatOrgNumber(org: string | null): string {
@@ -100,14 +105,17 @@ export default function CompaniesTable({
   totalWon,
   owners,
   businessUnits,
+  tags,
 }: {
   rows: CompanyRow[];
   totalOpen: number;
   totalWon: number;
   owners: { id: number; name: string; avatarDataUrl: string | null }[];
   businessUnits: { id: number; name: string }[];
+  tags: { id: number; label: string }[];
 }) {
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<"alle" | number>("alle");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
     key: "navn",
     dir: 1,
@@ -140,6 +148,9 @@ export default function CompaniesTable({
             r.people.some((p) => p.toLowerCase().includes(q))
         )
       : rows;
+    if (tagFilter !== "alle") {
+      list = list.filter((r) => r.tagIds.includes(tagFilter));
+    }
     if (sort) {
       const dir = sort.dir;
       list = [...list].sort((a, b) => {
@@ -155,11 +166,13 @@ export default function CompaniesTable({
             return dir * a.ownerName.localeCompare(b.ownerName, "nb");
           case "personer":
             return dir * (a.people.length - b.people.length);
+          case "lagttil":
+            return dir * (a.createdAt - b.createdAt);
         }
       });
     }
     return list;
-  }, [rows, search, sort]);
+  }, [rows, search, tagFilter, sort]);
 
   const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.id));
 
@@ -219,6 +232,14 @@ export default function CompaniesTable({
     });
   }
 
+  function applyBulkTags(tagIds: number[]) {
+    const ids = [...selected];
+    startTransition(async () => {
+      for (const tagId of tagIds) await bulkAddCompanyTag(ids, tagId);
+      setBulkMessage(`Tagget ${ids.length} selskaper.`);
+    });
+  }
+
   function applyDelete() {
     const ids = [...selected];
     startTransition(async () => {
@@ -271,17 +292,33 @@ export default function CompaniesTable({
         ))}
       </div>
 
-      <div className="mb-4 relative w-[280px]">
-        <Search
-          size={13}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-        />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Søk i selskap eller person …"
-          className="field !rounded-full !py-1.5 !pl-8 text-[12.5px]"
-        />
+      <div className="mb-4 flex items-center gap-2">
+        <div className="relative w-[280px]">
+          <Search
+            size={13}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk i selskap eller person …"
+            className="field !rounded-full !py-1.5 !pl-8 text-[12.5px]"
+          />
+        </div>
+        {tags.length > 0 && (
+          <select
+            value={tagFilter === "alle" ? "alle" : String(tagFilter)}
+            onChange={(e) => setTagFilter(e.target.value === "alle" ? "alle" : Number(e.target.value))}
+            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
+          >
+            <option value="alle">Alle tagger</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {selected.size > 0 && (
@@ -335,6 +372,8 @@ export default function CompaniesTable({
             Match Brreg
           </button>
 
+          <BulkTagPicker tags={tags} disabled={pending} onApply={applyBulkTags} />
+
           {selected.size >= 2 && (
             <button
               onClick={openMerge}
@@ -382,7 +421,7 @@ export default function CompaniesTable({
       )}
 
       <div className="card overflow-auto max-h-[75vh]">
-        <div className="min-w-[840px]">
+        <div className="min-w-[940px]">
         <div
           className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
         >
@@ -400,6 +439,9 @@ export default function CompaniesTable({
           </span>
           <span className="px-2">
             <HeaderCell label="Personer" sortKey="personer" sort={sort} onSort={onSort} />
+          </span>
+          <span className="px-2">
+            <HeaderCell label="Lagt til" sortKey="lagttil" sort={sort} onSort={onSort} />
           </span>
         </div>
 
@@ -469,6 +511,9 @@ export default function CompaniesTable({
                   >
                     {c.people.length > 0 ? c.people.join(", ") : "—"}
                   </Link>
+                  <span className="px-2 text-[12.5px] text-ink-soft">
+                    {formatDate(new Date(c.createdAt))}
+                  </span>
                 </div>
               </li>
             ))}

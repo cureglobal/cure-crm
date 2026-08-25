@@ -74,6 +74,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const lostReasonRows = await getLostReasons();
   const dealTagRows = await getTags("deal");
   const personTagRows = await getTags("person");
+  const companyTagRows = await getTags("company");
 
   const stagesByPipeline: Record<number, StageRow[]> = {};
   for (const p of pipelineRows) {
@@ -353,13 +354,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight">Tagger</h2>
             <p className="text-[12.5px] text-ink-soft">
-              Frie tagger for deals og personer — redigeres her, brukes fra
+              Frie tagger for deals, personer og bedrifter — redigeres her, brukes fra
               detaljsidene og i bulk fra listevisningene.
             </p>
           </div>
         </div>
         <CollapsibleSection>
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid gap-6 sm:grid-cols-3">
             <div>
               <h3 className="mb-2 text-[12.5px] font-semibold uppercase tracking-wide text-ink-faint">
                 Deals
@@ -376,6 +377,15 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               <TagsManager
                 entityType="person"
                 tags={personTagRows.map((t) => ({ id: t.id, label: t.label }))}
+              />
+            </div>
+            <div>
+              <h3 className="mb-2 text-[12.5px] font-semibold uppercase tracking-wide text-ink-faint">
+                Bedrifter
+              </h3>
+              <TagsManager
+                entityType="company"
+                tags={companyTagRows.map((t) => ({ id: t.id, label: t.label }))}
               />
             </div>
           </div>

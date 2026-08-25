@@ -48,12 +48,12 @@ export const lostReasons = sqliteTable("lost_reasons", {
     .$defaultFn(() => new Date()),
 });
 
-// Frie tagger for deals og personer — "entityType" holder de to listene
+// Frie tagger for deals, personer og bedrifter — "entityType" holder listene
 // atskilt (samme selskap kan f.eks. ikke få en person-tag). Fritt
 // redigerbare fra Innstillinger, samme mønster som lost_reasons.
 export const tags = sqliteTable("tags", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  entityType: text("entity_type").notNull(), // "deal" | "person"
+  entityType: text("entity_type").notNull(), // "deal" | "person" | "company"
   label: text("label").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -79,6 +79,19 @@ export const personTags = sqliteTable("person_tags", {
   personId: integer("person_id")
     .notNull()
     .references(() => people.id, { onDelete: "cascade" }),
+  tagId: integer("tag_id")
+    .notNull()
+    .references(() => tags.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const companyTags = sqliteTable("company_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
   tagId: integer("tag_id")
     .notNull()
     .references(() => tags.id, { onDelete: "cascade" }),
@@ -420,6 +433,7 @@ export type LostReason = typeof lostReasons.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type DealTag = typeof dealTags.$inferSelect;
 export type PersonTag = typeof personTags.$inferSelect;
+export type CompanyTag = typeof companyTags.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
 export type Pipeline = typeof pipelines.$inferSelect;
 export type Deal = typeof deals.$inferSelect;

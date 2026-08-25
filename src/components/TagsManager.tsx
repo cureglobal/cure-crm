@@ -10,12 +10,12 @@ export interface TagRow {
 }
 
 // Speiler LostReasonsManager — samme redigerbare liste, bare scoped til én
-// entitetstype (deal/person) om gangen.
+// entitetstype (deal/person/company) om gangen.
 export default function TagsManager({
   entityType,
   tags: initial,
 }: {
-  entityType: "deal" | "person";
+  entityType: "deal" | "person" | "company";
   tags: TagRow[];
 }) {
   const [tags, setTags] = useState(initial);
