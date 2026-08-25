@@ -1,38 +1,15 @@
 import { asc } from "drizzle-orm";
+import Link from "next/link";
 import { db, users } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
-import { parseDateStr } from "@/components/CalendarPopover";
+import { effectiveProbability } from "@/lib/dealProbability";
+import { parsePeriodeParam, periodRange, statistikkQuery } from "@/lib/statistikkPeriod";
 import Avatar from "@/components/Avatar";
 import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
 import { Coins, Target, Timer, Hourglass } from "lucide-react";
-
-type Periode = "30" | "kvartal" | "ar" | "egendefinert";
-
-function periodRange(periode: Periode, fra: string, til: string): { start: Date; end: Date } {
-  const now = new Date();
-  if (periode === "egendefinert") {
-    const start = parseDateStr(fra) ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const endDay = parseDateStr(til) ?? now;
-    const end = new Date(
-      endDay.getFullYear(),
-      endDay.getMonth(),
-      endDay.getDate(),
-      23,
-      59,
-      59,
-      999
-    );
-    return { start, end };
-  }
-  if (periode === "kvartal") {
-    return { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000), end: now };
-  }
-  if (periode === "ar") return { start: new Date(now.getFullYear(), 0, 1), end: now };
-  return { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: now };
-}
 
 interface StageBreakdown {
   stage: { id: number; label: string; color: string };
@@ -64,22 +41,32 @@ function StatTile({
   value,
   sublabel,
   icon,
+  href,
 }: {
   label: string;
   value: string;
   sublabel?: string;
   icon: React.ReactNode;
+  href?: string;
 }) {
-  return (
-    <div className="card p-5">
+  const body = (
+    <>
       <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
         {icon}
       </div>
       <p className="text-[24px] font-semibold tracking-tight">{value}</p>
       <p className="text-[12.5px] text-ink-soft">{label}</p>
       {sublabel && <p className="mt-0.5 text-[11px] text-ink-faint">{sublabel}</p>}
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} className="card block p-5 transition hover:bg-mist/[0.03]">
+        {body}
+      </Link>
+    );
+  }
+  return <div className="card p-5">{body}</div>;
 }
 
 // Én rangert liste over selgerne for én enkelt metrikk — brukt fire ganger
@@ -120,10 +107,7 @@ function RankingSection({
 export default async function StatistikkPage({ searchParams }: PageProps<"/statistikk">) {
   await requireUser();
   const params = await searchParams;
-  const periode: Periode =
-    params.periode === "kvartal" || params.periode === "ar" || params.periode === "egendefinert"
-      ? params.periode
-      : "30";
+  const periode = parsePeriodeParam(params.periode);
   const fra = typeof params.fra === "string" ? params.fra : "";
   const til = typeof params.til === "string" ? params.til : "";
   const { start, end } = periodRange(periode, fra, til);
@@ -145,13 +129,6 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   );
 
   const stageById = new Map(stages.map((s) => [String(s.id), s]));
-  // Deal-nivå overstyrer fasens standardsannsynlighet når satt — se
-  // deals.probabilityOverride. Alle deals over er allerede vunnet/tapt-
-  // ekskludert der det trengs av kallerne under.
-  function effectiveProbability(d: (typeof allDeals)[number]): number {
-    if (d.probabilityOverride != null) return d.probabilityOverride;
-    return stageById.get(d.stage)?.probability ?? 50;
-  }
   function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
     if (list.length === 0) return null;
     const totalMs = list.reduce(
@@ -170,7 +147,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   );
   const totalPipelineValue = openDealsAll.reduce((acc, d) => acc + (d.value ?? 0), 0);
   const totalEstimatedValue = openDealsAll.reduce(
-    (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d) / 100),
+    (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d, stageById) / 100),
     0
   );
   const wonInPeriodAll = allDeals.filter(
@@ -196,7 +173,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
       );
       const openValue = openDeals.reduce((acc, d) => acc + (d.value ?? 0), 0);
       const estimatedValue = openDeals.reduce(
-        (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d) / 100),
+        (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d, stageById) / 100),
         0
       );
 
@@ -325,6 +302,8 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     .sort((a, b) => a.leadTimeLostDays! - b.leadTimeLostDays!)
     .map((s) => ({ user: s.user, display: `${s.leadTimeLostDays} dager` }));
 
+  const q = statistikkQuery({ periode, fra, til, pipelineId });
+
   return (
     <div>
       <div className="mb-6 flex items-end justify-between">
@@ -347,24 +326,28 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           sublabel="Alle åpne deals nå"
           value={formatMoney(totalPipelineValue) || "0kr"}
           icon={<Coins size={16} />}
+          href={`/statistikk/sum-i-pipeline?${q}`}
         />
         <StatTile
           label="Estimert salg i pipeline"
           sublabel="Verdi × sannsynlighet per fase"
           value={formatMoney(Math.round(totalEstimatedValue)) || "0kr"}
           icon={<Target size={16} />}
+          href={`/statistikk/estimert-salg?${q}`}
         />
         <StatTile
           label="Lead time"
           sublabel="Opprettet → vunnet, valgt periode"
           value={leadTimeOverall != null ? `${leadTimeOverall} dager` : "—"}
           icon={<Timer size={16} />}
+          href={`/statistikk/lead-time?${q}`}
         />
         <StatTile
           label="Lead time, tapt"
           sublabel="Opprettet → tapt, valgt periode"
           value={leadTimeLostOverall != null ? `${leadTimeLostOverall} dager` : "—"}
           icon={<Hourglass size={16} />}
+          href={`/statistikk/lead-time-tapt?${q}`}
         />
       </div>
 
