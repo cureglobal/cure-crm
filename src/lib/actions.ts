@@ -789,6 +789,7 @@ export async function markDealLost(
       lostReasonId,
       followUpAt: null,
       comment: newComment,
+      closedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(deals.id, dealId));
@@ -839,6 +840,7 @@ export async function bulkMarkDealsLost(
         lostReasonId,
         followUpAt: null,
         comment: newComment,
+        closedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(deals.id, deal.id));
@@ -1044,6 +1046,10 @@ export async function updateStage(stageId: number, formData: FormData) {
   }
   if (formData.has("isWon")) set.isWon = formData.get("isWon") === "1";
   if (formData.has("isLost")) set.isLost = formData.get("isLost") === "1";
+  if (formData.has("probability")) {
+    const p = Number(formData.get("probability"));
+    if (Number.isFinite(p)) set.probability = Math.max(0, Math.min(100, Math.round(p)));
+  }
   if (Object.keys(set).length === 0) return;
   await db.update(stages).set(set).where(eq(stages.id, stageId));
   revalidatePath("/settings");
@@ -1146,6 +1152,13 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
   const comment = String(formData.get("comment") ?? "").trim() || null;
   const hasValueField = formData.has("value");
   const valueRaw = String(formData.get("value") ?? "").replace(/[^\d]/g, "");
+  const hasProbabilityField = formData.has("probabilityOverride");
+  const probabilityRaw = String(formData.get("probabilityOverride") ?? "").trim();
+  const probabilityNum = probabilityRaw === "" ? null : Number(probabilityRaw);
+  const probabilityOverride =
+    probabilityNum != null && Number.isFinite(probabilityNum)
+      ? Math.max(0, Math.min(100, Math.round(probabilityNum)))
+      : null;
 
   if (comment !== deal.comment) {
     await db.insert(activities).values({
@@ -1163,6 +1176,7 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
       comment,
       // Verdi styres av varelinjene når de finnes; da sendes ikke feltet inn.
       ...(hasValueField ? { value: valueRaw ? Number(valueRaw) : null } : {}),
+      ...(hasProbabilityField ? { probabilityOverride } : {}),
       updatedAt: new Date(),
     })
     .where(eq(deals.id, dealId));

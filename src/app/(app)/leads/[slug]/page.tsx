@@ -463,6 +463,19 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
                   />
                 )}
               </label>
+              <label className="text-[12px] font-medium text-ink-soft">
+                Sannsynlighet for å vinne (%)
+                <input
+                  name="probabilityOverride"
+                  type="number"
+                  min={0}
+                  max={100}
+                  inputMode="numeric"
+                  defaultValue={deal.probabilityOverride ?? ""}
+                  placeholder={`Standard for «${currentStage?.label ?? "fasen"}»: ${currentStage?.probability ?? 50}%`}
+                  className="field mt-1"
+                />
+              </label>
               <button type="submit" className="btn btn-secondary mt-1 self-start">
                 Lagre endringer
               </button>

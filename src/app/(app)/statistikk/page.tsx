@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/format";
 import { parseDateStr } from "@/components/CalendarPopover";
 import Avatar from "@/components/Avatar";
 import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
+import { Coins, Target, Timer, Hourglass } from "lucide-react";
 
 type Periode = "30" | "kvartal" | "ar" | "egendefinert";
 
@@ -47,6 +48,38 @@ interface SellerStat {
   soldCount: number;
   pipelineCount: number;
   pipelineValue: number;
+  // Øyeblikksbilde — ALLE åpne deals eieren har nå, uavhengig av valgt
+  // periode (til forskjell fra pipelineCount/pipelineValue over, som bare
+  // teller NYE leads opprettet i perioden). Brukes til forecasting.
+  openValue: number;
+  estimatedValue: number;
+  // Gjennomsnittlig antall dager fra opprettet til vunnet/tapt, for deals
+  // som ble lukket i valgt periode. Null = ingen lukkede deals i perioden.
+  leadTimeDays: number | null;
+  leadTimeLostDays: number | null;
+}
+
+function StatTile({
+  label,
+  value,
+  sublabel,
+  icon,
+}: {
+  label: string;
+  value: string;
+  sublabel?: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+        {icon}
+      </div>
+      <p className="text-[24px] font-semibold tracking-tight">{value}</p>
+      <p className="text-[12.5px] text-ink-soft">{label}</p>
+      {sublabel && <p className="mt-0.5 text-[11px] text-ink-faint">{sublabel}</p>}
+    </div>
+  );
 }
 
 // Én rangert liste over selgerne for én enkelt metrikk — brukt fire ganger
@@ -111,9 +144,61 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     pipelineStageIds.has(d.stage)
   );
 
+  const stageById = new Map(stages.map((s) => [String(s.id), s]));
+  // Deal-nivå overstyrer fasens standardsannsynlighet når satt — se
+  // deals.probabilityOverride. Alle deals over er allerede vunnet/tapt-
+  // ekskludert der det trengs av kallerne under.
+  function effectiveProbability(d: (typeof allDeals)[number]): number {
+    if (d.probabilityOverride != null) return d.probabilityOverride;
+    return stageById.get(d.stage)?.probability ?? 50;
+  }
+  function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
+    if (list.length === 0) return null;
+    const totalMs = list.reduce(
+      (acc, d) => acc + ((d.closedAt ?? d.updatedAt).getTime() - d.createdAt.getTime()),
+      0
+    );
+    return Math.round(totalMs / list.length / 86_400_000);
+  }
+
+  // Øyeblikksbilde uavhengig av periodevelgeren — brukes til forecasting
+  // (formålet er "hvor mye kan vi forvente å selge", ikke "hvor mange nye
+  // leads kom inn nylig"), samme prinsipp som "Verdi i pipeline" på
+  // Oversikt-siden.
+  const openDealsAll = allDeals.filter(
+    (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
+  );
+  const totalPipelineValue = openDealsAll.reduce((acc, d) => acc + (d.value ?? 0), 0);
+  const totalEstimatedValue = openDealsAll.reduce(
+    (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d) / 100),
+    0
+  );
+  const wonInPeriodAll = allDeals.filter(
+    (d) =>
+      wonStageIds.has(d.stage) &&
+      (d.closedAt ?? d.updatedAt) >= start &&
+      (d.closedAt ?? d.updatedAt) <= end
+  );
+  const lostInPeriodAll = allDeals.filter(
+    (d) =>
+      lostStageIds.has(d.stage) &&
+      (d.closedAt ?? d.updatedAt) >= start &&
+      (d.closedAt ?? d.updatedAt) <= end
+  );
+  const leadTimeOverall = avgLeadTimeDays(wonInPeriodAll);
+  const leadTimeLostOverall = avgLeadTimeDays(lostInPeriodAll);
+
   const sellerStats: SellerStat[] = allUsers
     .map((user) => {
       const ownDeals = allDeals.filter((d) => d.ownerId === user.id);
+      const openDeals = ownDeals.filter(
+        (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
+      );
+      const openValue = openDeals.reduce((acc, d) => acc + (d.value ?? 0), 0);
+      const estimatedValue = openDeals.reduce(
+        (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d) / 100),
+        0
+      );
 
       // Faseoversikt: aktive (ikke vunnet/tapt) deals opprettet i valgt periode.
       const activeInPeriod = ownDeals.filter(
@@ -135,8 +220,9 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         .filter((g) => g.count > 0);
       const pipelineValue = byStage.reduce((acc, g) => acc + g.value, 0);
 
-      // Lukkede deals i perioden — vunnet via closedAt, tapt via updatedAt
-      // (det finnes ikke noe eget "lostAt"-felt, så updatedAt er nærmeste vi har).
+      // Lukket i perioden — vunnet og tapt bruker begge closedAt (satt uansett
+      // utfall), med updatedAt som fallback for deals lukket før feltet ble
+      // satt på tapte deals også.
       const wonInPeriod = ownDeals.filter(
         (d) =>
           wonStageIds.has(d.stage) &&
@@ -144,23 +230,34 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           (d.closedAt ?? d.updatedAt) <= end
       );
       const lostInPeriod = ownDeals.filter(
-        (d) => lostStageIds.has(d.stage) && d.updatedAt >= start && d.updatedAt <= end
+        (d) =>
+          lostStageIds.has(d.stage) &&
+          (d.closedAt ?? d.updatedAt) >= start &&
+          (d.closedAt ?? d.updatedAt) <= end
       );
       const closedTotal = wonInPeriod.length + lostInPeriod.length;
       const hitRate = closedTotal > 0 ? wonInPeriod.length / closedTotal : null;
       const soldValue = wonInPeriod.reduce((acc, d) => acc + (d.value ?? 0), 0);
+      const leadTimeDays = avgLeadTimeDays(wonInPeriod);
+      const leadTimeLostDays = avgLeadTimeDays(lostInPeriod);
 
       return {
         user,
         byStage,
         hitRate,
+        openValue,
+        estimatedValue,
+        leadTimeDays,
+        leadTimeLostDays,
         soldValue,
         soldCount: wonInPeriod.length,
         pipelineCount: activeInPeriod.length,
         pipelineValue,
       };
     })
-    .filter((s) => s.byStage.length > 0 || s.soldCount > 0 || s.hitRate !== null);
+    .filter(
+      (s) => s.byStage.length > 0 || s.soldCount > 0 || s.hitRate !== null || s.openValue > 0
+    );
 
   const hitRateRows = sellerStats
     .filter((s) => s.hitRate != null)
@@ -204,6 +301,30 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         ) : undefined,
     }));
 
+  const openValueRows = sellerStats
+    .filter((s) => s.openValue > 0)
+    .slice()
+    .sort((a, b) => b.openValue - a.openValue)
+    .map((s) => ({ user: s.user, display: formatMoney(s.openValue) || "0kr" }));
+
+  const estimatedValueRows = sellerStats
+    .filter((s) => s.estimatedValue > 0)
+    .slice()
+    .sort((a, b) => b.estimatedValue - a.estimatedValue)
+    .map((s) => ({ user: s.user, display: formatMoney(Math.round(s.estimatedValue)) || "0kr" }));
+
+  const leadTimeRows = sellerStats
+    .filter((s) => s.leadTimeDays != null)
+    .slice()
+    .sort((a, b) => a.leadTimeDays! - b.leadTimeDays!)
+    .map((s) => ({ user: s.user, display: `${s.leadTimeDays} dager` }));
+
+  const leadTimeLostRows = sellerStats
+    .filter((s) => s.leadTimeLostDays != null)
+    .slice()
+    .sort((a, b) => a.leadTimeLostDays! - b.leadTimeLostDays!)
+    .map((s) => ({ user: s.user, display: `${s.leadTimeLostDays} dager` }));
+
   return (
     <div>
       <div className="mb-6 flex items-end justify-between">
@@ -220,6 +341,33 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         />
       </div>
 
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          label="Sum i pipeline"
+          sublabel="Alle åpne deals nå"
+          value={formatMoney(totalPipelineValue) || "0kr"}
+          icon={<Coins size={16} />}
+        />
+        <StatTile
+          label="Estimert salg i pipeline"
+          sublabel="Verdi × sannsynlighet per fase"
+          value={formatMoney(Math.round(totalEstimatedValue)) || "0kr"}
+          icon={<Target size={16} />}
+        />
+        <StatTile
+          label="Lead time"
+          sublabel="Opprettet → vunnet, valgt periode"
+          value={leadTimeOverall != null ? `${leadTimeOverall} dager` : "—"}
+          icon={<Timer size={16} />}
+        />
+        <StatTile
+          label="Lead time, tapt"
+          sublabel="Opprettet → tapt, valgt periode"
+          value={leadTimeLostOverall != null ? `${leadTimeLostOverall} dager` : "—"}
+          icon={<Hourglass size={16} />}
+        />
+      </div>
+
       {sellerStats.length === 0 ? (
         <p className="py-10 text-center text-[13px] text-ink-faint">
           Ingen data å vise for denne perioden ennå.
@@ -232,6 +380,14 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
             <RankingSection title="Deals solgt" rows={soldCountRows} />
           </div>
           <RankingSection title="Leads i pipeline" rows={pipelineRows} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <RankingSection title="Sum i pipeline per selger" rows={openValueRows} />
+            <RankingSection title="Estimert salg per selger" rows={estimatedValueRows} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <RankingSection title="Lead time per selger" rows={leadTimeRows} />
+            <RankingSection title="Lead time tapt per selger" rows={leadTimeLostRows} />
+          </div>
         </div>
       )}
     </div>

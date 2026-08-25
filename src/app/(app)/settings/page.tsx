@@ -85,6 +85,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         color: s.color,
         isWon: s.isWon,
         isLost: s.isLost,
+        probability: s.probability,
       }));
   }
 

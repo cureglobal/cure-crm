@@ -183,6 +183,10 @@ export const stages = sqliteTable("stages", {
   // Styrer konfetti/vunnet-/tapt-logikk som før var hardkodet på stage-id.
   isWon: integer("is_won", { mode: "boolean" }).notNull().default(false),
   isLost: integer("is_lost", { mode: "boolean" }).notNull().default(false),
+  // Standard sannsynlighet (0–100) for at en deal i denne fasen ender vunnet
+  // — brukt til å estimere forventet salg i Statistikk. Kan overstyres per
+  // deal via deals.probabilityOverride.
+  probability: integer("probability").notNull().default(50),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -203,8 +207,13 @@ export const deals = sqliteTable("deals", {
   comment: text("comment"),
   // Satt når deal-en flyttes til en tapt-fase — se lost_reasons-tabellen over.
   lostReasonId: integer("lost_reason_id"),
-  // Satt til dagens dato når deal-en flyttes til en vunnet-fase.
+  // Satt til dagens dato når deal-en flyttes til en vunnet- ELLER tapt-fase
+  // — brukes som "lukket dato" for lead time-beregning i Statistikk uansett
+  // utfall.
   closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+  // Overstyrer fasens standard sannsynlighet (stages.probability) for akkurat
+  // denne dealen — null betyr "bruk fasens standard".
+  probabilityOverride: integer("probability_override"),
   // Kan være null — en deal kan stå uten hovedeier (vises med varseltrekant).
   ownerId: integer("owner_id").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp_ms" })

@@ -10,6 +10,7 @@ export interface StageRow {
   color: string;
   isWon: boolean;
   isLost: boolean;
+  probability: number;
 }
 
 const SWATCHES = [
@@ -60,6 +61,18 @@ export default function StagesManager({
     startTransition(() => updateStage(id, fd));
   }
 
+  function saveProbability(id: number, raw: string) {
+    const n = Number(raw);
+    const current = stages.find((s) => s.id === id);
+    if (!current || !Number.isFinite(n)) return;
+    const probability = Math.max(0, Math.min(100, Math.round(n)));
+    if (probability === current.probability) return;
+    patch(id, { probability });
+    const fd = new FormData();
+    fd.set("probability", String(probability));
+    startTransition(() => updateStage(id, fd));
+  }
+
   function toggleFlag(id: number, flag: "isWon" | "isLost") {
     const current = stages.find((s) => s.id === id);
     if (!current) return;
@@ -95,7 +108,14 @@ export default function StagesManager({
       if (created) {
         setStages((prev) => [
           ...prev,
-          { id: created.id, label: created.label, color: created.color, isWon: created.isWon, isLost: created.isLost },
+          {
+            id: created.id,
+            label: created.label,
+            color: created.color,
+            isWon: created.isWon,
+            isLost: created.isLost,
+            probability: created.probability,
+          },
         ]);
       }
     });
@@ -153,6 +173,21 @@ export default function StagesManager({
               onBlur={(e) => saveLabel(s.id, e.target.value)}
               className="field !flex-1 !border-transparent !bg-transparent !px-2 !py-1 text-[13.5px] font-medium hover:!border-line focus:!border-accent focus:!bg-surface"
             />
+
+            <span
+              title="Sannsynlighet for at en deal i denne fasen blir vunnet — brukt til forecasting i Statistikk"
+              className="flex shrink-0 items-center gap-1"
+            >
+              <input
+                type="number"
+                min={0}
+                max={100}
+                defaultValue={s.probability}
+                onBlur={(e) => saveProbability(s.id, e.target.value)}
+                className="field !w-14 !border-transparent !bg-transparent !px-2 !py-1 text-right text-[12.5px] hover:!border-line focus:!border-accent focus:!bg-surface"
+              />
+              <span className="text-[12px] text-ink-faint">%</span>
+            </span>
 
             <button
               onClick={() => toggleFlag(s.id, "isWon")}

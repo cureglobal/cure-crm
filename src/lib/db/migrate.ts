@@ -73,6 +73,7 @@ const CREATE_STATEMENTS = [
     sort_order INTEGER NOT NULL DEFAULT 0,
     is_won INTEGER NOT NULL DEFAULT 0,
     is_lost INTEGER NOT NULL DEFAULT 0,
+    probability INTEGER NOT NULL DEFAULT 50,
     created_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS deals (
@@ -281,9 +282,17 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     business_unit_id: "INTEGER",
   },
   people: { notes: "TEXT" },
-  deals: { comment: "TEXT", lost_reason_id: "INTEGER", closed_at: "INTEGER" },
+  deals: {
+    comment: "TEXT",
+    lost_reason_id: "INTEGER",
+    closed_at: "INTEGER",
+    probability_override: "INTEGER",
+  },
   deal_lines: { billing_type: "TEXT NOT NULL DEFAULT 'once'", months: "INTEGER" },
-  stages: { pipeline_id: "INTEGER REFERENCES pipelines(id)" },
+  stages: {
+    pipeline_id: "INTEGER REFERENCES pipelines(id)",
+    probability: "INTEGER NOT NULL DEFAULT 50",
+  },
   saved_views: {
     pipeline_id: "INTEGER REFERENCES pipelines(id)",
     active_days: "INTEGER",
@@ -299,20 +308,28 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
 };
 
 // De 12 fasene brukeren har definert, i den rekkefølgen de ble oppgitt —
-// rekkefølgen kan endres fritt fra Innstillinger etterpå.
-const DEFAULT_STAGES: { label: string; color: string; isWon?: boolean; isLost?: boolean }[] = [
-  { label: "Tapt", color: "#ff453a", isLost: true },
-  { label: "Vunnet", color: "#30d158", isWon: true },
-  { label: "Anbud", color: "#ff9f0a" },
-  { label: "Har sendt kontrakt til signering", color: "#5e5ce6" },
-  { label: "Send kontrakt", color: "#bf5af2" },
-  { label: "Aktiv oppfølging", color: "#64d2ff" },
-  { label: "Tilbud sendt", color: "#ff9f0a" },
-  { label: "Har møtt, skal sende tilbud", color: "#5ac8fa" },
-  { label: "Møte avtalt", color: "#0071e3" },
-  { label: "Kontaktfase", color: "#0071e3" },
-  { label: "Prospect", color: "#8e8e93" },
-  { label: "Mulighet", color: "#8e8e93" },
+// rekkefølgen kan endres fritt fra Innstillinger etterpå. `probability` er
+// en startantagelse på hvor sannsynlig det er at en deal i fasen blir
+// vunnet (brukt til forecasting i Statistikk) — fritt redigerbar senere.
+const DEFAULT_STAGES: {
+  label: string;
+  color: string;
+  isWon?: boolean;
+  isLost?: boolean;
+  probability: number;
+}[] = [
+  { label: "Tapt", color: "#ff453a", isLost: true, probability: 0 },
+  { label: "Vunnet", color: "#30d158", isWon: true, probability: 100 },
+  { label: "Anbud", color: "#ff9f0a", probability: 20 },
+  { label: "Har sendt kontrakt til signering", color: "#5e5ce6", probability: 90 },
+  { label: "Send kontrakt", color: "#bf5af2", probability: 70 },
+  { label: "Aktiv oppfølging", color: "#64d2ff", probability: 50 },
+  { label: "Tilbud sendt", color: "#ff9f0a", probability: 40 },
+  { label: "Har møtt, skal sende tilbud", color: "#5ac8fa", probability: 30 },
+  { label: "Møte avtalt", color: "#0071e3", probability: 20 },
+  { label: "Kontaktfase", color: "#0071e3", probability: 10 },
+  { label: "Prospect", color: "#8e8e93", probability: 5 },
+  { label: "Mulighet", color: "#8e8e93", probability: 10 },
 ];
 
 // Gamle, hardkodede fase-nøkler fra før faser ble redigerbare, mappet til
@@ -338,8 +355,8 @@ async function seedStagesAndMigrateLegacy(client: Client) {
   for (let i = 0; i < DEFAULT_STAGES.length; i++) {
     const s = DEFAULT_STAGES[i];
     const res = await client.execute({
-      sql: "INSERT INTO stages (label, color, sort_order, is_won, is_lost, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-      args: [s.label, s.color, i, s.isWon ? 1 : 0, s.isLost ? 1 : 0, Date.now()],
+      sql: "INSERT INTO stages (label, color, sort_order, is_won, is_lost, probability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      args: [s.label, s.color, i, s.isWon ? 1 : 0, s.isLost ? 1 : 0, s.probability, Date.now()],
     });
     idByLabel[s.label] = Number(res.lastInsertRowid);
   }
@@ -542,6 +559,20 @@ async function dropDealsOwnerNotNull(client: Client) {
   }
 }
 
+// Setter differensierte startantagelser per fase-navn (se DEFAULT_STAGES)
+// på EKSISTERENDE faser — kalt kun første gang probability-kolonnen dukker
+// opp (se migrate()), ellers ville dette overskrevet verdier brukeren siden
+// har justert i Innstillinger. Ukjente/egendefinerte fasenavn matcher rett
+// og slett ingen rad og lar rows'ene stå med kolonnens DEFAULT 50 fra ALTER.
+async function backfillStageProbabilityDefaults(client: Client) {
+  for (const s of DEFAULT_STAGES) {
+    await client.execute({
+      sql: "UPDATE stages SET probability = ? WHERE label = ?",
+      args: [s.probability, s.label],
+    });
+  }
+}
+
 async function addMissingColumns(client: Client) {
   for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
     const exists = await client.execute({
@@ -576,6 +607,17 @@ export async function migrate(client: Client) {
   // stedet for å vente på hverandre.
   await client.execute("PRAGMA busy_timeout = 5000");
   await client.execute("PRAGMA foreign_keys = ON");
+
+  // Fanget FØR CREATE_STATEMENTS/addMissingColumns kjører, slik at vi vet om
+  // probability-kolonnen på stages er helt ny i akkurat dette kjøret — se
+  // backfillStageProbabilityDefaults under. En frisk database uten
+  // stages-tabell ennå gir også "false" her, siden PRAGMA table_info på en
+  // tabell som ikke finnes returnerer null rader.
+  const stagesInfoBefore = await client.execute("PRAGMA table_info(stages)");
+  const hadProbabilityColumn = stagesInfoBefore.rows.some(
+    (r) => String(r.name) === "probability"
+  );
+
   for (const stmt of CREATE_STATEMENTS) await client.execute(stmt);
   // Må kjøre før indeksene, som kan peke på kolonner lagt til her.
   await addMissingColumns(client);
@@ -584,6 +626,7 @@ export async function migrate(client: Client) {
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
   // Må kjøre etter at både stages- og deals-tabellen finnes.
   await seedStagesAndMigrateLegacy(client);
+  if (!hadProbabilityColumn) await backfillStageProbabilityDefaults(client);
   // Må kjøre etter at pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
   // (addMissingColumns) og fasene over finnes.
   await seedPipelinesAndBackfillStages(client);
