@@ -7,9 +7,10 @@ import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
 import { effectiveProbability } from "@/lib/dealProbability";
 import { parsePeriodeParam, periodRange, statistikkQuery } from "@/lib/statistikkPeriod";
+import { getSalesTarget, getMonthlyActuals } from "@/lib/salesTarget.server";
 import Avatar from "@/components/Avatar";
 import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
-import { Coins, Target, Timer, Hourglass } from "lucide-react";
+import { Coins, Target, Timer, Hourglass, Flag } from "lucide-react";
 
 interface StageBreakdown {
   stage: { id: number; label: string; color: string };
@@ -124,11 +125,46 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
-  const allDeals = (await db.query.deals.findMany()).filter((d) =>
-    pipelineStageIds.has(d.stage)
-  );
+  const allDealsEverywhere = await db.query.deals.findMany();
+  const allDeals = allDealsEverywhere.filter((d) => pipelineStageIds.has(d.stage));
 
   const stageById = new Map(stages.map((s) => [String(s.id), s]));
+
+  // Salgsmål er selskapsbredt — regnes derfor på tvers av ALLE pipelines,
+  // ikke bare den valgte, til forskjell fra resten av siden.
+  const salesTargetYear = new Date().getFullYear();
+  const salesTarget = await getSalesTarget(salesTargetYear);
+  const manualActuals = await getMonthlyActuals(salesTargetYear);
+  const manualByMonth = new Map(manualActuals.map((m) => [m.month, m.amount]));
+  const allStagesEverywhere = await db.query.stages.findMany();
+  const wonStageIdsEverywhere = new Set(
+    allStagesEverywhere.filter((s) => s.isWon).map((s) => String(s.id))
+  );
+
+  function monthActual(month: number): number {
+    const manual = manualByMonth.get(month);
+    if (manual != null) return manual;
+    const monthStart = new Date(salesTargetYear, month - 1, 1);
+    const monthEnd = new Date(salesTargetYear, month, 1);
+    return allDealsEverywhere
+      .filter((d) => {
+        if (!wonStageIdsEverywhere.has(d.stage)) return false;
+        const closed = d.closedAt ?? d.updatedAt;
+        return closed >= monthStart && closed < monthEnd;
+      })
+      .reduce((acc, d) => acc + (d.value ?? 0), 0);
+  }
+
+  const monthlyActualValues = Array.from({ length: 12 }, (_, i) => monthActual(i + 1));
+  const quarterActuals = [0, 1, 2, 3].map((q) =>
+    monthlyActualValues.slice(q * 3, q * 3 + 3).reduce((a, b) => a + b, 0)
+  );
+  const totalActual = monthlyActualValues.reduce((a, b) => a + b, 0);
+  const quarterWeights = salesTarget
+    ? [salesTarget.q1Weight, salesTarget.q2Weight, salesTarget.q3Weight, salesTarget.q4Weight]
+    : [25, 25, 25, 25];
+  const totalTarget = salesTarget?.totalAmount ?? 0;
+  const quarterTargets = quarterWeights.map((w) => Math.round((totalTarget * w) / 100));
   function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
     if (list.length === 0) return null;
     const totalMs = list.reduce(
@@ -319,6 +355,49 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           pipelineId={pipelineId}
         />
       </div>
+
+      {totalTarget > 0 && (
+        <section className="card mb-4 p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-[13.5px] font-semibold tracking-tight">
+              <Flag size={15} className="text-accent" />
+              Salgsmål {salesTargetYear}
+            </h2>
+            <span className="text-[13px] font-medium tabular-nums">
+              {formatMoney(totalActual) || "0kr"} / {formatMoney(totalTarget) || "0kr"}
+              <span className="ml-1.5 text-ink-soft">
+                ({Math.round((totalActual / totalTarget) * 100)} %)
+              </span>
+            </span>
+          </div>
+          <div className="mb-4 h-2 overflow-hidden rounded-full bg-mist/[0.08]">
+            <div
+              className="h-full rounded-full bg-accent"
+              style={{ width: `${Math.min(100, (totalActual / totalTarget) * 100)}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {["Q1", "Q2", "Q3", "Q4"].map((label, i) => {
+              const target = quarterTargets[i];
+              const actual = quarterActuals[i];
+              const pct = target > 0 ? Math.round((actual / target) * 100) : 0;
+              return (
+                <div key={label} className="rounded-xl bg-mist/[0.03] p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                    {label} · {quarterWeights[i]}%
+                  </p>
+                  <p className="mt-1 text-[14px] font-semibold tabular-nums">
+                    {formatMoney(actual) || "0kr"}
+                  </p>
+                  <p className="text-[11.5px] text-ink-soft">
+                    av {formatMoney(target) || "0kr"} ({pct} %)
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile

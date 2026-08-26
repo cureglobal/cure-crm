@@ -31,6 +31,8 @@ import {
   dealTags,
   personTags,
   companyTags,
+  salesTargets,
+  monthlyActuals,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -1048,6 +1050,60 @@ export async function bulkAddCompanyTag(companyIds: number[], tagId: number) {
     await db.insert(companyTags).values({ companyId, tagId }).onConflictDoNothing();
   }
   revalidatePath("/companies");
+}
+
+// ---------- Salgsmål ----------
+
+export async function updateSalesTarget(
+  year: number,
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const totalAmount = Number(String(formData.get("totalAmount") ?? "").replace(/\D/g, ""));
+  const q1Weight = Number(formData.get("q1Weight"));
+  const q2Weight = Number(formData.get("q2Weight"));
+  const q3Weight = Number(formData.get("q3Weight"));
+  const q4Weight = Number(formData.get("q4Weight"));
+  if (![totalAmount, q1Weight, q2Weight, q3Weight, q4Weight].every(Number.isFinite)) {
+    return { ok: false, message: "Ugyldig tall." };
+  }
+  const weightSum = q1Weight + q2Weight + q3Weight + q4Weight;
+  if (Math.round(weightSum) !== 100) {
+    return { ok: false, message: `Kvartalsvektene må summere til 100 % (er nå ${weightSum} %).` };
+  }
+
+  const existing = await db.query.salesTargets.findFirst({ where: eq(salesTargets.year, year) });
+  const set = { totalAmount, q1Weight, q2Weight, q3Weight, q4Weight };
+  if (existing) {
+    await db.update(salesTargets).set(set).where(eq(salesTargets.id, existing.id));
+  } else {
+    await db.insert(salesTargets).values({ year, ...set });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/statistikk");
+  return { ok: true, message: "Salgsmål oppdatert." };
+}
+
+// Tom/fjernet verdi (amount === null) sletter raden — måneden faller da
+// tilbake til å regnes ut fra vunnet-deals i denne appen i stedet, se
+// salesTarget.server.ts.
+export async function upsertMonthlyActual(year: number, month: number, formData: FormData) {
+  await requireUser();
+  const raw = String(formData.get("amount") ?? "").replace(/\D/g, "");
+  const amount = raw ? Number(raw) : null;
+
+  const existing = await db.query.monthlyActuals.findFirst({
+    where: and(eq(monthlyActuals.year, year), eq(monthlyActuals.month, month)),
+  });
+  if (amount == null) {
+    if (existing) await db.delete(monthlyActuals).where(eq(monthlyActuals.id, existing.id));
+  } else if (existing) {
+    await db.update(monthlyActuals).set({ amount }).where(eq(monthlyActuals.id, existing.id));
+  } else {
+    await db.insert(monthlyActuals).values({ year, month, amount });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/statistikk");
 }
 
 // ---------- Faser (pipeline-stages) ----------

@@ -6,6 +6,7 @@ import { getPipelines } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getTags } from "@/lib/tags.server";
+import { getSalesTarget, getMonthlyActuals } from "@/lib/salesTarget.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
@@ -26,6 +27,7 @@ import PipelinesAndStagesManager from "@/components/PipelinesAndStagesManager";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import type { StageRow } from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
+import SalesTargetManager from "@/components/SalesTargetManager";
 import LostReasonsManager from "@/components/LostReasonsManager";
 import TagsManager from "@/components/TagsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
@@ -50,6 +52,7 @@ import {
   Tag,
   Users,
   Clock,
+  Target,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -78,6 +81,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const dealTagRows = await getTags("deal");
   const personTagRows = await getTags("person");
   const companyTagRows = await getTags("company");
+  const salesTargetYear = new Date().getFullYear();
+  const salesTarget = await getSalesTarget(salesTargetYear);
+  const monthlyActualRows = await getMonthlyActuals(salesTargetYear);
 
   const stagesByPipeline: Record<number, StageRow[]> = {};
   for (const p of pipelineRows) {
@@ -308,6 +314,29 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           </div>
         </div>
         <ThemePicker current={me.theme} />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Target size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Salgsmål</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Årsmål fordelt på kvartal, vist mot faktisk salg på Statistikk-siden.
+            </p>
+          </div>
+        </div>
+        <SalesTargetManager
+          year={salesTargetYear}
+          totalAmount={salesTarget?.totalAmount ?? 0}
+          q1Weight={salesTarget?.q1Weight ?? 25}
+          q2Weight={salesTarget?.q2Weight ?? 25}
+          q3Weight={salesTarget?.q3Weight ?? 25}
+          q4Weight={salesTarget?.q4Weight ?? 25}
+          monthlyActuals={monthlyActualRows.map((m) => ({ month: m.month, amount: m.amount }))}
+        />
       </section>
 
       <section className="card mb-6 p-6">

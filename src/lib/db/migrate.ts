@@ -235,6 +235,24 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(company_id, tag_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS sales_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year INTEGER NOT NULL UNIQUE,
+    total_amount INTEGER NOT NULL,
+    q1_weight INTEGER NOT NULL DEFAULT 25,
+    q2_weight INTEGER NOT NULL DEFAULT 25,
+    q3_weight INTEGER NOT NULL DEFAULT 25,
+    q4_weight INTEGER NOT NULL DEFAULT 25,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS monthly_actuals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(year, month)
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -265,6 +283,7 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_person_tags_tag ON person_tags(tag_id)",
   "CREATE INDEX IF NOT EXISTS idx_company_tags_company ON company_tags(company_id)",
   "CREATE INDEX IF NOT EXISTS idx_company_tags_tag ON company_tags(tag_id)",
+  "CREATE INDEX IF NOT EXISTS idx_monthly_actuals_year ON monthly_actuals(year)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -542,6 +561,42 @@ async function seedTags(client: Client) {
   }
 }
 
+// Startpunkt for salgsmålet: 14 mill for 2026, fordelt 30/20/30/20 på
+// kvartalene. Fritt redigerbart etterpå fra Innstillinger.
+async function seedSalesTarget(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM sales_targets");
+  if (Number(existing.rows[0].c) > 0) return;
+  await client.execute({
+    sql: "INSERT INTO sales_targets (year, total_amount, q1_weight, q2_weight, q3_weight, q4_weight, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [2026, 14_000_000, 30, 20, 30, 20, Date.now()],
+  });
+}
+
+// Faktisk salg for januar–august 2026, hentet fra det forrige CRM-systemet
+// (deals herfra finnes ikke i denne appen, så de kan ikke regnes ut fra
+// vunnet-deals slik senere måneder gjør — se salesTarget.server.ts).
+const IMPORTED_MONTHLY_ACTUALS_2026: [month: number, amount: number][] = [
+  [1, 662_675],
+  [2, 829_475],
+  [3, 2_913_966],
+  [4, 325_525],
+  [5, 566_610],
+  [6, 408_110],
+  [7, 0],
+  [8, 362_145],
+];
+
+async function seedMonthlyActuals(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM monthly_actuals");
+  if (Number(existing.rows[0].c) > 0) return;
+  for (const [month, amount] of IMPORTED_MONTHLY_ACTUALS_2026) {
+    await client.execute({
+      sql: "INSERT INTO monthly_actuals (year, month, amount, created_at) VALUES (?, ?, ?, ?)",
+      args: [2026, month, amount, Date.now()],
+    });
+  }
+}
+
 // deals.owner_id var opprinnelig NOT NULL — en deal kan nå stå uten
 // hovedeier, men SQLite støtter ikke ALTER COLUMN, så tabellen bygges om.
 // Idempotent: sjekker PRAGMA table_info først og hopper over hvis kolonnen
@@ -663,4 +718,6 @@ export async function migrate(client: Client) {
   await seedBusinessUnits(client);
   await seedLostReasons(client);
   await seedTags(client);
+  await seedSalesTarget(client);
+  await seedMonthlyActuals(client);
 }

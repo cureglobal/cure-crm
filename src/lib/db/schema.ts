@@ -432,6 +432,34 @@ export const referenceProjects = sqliteTable("reference_projects", {
     .$defaultFn(() => new Date()),
 });
 
+// Årlig salgsmål, fordelt på kvartal etter vekting (skal normalt summere til
+// 100, men håndheves ikke i databasen — se updateSalesTarget i actions.ts).
+export const salesTargets = sqliteTable("sales_targets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  year: integer("year").notNull().unique(),
+  totalAmount: integer("total_amount").notNull(),
+  q1Weight: integer("q1_weight").notNull().default(25),
+  q2Weight: integer("q2_weight").notNull().default(25),
+  q3Weight: integer("q3_weight").notNull().default(25),
+  q4Weight: integer("q4_weight").notNull().default(25),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// Manuelt innlagt faktisk salg per måned — brukt til å bygge inn historikk
+// fra et annet CRM-system (måneder uten egen rad her regnes i stedet ut fra
+// vunnet-deals i denne appen, se salesTarget.server.ts).
+export const monthlyActuals = sqliteTable("monthly_actuals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(), // 1–12
+  amount: integer("amount").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dealId: integer("deal_id")
@@ -469,3 +497,5 @@ export type Activity = typeof activities.$inferSelect;
 export type DealLine = typeof dealLines.$inferSelect;
 export type ContactEvent = typeof contactEvents.$inferSelect;
 export type ReferenceProject = typeof referenceProjects.$inferSelect;
+export type SalesTarget = typeof salesTargets.$inferSelect;
+export type MonthlyActual = typeof monthlyActuals.$inferSelect;
