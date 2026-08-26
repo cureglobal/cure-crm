@@ -15,7 +15,7 @@ import {
   startGoogleCalendarAuth,
   disconnectGoogleCalendar,
 } from "@/lib/actions";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, relativeTimeAgo } from "@/lib/format";
 import SyncButton from "@/components/SyncButton";
 import CalendarSyncButton from "@/components/CalendarSyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
@@ -30,6 +30,7 @@ import LostReasonsManager from "@/components/LostReasonsManager";
 import TagsManager from "@/components/TagsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
+import Avatar from "@/components/Avatar";
 import UserNameEdit from "@/components/UserNameEdit";
 import AdminToggle from "@/components/AdminToggle";
 import UserActions from "@/components/UserActions";
@@ -47,6 +48,8 @@ import {
   GitMerge,
   ListPlus,
   Tag,
+  Users,
+  Clock,
 } from "lucide-react";
 
 // E-postsynk og brreg-matching kan ta lenger enn Vercels standard 10 sekunder.
@@ -406,7 +409,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <BusinessUnitsManager units={businessUnitRows.map((u) => ({ id: u.id, name: u.name }))} />
+        <BusinessUnitsManager
+          units={businessUnitRows.map((u) => ({
+            id: u.id,
+            name: u.name,
+            orgNumber: u.orgNumber,
+            orgName: u.orgName,
+            brregVerified: u.brregVerified,
+            address: u.address,
+            postalCode: u.postalCode,
+            city: u.city,
+          }))}
+        />
       </section>
 
       <section className="card mb-6 p-6">
@@ -462,11 +476,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         />
       </section>
 
-      <section className="card p-6">
-        <h2 className="mb-1 text-[15px] font-semibold tracking-tight">Brukere</h2>
-        <p className="mb-4 text-[12.5px] text-ink-soft">
-          Alle brukere ser leads, faser og kontakter — men e-postdialog er privat per bruker.
-        </p>
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Users size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Brukere</h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Alle brukere ser leads, faser og kontakter — men e-postdialog er privat per bruker.
+            </p>
+          </div>
+        </div>
         <ul className="mb-5 flex flex-col gap-2">
           {allUsers.map((u) => (
             <li key={u.id} className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-3">
@@ -545,6 +566,43 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           </form>
         )}
       </section>
+
+      {me.isAdmin && (
+        <section className="card p-6">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+              <Clock size={16} />
+            </span>
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-tight">Sist online</h2>
+              <p className="text-[12.5px] text-ink-soft">
+                Kun synlig for administratorer. Oppdateres når brukeren gjør noe i CRM-et.
+              </p>
+            </div>
+          </div>
+          <CollapsibleSection prominent>
+            <ul className="flex flex-col gap-1.5">
+              {allUsers
+                .slice()
+                .sort((a, b) => (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0))
+                .map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-2.5"
+                  >
+                    <Avatar name={u.name} imageUrl={u.avatarDataUrl} size={28} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                      {u.name}
+                    </span>
+                    <span className="shrink-0 text-[12.5px] text-ink-soft">
+                      {relativeTimeAgo(u.lastSeenAt)}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </CollapsibleSection>
+        </section>
+      )}
     </div>
   );
 }

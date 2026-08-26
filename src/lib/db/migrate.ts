@@ -313,6 +313,23 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     avatar_data_url: "TEXT",
     onboarding_seen_at: "INTEGER",
     business_unit_id: "INTEGER",
+    last_seen_at: "INTEGER",
+  },
+  business_units: {
+    org_number: "TEXT",
+    org_name: "TEXT",
+    brreg_verified: "INTEGER NOT NULL DEFAULT 0",
+    address: "TEXT",
+    postal_code: "TEXT",
+    city: "TEXT",
+    employees: "INTEGER",
+    industry: "TEXT",
+    industry_code: "TEXT",
+    ceo_name: "TEXT",
+    revenue: "INTEGER",
+    profit: "INTEGER",
+    fiscal_year: "TEXT",
+    brreg_synced_at: "INTEGER",
   },
 };
 

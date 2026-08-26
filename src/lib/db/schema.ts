@@ -17,6 +17,9 @@ export const users = sqliteTable("users", {
   businessUnitId: integer("business_unit_id"),
   // Satt når brukeren har fullført (eller lukket) onboarding-gjennomgangen.
   onboardingSeenAt: integer("onboarding_seen_at", { mode: "timestamp_ms" }),
+  // Oppdateres (maks hvert 5. minutt) i getCurrentUser — se auth.ts. Brukes
+  // til "Sist online"-oversikten for admin i Innstillinger.
+  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -31,6 +34,22 @@ export const businessUnits = sqliteTable("business_units", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Samme Brreg-felter som companies — for kontrakter o.l. trenger vi full
+  // offisiell info (adresse, org.nr, regnskap) på våre egne selskap også.
+  orgNumber: text("org_number"),
+  orgName: text("org_name"),
+  brregVerified: integer("brreg_verified", { mode: "boolean" }).notNull().default(false),
+  address: text("address"),
+  postalCode: text("postal_code"),
+  city: text("city"),
+  employees: integer("employees"),
+  industry: text("industry"),
+  industryCode: text("industry_code"),
+  ceoName: text("ceo_name"),
+  revenue: integer("revenue"),
+  profit: integer("profit"),
+  fiscalYear: text("fiscal_year"),
+  brregSyncedAt: integer("brreg_synced_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

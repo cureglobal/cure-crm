@@ -321,9 +321,17 @@ export async function createBusinessUnit(formData: FormData) {
 
 export async function updateBusinessUnit(id: number, formData: FormData) {
   await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
-  await db.update(businessUnits).set({ name }).where(eq(businessUnits.id, id));
+  const set: Record<string, unknown> = {};
+  if (formData.has("name")) {
+    const name = String(formData.get("name") ?? "").trim();
+    if (!name) return;
+    set.name = name;
+  }
+  if (formData.has("orgNumber")) {
+    set.orgNumber = String(formData.get("orgNumber") ?? "").replace(/\D/g, "") || null;
+  }
+  if (Object.keys(set).length === 0) return;
+  await db.update(businessUnits).set(set).where(eq(businessUnits.id, id));
   revalidatePath("/settings");
 }
 
@@ -2524,6 +2532,98 @@ export async function autoMatchCompany(
 
   await syncCompanyFromBrreg(companyId, result.best.orgNumber, { verified: true });
   return { matched: true, message: `Koblet til ${result.best.name}.` };
+}
+
+// Samme idé som syncCompanyFromBrreg/autoMatchCompany, men for våre EGNE
+// selskap (business_units) — brukt til kontrakter o.l. som trenger full
+// offisiell info (org.nr, adresse, regnskap) på egne juridiske enheter.
+export interface BusinessUnitBrregSummary {
+  orgNumber: string;
+  orgName: string;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+}
+
+export async function syncBusinessUnitFromBrreg(
+  businessUnitId: number,
+  orgNumberInput?: string
+): Promise<{ ok: boolean; message: string; unit?: BusinessUnitBrregSummary }> {
+  await requireUser();
+  const unit = await db.query.businessUnits.findFirst({
+    where: eq(businessUnits.id, businessUnitId),
+  });
+  if (!unit) return { ok: false, message: "Fant ikke selskapet." };
+
+  const orgNumber = orgNumberInput?.trim() || unit.orgNumber;
+  if (!orgNumber) {
+    return { ok: false, message: "Legg inn organisasjonsnummer først." };
+  }
+
+  const data = await fetchBrregCompany(orgNumber);
+  if (!data) {
+    return {
+      ok: false,
+      message: "Fant ikke selskapet i Enhetsregisteret. Sjekk organisasjonsnummeret.",
+    };
+  }
+
+  await db
+    .update(businessUnits)
+    .set({
+      orgNumber: data.orgNumber,
+      orgName: data.name,
+      brregVerified: true,
+      address: data.address,
+      postalCode: data.postalCode,
+      city: data.city,
+      employees: data.employees,
+      industry: data.industry,
+      industryCode: data.industryCode,
+      ceoName: data.ceoName,
+      revenue: data.revenue,
+      profit: data.profit,
+      fiscalYear: data.fiscalYear,
+      brregSyncedAt: new Date(),
+    })
+    .where(eq(businessUnits.id, businessUnitId));
+
+  revalidatePath("/settings");
+
+  const notes: string[] = [];
+  if (data.bankrupt) notes.push("⚠︎ registrert konkurs");
+  if (data.liquidating) notes.push("⚠︎ under avvikling");
+  return {
+    ok: true,
+    message: `Oppdatert fra Brønnøysundregistrene${notes.length ? ` — ${notes.join(", ")}` : ""}.`,
+    unit: {
+      orgNumber: data.orgNumber,
+      orgName: data.name,
+      address: data.address,
+      postalCode: data.postalCode,
+      city: data.city,
+    },
+  };
+}
+
+// Slår opp automatisk ut fra navn når orgnummer ikke er satt ennå.
+export async function autoMatchBusinessUnit(
+  businessUnitId: number
+): Promise<{ matched: boolean; message: string; unit?: BusinessUnitBrregSummary }> {
+  await requireUser();
+  const unit = await db.query.businessUnits.findFirst({
+    where: eq(businessUnits.id, businessUnitId),
+  });
+  if (!unit) return { matched: false, message: "Fant ikke selskapet." };
+  if (unit.brregVerified) return { matched: true, message: "Allerede bekreftet." };
+
+  const result = await matchBrregCompany(unit.name, null);
+  if (!result.confident || !result.best) {
+    return { matched: false, message: result.reason };
+  }
+
+  const synced = await syncBusinessUnitFromBrreg(businessUnitId, result.best.orgNumber);
+  return { matched: true, message: `Koblet til ${result.best.name}.`, unit: synced.unit };
 }
 
 // Kjører automatisk matching for alle ubekreftede selskaper.

@@ -53,6 +53,19 @@ export function formatNumberInput(value: number | null | undefined) {
   return new Intl.NumberFormat("nb-NO").format(value);
 }
 
+// Minutt/time-oppløst "for X siden" — til "Sist online" i Innstillinger.
+// relativeDay over er dag-oppløst og passer ikke her (alt innen samme dag
+// ville vist "I dag" uansett om det var for 2 minutter eller 20 timer siden).
+export function relativeTimeAgo(d: Date | null | undefined): string {
+  if (!d) return "Aldri";
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return "Akkurat nå";
+  if (diffMs < 60 * 60_000) return `${Math.floor(diffMs / 60_000)} min siden`;
+  if (diffMs < 24 * 60 * 60_000) return `${Math.floor(diffMs / (60 * 60_000))} t siden`;
+  if (diffMs < 7 * 24 * 60 * 60_000) return `${Math.floor(diffMs / (24 * 60 * 60_000))} d siden`;
+  return formatDate(d);
+}
+
 export function initials(name: string) {
   return name
     .split(/\s+/)

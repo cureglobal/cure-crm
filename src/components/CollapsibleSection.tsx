@@ -8,9 +8,14 @@ import { ChevronDown } from "lucide-react";
 // tiden, men det tunge innholdet under bare når man faktisk trenger det.
 export default function CollapsibleSection({
   defaultOpen = false,
+  // Tydeligere, avgrenset knapp i stedet for den vanlige diskrete tekst-
+  // lenken — til seksjoner der det bør være åpenbart at det finnes mer
+  // innhold bak (f.eks. "Sist online", som ellers lett overses).
+  prominent = false,
   children,
 }: {
   defaultOpen?: boolean;
+  prominent?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -19,7 +24,11 @@ export default function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="mb-3 flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft transition hover:text-ink"
+        className={
+          prominent
+            ? "btn btn-secondary mb-3"
+            : "mb-3 flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft transition hover:text-ink"
+        }
       >
         <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         {open ? "Skjul" : "Vis"}

@@ -33,6 +33,11 @@ export async function destroySession() {
   jar.delete(COOKIE);
 }
 
+// Hvor sjelden lastSeenAt oppdateres — trenger ikke være sekund-nøyaktig
+// (kun til "Sist online"-oversikten for admin), og sparer en skrivning per
+// request ellers siden getCurrentUser kalles på så godt som hver side/action.
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
 export const getCurrentUser = cache(async (): Promise<User | null> => {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
@@ -41,7 +46,11 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
     const { payload } = await jwtVerify(token, secret());
     const uid = payload.uid as number;
     const user = await db.query.users.findFirst({ where: eq(users.id, uid) });
-    return user ?? null;
+    if (!user) return null;
+    if (!user.lastSeenAt || Date.now() - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
+      await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, uid));
+    }
+    return user;
   } catch {
     return null;
   }
