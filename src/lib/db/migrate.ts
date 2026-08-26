@@ -253,6 +253,18 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(year, month)
   )`,
+  `CREATE TABLE IF NOT EXISTS business_unit_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year INTEGER NOT NULL,
+    business_unit_id INTEGER NOT NULL REFERENCES business_units(id) ON DELETE CASCADE,
+    total_amount INTEGER NOT NULL,
+    q1_weight INTEGER NOT NULL DEFAULT 25,
+    q2_weight INTEGER NOT NULL DEFAULT 25,
+    q3_weight INTEGER NOT NULL DEFAULT 25,
+    q4_weight INTEGER NOT NULL DEFAULT 25,
+    created_at INTEGER NOT NULL,
+    UNIQUE(year, business_unit_id)
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -284,6 +296,8 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_company_tags_company ON company_tags(company_id)",
   "CREATE INDEX IF NOT EXISTS idx_company_tags_tag ON company_tags(tag_id)",
   "CREATE INDEX IF NOT EXISTS idx_monthly_actuals_year ON monthly_actuals(year)",
+  "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_year ON business_unit_targets(year)",
+  "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_unit ON business_unit_targets(business_unit_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -597,6 +611,30 @@ async function seedMonthlyActuals(client: Client) {
   }
 }
 
+// 2026-målet brutt ned per selskap — summerer til samme 14 mill som
+// sales_targets. Slås opp mot business_units på navn (samme rader som
+// seedBusinessUnits over seeder), ikke faste id-er.
+const BUSINESS_UNIT_TARGETS_2026: [name: string, amount: number][] = [
+  ["Cure AS", 10_000_000],
+  ["Cure Christiania AS", 2_500_000],
+  ["Cure Placebo AS", 1_500_000],
+];
+
+async function seedBusinessUnitTargets(client: Client) {
+  const existing = await client.execute("SELECT COUNT(*) as c FROM business_unit_targets");
+  if (Number(existing.rows[0].c) > 0) return;
+  const units = await client.execute("SELECT id, name FROM business_units");
+  const idByName = new Map(units.rows.map((r) => [String(r.name), Number(r.id)]));
+  for (const [name, amount] of BUSINESS_UNIT_TARGETS_2026) {
+    const businessUnitId = idByName.get(name);
+    if (!businessUnitId) continue;
+    await client.execute({
+      sql: "INSERT INTO business_unit_targets (year, business_unit_id, total_amount, q1_weight, q2_weight, q3_weight, q4_weight, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [2026, businessUnitId, amount, 30, 20, 30, 20, Date.now()],
+    });
+  }
+}
+
 // deals.owner_id var opprinnelig NOT NULL — en deal kan nå stå uten
 // hovedeier, men SQLite støtter ikke ALTER COLUMN, så tabellen bygges om.
 // Idempotent: sjekker PRAGMA table_info først og hopper over hvis kolonnen
@@ -720,4 +758,5 @@ export async function migrate(client: Client) {
   await seedTags(client);
   await seedSalesTarget(client);
   await seedMonthlyActuals(client);
+  await seedBusinessUnitTargets(client);
 }

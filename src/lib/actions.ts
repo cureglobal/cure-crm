@@ -33,6 +33,7 @@ import {
   companyTags,
   salesTargets,
   monthlyActuals,
+  businessUnitTargets,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -1104,6 +1105,42 @@ export async function upsertMonthlyActual(year: number, month: number, formData:
   }
   revalidatePath("/settings");
   revalidatePath("/statistikk");
+}
+
+// Bryter salgsmålet ned per eget selskap (business_units) — se
+// businessUnitTargets i schema.ts for hvorfor dette er en egen tabell i
+// stedet for en nullable business_unit_id på sales_targets.
+export async function updateBusinessUnitTarget(
+  year: number,
+  businessUnitId: number,
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const totalAmount = Number(String(formData.get("totalAmount") ?? "").replace(/\D/g, ""));
+  const q1Weight = Number(formData.get("q1Weight"));
+  const q2Weight = Number(formData.get("q2Weight"));
+  const q3Weight = Number(formData.get("q3Weight"));
+  const q4Weight = Number(formData.get("q4Weight"));
+  if (![totalAmount, q1Weight, q2Weight, q3Weight, q4Weight].every(Number.isFinite)) {
+    return { ok: false, message: "Ugyldig tall." };
+  }
+  const weightSum = q1Weight + q2Weight + q3Weight + q4Weight;
+  if (Math.round(weightSum) !== 100) {
+    return { ok: false, message: `Kvartalsvektene må summere til 100 % (er nå ${weightSum} %).` };
+  }
+
+  const existing = await db.query.businessUnitTargets.findFirst({
+    where: and(eq(businessUnitTargets.year, year), eq(businessUnitTargets.businessUnitId, businessUnitId)),
+  });
+  const set = { totalAmount, q1Weight, q2Weight, q3Weight, q4Weight };
+  if (existing) {
+    await db.update(businessUnitTargets).set(set).where(eq(businessUnitTargets.id, existing.id));
+  } else {
+    await db.insert(businessUnitTargets).values({ year, businessUnitId, ...set });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/statistikk");
+  return { ok: true, message: "Salgsmål oppdatert." };
 }
 
 // ---------- Faser (pipeline-stages) ----------

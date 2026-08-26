@@ -7,7 +7,8 @@ import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
 import { effectiveProbability } from "@/lib/dealProbability";
 import { parsePeriodeParam, periodRange, statistikkQuery } from "@/lib/statistikkPeriod";
-import { getSalesTarget, getMonthlyActuals } from "@/lib/salesTarget.server";
+import { getSalesTarget, getMonthlyActuals, getBusinessUnitTargets } from "@/lib/salesTarget.server";
+import { getBusinessUnits } from "@/lib/businessUnits.server";
 import Avatar from "@/components/Avatar";
 import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
 import { Coins, Target, Timer, Hourglass, Flag } from "lucide-react";
@@ -165,6 +166,36 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     : [25, 25, 25, 25];
   const totalTarget = salesTarget?.totalAmount ?? 0;
   const quarterTargets = quarterWeights.map((w) => Math.round((totalTarget * w) / 100));
+
+  // Per selskap: kan bare regnes ut fra vunnet-deals REGISTRERT I DENNE
+  // APPEN (koblet via companies.business_unit_id) — historikken fra det
+  // gamle CRM-et i monthly_actuals er ikke brutt ned per selskap, så den
+  // blandes ikke inn her slik totalen over gjør.
+  const businessUnitTargetRows = await getBusinessUnitTargets(salesTargetYear);
+  const businessUnitRowsAll = await getBusinessUnits();
+  const allCompaniesEverywhere = await db.query.companies.findMany();
+  const businessUnitIdByCompany = new Map(
+    allCompaniesEverywhere.map((c) => [c.id, c.businessUnitId])
+  );
+  const yearStart = new Date(salesTargetYear, 0, 1);
+  const yearEnd = new Date(salesTargetYear + 1, 0, 1);
+  const actualByBusinessUnit = new Map<number, number>();
+  for (const d of allDealsEverywhere) {
+    if (!wonStageIdsEverywhere.has(d.stage)) continue;
+    const closed = d.closedAt ?? d.updatedAt;
+    if (closed < yearStart || closed >= yearEnd) continue;
+    const buId = businessUnitIdByCompany.get(d.companyId);
+    if (buId == null) continue;
+    actualByBusinessUnit.set(buId, (actualByBusinessUnit.get(buId) ?? 0) + (d.value ?? 0));
+  }
+  const businessUnitTargetDisplay = businessUnitTargetRows
+    .filter((t) => t.totalAmount > 0)
+    .map((t) => ({
+      name: businessUnitRowsAll.find((u) => u.id === t.businessUnitId)?.name ?? "Ukjent selskap",
+      target: t.totalAmount,
+      actual: actualByBusinessUnit.get(t.businessUnitId) ?? 0,
+    }));
+
   function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
     if (list.length === 0) return null;
     const totalMs = list.reduce(
@@ -396,6 +427,30 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
               );
             })}
           </div>
+
+          {businessUnitTargetDisplay.length > 0 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                Per selskap · vunnet i denne appen i {salesTargetYear}
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {businessUnitTargetDisplay.map((u) => {
+                  const pct = u.target > 0 ? Math.round((u.actual / u.target) * 100) : 0;
+                  return (
+                    <div key={u.name} className="rounded-xl bg-mist/[0.03] p-3">
+                      <p className="truncate text-[11.5px] font-medium">{u.name}</p>
+                      <p className="mt-1 text-[14px] font-semibold tabular-nums">
+                        {formatMoney(u.actual) || "0kr"}
+                      </p>
+                      <p className="text-[11.5px] text-ink-soft">
+                        av {formatMoney(u.target) || "0kr"} ({pct} %)
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
 

@@ -460,6 +460,28 @@ export const monthlyActuals = sqliteTable("monthly_actuals", {
     .$defaultFn(() => new Date()),
 });
 
+// Bryter det årlige salgsmålet (sales_targets) ned per eget selskap
+// (business_units) — en egen tabell i stedet for en nullable
+// business_unit_id på sales_targets, siden SQLite ikke behandler NULL som
+// likt seg selv i en UNIQUE-constraint (ville tillatt flere "totalt"-rader
+// per år). Summen av radene her er ment å stemme med totalen, men det
+// håndheves ikke i databasen.
+export const businessUnitTargets = sqliteTable("business_unit_targets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  year: integer("year").notNull(),
+  businessUnitId: integer("business_unit_id")
+    .notNull()
+    .references(() => businessUnits.id, { onDelete: "cascade" }),
+  totalAmount: integer("total_amount").notNull(),
+  q1Weight: integer("q1_weight").notNull().default(25),
+  q2Weight: integer("q2_weight").notNull().default(25),
+  q3Weight: integer("q3_weight").notNull().default(25),
+  q4Weight: integer("q4_weight").notNull().default(25),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dealId: integer("deal_id")
@@ -499,3 +521,4 @@ export type ContactEvent = typeof contactEvents.$inferSelect;
 export type ReferenceProject = typeof referenceProjects.$inferSelect;
 export type SalesTarget = typeof salesTargets.$inferSelect;
 export type MonthlyActual = typeof monthlyActuals.$inferSelect;
+export type BusinessUnitTarget = typeof businessUnitTargets.$inferSelect;

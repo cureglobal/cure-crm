@@ -6,7 +6,7 @@ import { getPipelines } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getTags } from "@/lib/tags.server";
-import { getSalesTarget, getMonthlyActuals } from "@/lib/salesTarget.server";
+import { getSalesTarget, getMonthlyActuals, getBusinessUnitTargets } from "@/lib/salesTarget.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
@@ -84,6 +84,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const salesTargetYear = new Date().getFullYear();
   const salesTarget = await getSalesTarget(salesTargetYear);
   const monthlyActualRows = await getMonthlyActuals(salesTargetYear);
+  const businessUnitTargetRows = await getBusinessUnitTargets(salesTargetYear);
 
   const stagesByPipeline: Record<number, StageRow[]> = {};
   for (const p of pipelineRows) {
@@ -336,6 +337,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           q3Weight={salesTarget?.q3Weight ?? 25}
           q4Weight={salesTarget?.q4Weight ?? 25}
           monthlyActuals={monthlyActualRows.map((m) => ({ month: m.month, amount: m.amount }))}
+          businessUnitTargets={businessUnitRows.map((u) => {
+            const t = businessUnitTargetRows.find((r) => r.businessUnitId === u.id);
+            return {
+              businessUnitId: u.id,
+              name: u.name,
+              totalAmount: t?.totalAmount ?? 0,
+              q1Weight: t?.q1Weight ?? 25,
+              q2Weight: t?.q2Weight ?? 25,
+              q3Weight: t?.q3Weight ?? 25,
+              q4Weight: t?.q4Weight ?? 25,
+            };
+          })}
         />
       </section>
 
