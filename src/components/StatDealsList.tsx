@@ -8,7 +8,7 @@ import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import { ArrowDown, ArrowUp, Search, TriangleAlert } from "lucide-react";
 
-export type StatDealsVariant = "sum" | "estimert" | "leadtime" | "leadtimetapt";
+export type StatDealsVariant = "sum" | "estimert" | "leadtime";
 
 export interface StatDealRow {
   id: number;
@@ -20,9 +20,7 @@ export interface StatDealRow {
   ownerAvatarUrl: string | null;
   value: number | null;
   probability: number;
-  closedAt: number | null; // vunnet- eller tapt-dato, avhengig av variant
-  lostReasonLabel: string | null;
-  comment: string | null;
+  closedAt: number | null; // vunnet-dato, kun brukt av "leadtime"
 }
 
 type SortKey = "selskap" | "eier" | "sannsynlighet" | "verdi" | "dato";
@@ -31,14 +29,12 @@ const DEFAULT_SORT: Record<StatDealsVariant, { key: SortKey; dir: 1 | -1 }> = {
   sum: { key: "verdi", dir: -1 },
   estimert: { key: "verdi", dir: -1 },
   leadtime: { key: "dato", dir: -1 },
-  leadtimetapt: { key: "dato", dir: -1 },
 };
 
 const GRID: Record<StatDealsVariant, string> = {
   sum: "grid grid-cols-[1fr_180px_140px] items-center gap-3",
   estimert: "grid grid-cols-[1fr_170px_110px_140px] items-center gap-3",
   leadtime: "grid grid-cols-[1fr_150px_90px_120px_120px] items-center gap-3",
-  leadtimetapt: "grid grid-cols-[1fr_150px_120px_110px_140px_1.3fr] items-center gap-3",
 };
 
 function HeaderCell({
@@ -198,23 +194,8 @@ export default function StatDealsList({
               />
             )}
             <HeaderCell label="Verdi" sortKey="verdi" sort={sort} onSort={onSort} align="right" />
-            {(variant === "leadtime" || variant === "leadtimetapt") && (
-              <HeaderCell
-                label={variant === "leadtime" ? "Vunnet" : "Tapt"}
-                sortKey="dato"
-                sort={sort}
-                onSort={onSort}
-              />
-            )}
-            {variant === "leadtimetapt" && (
-              <>
-                <span className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
-                  Tapt grunn
-                </span>
-                <span className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
-                  Kommentar
-                </span>
-              </>
+            {variant === "leadtime" && (
+              <HeaderCell label="Vunnet" sortKey="dato" sort={sort} onSort={onSort} />
             )}
           </div>
 
@@ -255,20 +236,10 @@ export default function StatDealsList({
                   <span className="text-right text-[13px] font-medium tabular-nums">
                     {r.value ? formatMoney(r.value) : <span className="text-ink-faint">—</span>}
                   </span>
-                  {(variant === "leadtime" || variant === "leadtimetapt") && (
+                  {variant === "leadtime" && (
                     <span className="text-[12.5px] text-ink-soft">
                       {r.closedAt ? formatDate(new Date(r.closedAt)) : "—"}
                     </span>
-                  )}
-                  {variant === "leadtimetapt" && (
-                    <>
-                      <span className="truncate text-[12.5px] text-ink-soft">
-                        {r.lostReasonLabel ?? "—"}
-                      </span>
-                      <span className="truncate text-[12.5px] text-ink-soft" title={r.comment ?? undefined}>
-                        {r.comment ?? "—"}
-                      </span>
-                    </>
                   )}
                 </li>
               ))}
