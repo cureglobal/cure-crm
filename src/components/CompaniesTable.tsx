@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, relativeDay } from "@/lib/format";
 import CompanyLogo from "@/components/CompanyLogo";
 import CompanyOwnerCell from "@/components/CompanyOwnerCell";
 import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
@@ -48,11 +48,16 @@ export interface CompanyRow {
   people: string[];
   tagIds: number[];
   createdAt: number;
+  // Nyeste av manuelt loggført kontakt og synket e-post. Null skal i praksis
+  // ikke forekomme etter engangs-etterkoblingen i migrate.ts (alle selskap
+  // uten aktivitet fikk en syntetisk rad datert 1.1.2025), men håndteres
+  // likevel defensivt.
+  lastContactAt: number | null;
 }
 
-const GRID = "grid grid-cols-[22px_1.6fr_100px_70px_90px_1.1fr_90px] items-center gap-3";
+const GRID = "grid grid-cols-[22px_1.4fr_100px_70px_90px_1fr_90px_100px] items-center gap-3";
 
-type SortKey = "navn" | "orgnr" | "deals" | "eier" | "personer" | "lagttil";
+type SortKey = "navn" | "orgnr" | "deals" | "eier" | "personer" | "lagttil" | "sistkontakt";
 const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
   navn: 1,
   orgnr: 1,
@@ -60,7 +65,24 @@ const DEFAULT_DIR: Record<SortKey, 1 | -1> = {
   eier: 1,
   personer: -1,
   lagttil: -1,
+  // Stigende først — de vi IKKE har snakket med på lengst tid øverst, siden
+  // det er nettopp de kundene kolonnen skal minne oss på.
+  sistkontakt: 1,
 };
+
+// Terskler for å visuelt fremheve selskap vi ikke har snakket med på en
+// stund — samme idé som relativeDay sin tone, men egen skala siden "Sist
+// kontakt" alltid er en fortidsdato (relativeDay sin overdue-tone alene gir
+// ingen forskjell mellom 3 og 300 dager siden).
+function contactToneClass(days: number): string {
+  if (days > 180) return "text-danger";
+  if (days > 90) return "text-warning-ink";
+  return "text-ink-soft";
+}
+
+function daysSince(ms: number): number {
+  return Math.floor((Date.now() - ms) / 86_400_000);
+}
 
 function formatOrgNumber(org: string | null): string {
   if (!org) return "";
@@ -168,6 +190,8 @@ export default function CompaniesTable({
             return dir * (a.people.length - b.people.length);
           case "lagttil":
             return dir * (a.createdAt - b.createdAt);
+          case "sistkontakt":
+            return dir * ((a.lastContactAt ?? 0) - (b.lastContactAt ?? 0));
         }
       });
     }
@@ -421,7 +445,7 @@ export default function CompaniesTable({
       )}
 
       <div className="card overflow-auto max-h-[75vh]">
-        <div className="min-w-[940px]">
+        <div className="min-w-[1020px]">
         <div
           className={`${GRID} sticky top-0 z-20 rounded-t-[17px] border-b border-line bg-surface/95 px-5 py-2.5 backdrop-blur-xl`}
         >
@@ -442,6 +466,9 @@ export default function CompaniesTable({
           </span>
           <span className="px-2">
             <HeaderCell label="Lagt til" sortKey="lagttil" sort={sort} onSort={onSort} />
+          </span>
+          <span className="px-2">
+            <HeaderCell label="Sist kontakt" sortKey="sistkontakt" sort={sort} onSort={onSort} />
           </span>
         </div>
 
@@ -513,6 +540,15 @@ export default function CompaniesTable({
                   </Link>
                   <span className="px-2 text-[12.5px] text-ink-soft">
                     {formatDate(new Date(c.createdAt))}
+                  </span>
+                  <span className="px-2 text-[12.5px]">
+                    {c.lastContactAt ? (
+                      <span className={contactToneClass(daysSince(c.lastContactAt))}>
+                        {relativeDay(new Date(c.lastContactAt)).label}
+                      </span>
+                    ) : (
+                      <span className="text-danger">Aldri</span>
+                    )}
                   </span>
                 </div>
               </li>

@@ -1,5 +1,5 @@
-import { asc, eq } from "drizzle-orm";
-import { db, companies, deals, people, companyPeople, users } from "@/lib/db";
+import { asc, eq, sql, isNotNull } from "drizzle-orm";
+import { db, companies, deals, people, companyPeople, users, contactEvents, emailMessages } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
@@ -59,6 +59,28 @@ export default async function CompaniesPage() {
     tagIdsByCompany.set(l.companyId, list);
   }
 
+  // "Sist kontakt" = nyeste av manuelt loggført kontakt og synket e-post —
+  // samme kombinasjon som bedriftssidens egen "Sist kontakt" (se
+  // companies/[id]/page.tsx), bare aggregert på tvers av alle selskap her.
+  const lastManualContact = await db
+    .select({ companyId: contactEvents.companyId, maxAt: sql<number>`MAX(${contactEvents.occurredAt})` })
+    .from(contactEvents)
+    .groupBy(contactEvents.companyId);
+  const lastEmailContact = await db
+    .select({ companyId: emailMessages.companyId, maxAt: sql<number>`MAX(${emailMessages.sentAt})` })
+    .from(emailMessages)
+    .where(isNotNull(emailMessages.sentAt))
+    .groupBy(emailMessages.companyId);
+  const lastContactByCompany = new Map<number, number>();
+  for (const r of lastManualContact) {
+    lastContactByCompany.set(r.companyId, Number(r.maxAt));
+  }
+  for (const r of lastEmailContact) {
+    const at = Number(r.maxAt);
+    const existing = lastContactByCompany.get(r.companyId);
+    if (existing == null || at > existing) lastContactByCompany.set(r.companyId, at);
+  }
+
   const rows: CompanyRow[] = allCompanies.map((c) => {
     const own = allDeals.filter((d) => d.companyId === c.id);
     const open = own.filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage));
@@ -79,6 +101,7 @@ export default async function CompaniesPage() {
       people: peopleByCompany.get(c.id) ?? [],
       tagIds: tagIdsByCompany.get(c.id) ?? [],
       createdAt: c.createdAt.getTime(),
+      lastContactAt: lastContactByCompany.get(c.id) ?? null,
     };
   });
 

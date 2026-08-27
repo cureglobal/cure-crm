@@ -635,6 +635,37 @@ async function seedBusinessUnitTargets(client: Client) {
   }
 }
 
+// Engangs-etterkobling: selskap uten NOEN registrert aktivitet (verken
+// manuelt loggført kontakt eller synket e-post) får en syntetisk
+// contact_events-rad datert 1.1.2025, slik at "Sist kontakt" på
+// bedriftsoversikten har noe å sortere/vise i stedet for tomt/aldri.
+// Selvfølgelig idempotent uten egen markør: raden som settes inn HER er
+// nettopp det som gjør at NOT EXISTS-sjekken treffer selskapet neste gang
+// migrate() kjører, så det skjer aldri to ganger.
+async function backfillDefaultContactEvents(client: Client) {
+  const baseline = new Date(2025, 0, 1).getTime();
+  // Ett enkelt INSERT...SELECT (i stedet for en separat SELECT etterfulgt av
+  // en løkke med individuelle INSERT-er) — next build kjører flere
+  // byggeprosesser parallelt (se kommentaren i migrate() lenger ned), og en
+  // SELECT-så-INSERT-vindu ville latt to prosesser begge se det samme
+  // selskapet som uten aktivitet og sette inn hver sin syntetiske rad. Ett
+  // atomisk statement blir serialisert av SQLites skrivelås: den andre
+  // prosessen sin underspørring kjører mot en tabell som allerede har fått
+  // radene fra den første, og treffer da ingen selskap.
+  await client.execute({
+    sql: `
+      INSERT INTO contact_events (company_id, user_id, kind, note, occurred_at, created_at)
+      SELECT c.id, NULL, 'annet', 'Ingen tidligere aktivitet registrert', ?, ?
+      FROM companies c
+      WHERE NOT EXISTS (SELECT 1 FROM contact_events ce WHERE ce.company_id = c.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM email_messages em WHERE em.company_id = c.id AND em.sent_at IS NOT NULL
+        )
+    `,
+    args: [baseline, Date.now()],
+  });
+}
+
 // deals.owner_id var opprinnelig NOT NULL — en deal kan nå stå uten
 // hovedeier, men SQLite støtter ikke ALTER COLUMN, så tabellen bygges om.
 // Idempotent: sjekker PRAGMA table_info først og hopper over hvis kolonnen
@@ -759,4 +790,6 @@ export async function migrate(client: Client) {
   await seedSalesTarget(client);
   await seedMonthlyActuals(client);
   await seedBusinessUnitTargets(client);
+  // Må kjøre etter at companies-, contact_events- og email_messages-tabellene finnes.
+  await backfillDefaultContactEvents(client);
 }
