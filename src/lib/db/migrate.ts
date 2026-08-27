@@ -265,6 +265,15 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(year, business_unit_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    actor_user_id INTEGER REFERENCES users(id),
+    deal_id INTEGER REFERENCES deals(id) ON DELETE CASCADE,
+    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+    read_at INTEGER,
+    created_at INTEGER NOT NULL
+  )`,
 ];
 
 const INDEX_STATEMENTS = [
@@ -298,6 +307,7 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_monthly_actuals_year ON monthly_actuals(year)",
   "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_year ON business_unit_targets(year)",
   "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_unit ON business_unit_targets(business_unit_id)",
+  "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har

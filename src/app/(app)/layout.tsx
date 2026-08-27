@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getTags } from "@/lib/tags.server";
-import { logout } from "@/lib/actions";
+import { logout, getUnreadNotificationCount } from "@/lib/actions";
 import AppShell from "@/components/AppShell";
 import WonCelebration from "@/components/WonCelebration";
 import OnboardingTour from "@/components/OnboardingTour";
@@ -16,6 +16,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const dealTags = await getTags("deal");
   const companyTags = await getTags("company");
   const personTags = await getTags("person");
+  const unreadCount = await getUnreadNotificationCount();
 
   return (
     <>
@@ -29,6 +30,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           bedrifter: companyTags.map((t) => ({ id: t.id, label: t.label })),
           personer: personTags.map((t) => ({ id: t.id, label: t.label })),
         }}
+        initialUnreadCount={unreadCount}
       >
         {children}
       </AppShell>

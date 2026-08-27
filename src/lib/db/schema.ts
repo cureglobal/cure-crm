@@ -287,6 +287,26 @@ export const companyOwners = sqliteTable("company_owners", {
     .$defaultFn(() => new Date()),
 });
 
+// Varsler til én bruker om noe en ANNEN bruker gjorde som angår dem — f.eks.
+// "TK la deg til på Nettside for Acme AS". Bevisst ingen lagret meldingstekst
+// eller navn her — bare referanser (dealId/companyId/actorUserId). Selve
+// setningen bygges opp på nytt hver gang varslene leses (se listNotifications
+// i actions.ts), slik at den alltid viser gjeldende dealnavn/selskapsnavn i
+// stedet for et øyeblikksbilde som blir feil om noe omdøpes senere.
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  actorUserId: integer("actor_user_id").references(() => users.id),
+  dealId: integer("deal_id").references(() => deals.id, { onDelete: "cascade" }),
+  companyId: integer("company_id").references(() => companies.id, { onDelete: "cascade" }),
+  readAt: integer("read_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // Navngitte, delbare filterkombinasjoner på Pipeline-siden ("presets").
 // Delt/team-synlig — ingen per-bruker-privatliste. Alle feltene under er
 // nullable: en tom verdi betyr "ikke satt", altså samme standardoppførsel
@@ -510,6 +530,7 @@ export type Person = typeof people.$inferSelect;
 export type CompanyPerson = typeof companyPeople.$inferSelect;
 export type DealOwner = typeof dealOwners.$inferSelect;
 export type CompanyOwner = typeof companyOwners.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
 export type SavedView = typeof savedViews.$inferSelect;
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type CalendarAccount = typeof calendarAccounts.$inferSelect;

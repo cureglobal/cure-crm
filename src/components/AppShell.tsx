@@ -17,6 +17,7 @@ import {
 import NavLink from "@/components/NavLink";
 import GlobalSearch from "@/components/GlobalSearch";
 import ImportDialog from "@/components/ImportDialog";
+import NotificationBell from "@/components/NotificationBell";
 import type { Stage } from "@/lib/stages";
 
 const STORAGE_KEY = "crm:sidebar-collapsed";
@@ -29,6 +30,7 @@ export default function AppShell({
   stages,
   pipelines,
   importTags,
+  initialUnreadCount,
   children,
 }: {
   user: { name: string; email: string; avatarDataUrl: string | null };
@@ -40,6 +42,7 @@ export default function AppShell({
     bedrifter: { id: number; label: string }[];
     personer: { id: number; label: string }[];
   };
+  initialUnreadCount: number;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -149,6 +152,7 @@ export default function AppShell({
         </nav>
 
         <div className="mt-auto px-3 pb-1">
+          <NotificationBell collapsed={collapsed} initialUnreadCount={initialUnreadCount} />
           <ImportDialog
             collapsed={collapsed}
             stages={stages}

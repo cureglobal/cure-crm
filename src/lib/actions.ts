@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, asc, desc, eq, inArray, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import {
   db,
   users,
@@ -34,6 +34,7 @@ import {
   salesTargets,
   monthlyActuals,
   businessUnitTargets,
+  notifications,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
@@ -449,6 +450,10 @@ export async function deleteUser(
   }
   await db.update(contactEvents).set({ userId: null }).where(eq(contactEvents.userId, userId));
   await db.update(activities).set({ userId: null }).where(eq(activities.userId, userId));
+  await db
+    .update(notifications)
+    .set({ actorUserId: null })
+    .where(eq(notifications.actorUserId, userId));
   await db.delete(users).where(eq(users.id, userId));
   revalidatePath("/settings");
   return { ok: true, message: "Brukeren ble slettet." };
@@ -736,6 +741,12 @@ export async function bulkCreateDealsForCompanies(
     for (const coOwnerId of coOwnerIds) {
       if (coOwnerId === ownerId) continue;
       await db.insert(dealOwners).values({ dealId: deal.id, userId: coOwnerId }).onConflictDoNothing();
+    }
+
+    await notifyDealOwnerAssigned(me.id, deal.id, ownerId);
+    for (const coOwnerId of coOwnerIds) {
+      if (coOwnerId === ownerId) continue;
+      await notifyDealOwnerAssigned(me.id, deal.id, coOwnerId);
     }
 
     created++;
@@ -1475,6 +1486,114 @@ export async function bulkSetDealStage(dealIds: number[], stage: string) {
   revalidateDealViews();
 }
 
+// ---------- Varsler ----------
+// Varsler den som ble satt som eier/med-eier, men KUN når det ikke er
+// personen selv som gjorde det (ingen vits i å varsle deg om din egen
+// handling). Deal-varselet henter companyId fra dealen selv — trenger ikke
+// sendes inn av kalleren.
+
+async function notifyDealOwnerAssigned(actorId: number, dealId: number, newOwnerUserId: number) {
+  if (newOwnerUserId === actorId) return;
+  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  if (!deal) return;
+  await db.insert(notifications).values({
+    userId: newOwnerUserId,
+    actorUserId: actorId,
+    dealId,
+    companyId: deal.companyId,
+  });
+}
+
+async function notifyCompanyOwnerAssigned(actorId: number, companyId: number, newOwnerUserId: number) {
+  if (newOwnerUserId === actorId) return;
+  await db.insert(notifications).values({
+    userId: newOwnerUserId,
+    actorUserId: actorId,
+    companyId,
+  });
+}
+
+export interface NotificationDTO {
+  id: number;
+  actorName: string;
+  dealId: number | null;
+  dealTitle: string | null;
+  dealSlug: string | null;
+  companyId: number | null;
+  companyName: string | null;
+  readAt: number | null;
+  createdAt: number;
+}
+
+// Siste 30 varsler til den innloggede brukeren — dealnavn/selskapsnavn slås
+// opp på nytt her (ikke lagret på varselet selv), så de alltid viser
+// gjeldende navn selv om dealen/selskapet er omdøpt siden varselet ble laget.
+export async function listNotifications(): Promise<NotificationDTO[]> {
+  const me = await requireUser();
+  const rows = await db.query.notifications.findMany({
+    where: eq(notifications.userId, me.id),
+    orderBy: [desc(notifications.createdAt)],
+    limit: 30,
+  });
+  if (rows.length === 0) return [];
+
+  const actorIds = [
+    ...new Set(rows.map((r) => r.actorUserId).filter((id): id is number => id != null)),
+  ];
+  const dealIds = [...new Set(rows.map((r) => r.dealId).filter((id): id is number => id != null))];
+  const companyIds = [
+    ...new Set(rows.map((r) => r.companyId).filter((id): id is number => id != null)),
+  ];
+
+  const [actors, dealRows, companyRows, slugMap] = await Promise.all([
+    actorIds.length ? db.query.users.findMany({ where: inArray(users.id, actorIds) }) : Promise.resolve([]),
+    dealIds.length ? db.query.deals.findMany({ where: inArray(deals.id, dealIds) }) : Promise.resolve([]),
+    companyIds.length
+      ? db.query.companies.findMany({ where: inArray(companies.id, companyIds) })
+      : Promise.resolve([]),
+    getDealSlugMap(),
+  ]);
+  const actorById = new Map(actors.map((a) => [a.id, a.name]));
+  const dealById = new Map(dealRows.map((d) => [d.id, d.title]));
+  const companyById = new Map(companyRows.map((c) => [c.id, c.name]));
+
+  return rows.map((n) => ({
+    id: n.id,
+    actorName: (n.actorUserId != null ? actorById.get(n.actorUserId) : null) ?? "En bruker",
+    dealId: n.dealId,
+    dealTitle: n.dealId != null ? (dealById.get(n.dealId) ?? null) : null,
+    dealSlug: n.dealId != null ? (slugMap.get(n.dealId) ?? String(n.dealId)) : null,
+    companyId: n.companyId,
+    companyName: n.companyId != null ? (companyById.get(n.companyId) ?? null) : null,
+    readAt: n.readAt ? n.readAt.getTime() : null,
+    createdAt: n.createdAt.getTime(),
+  }));
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const me = await requireUser();
+  const rows = await db.query.notifications.findMany({
+    where: and(eq(notifications.userId, me.id), isNull(notifications.readAt)),
+  });
+  return rows.length;
+}
+
+export async function markNotificationRead(id: number) {
+  const me = await requireUser();
+  await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(eq(notifications.id, id), eq(notifications.userId, me.id)));
+}
+
+export async function markAllNotificationsRead() {
+  const me = await requireUser();
+  await db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(eq(notifications.userId, me.id), isNull(notifications.readAt)));
+}
+
 // Endrer hoved-eieren på en enkelt deal — fra oversiktsbildet (listevisningen).
 // ownerId === null fjerner hovedeieren — en deal kan stå uten eier.
 export async function updateDealOwner(dealId: number, ownerId: number | null) {
@@ -1494,6 +1613,7 @@ export async function updateDealOwner(dealId: number, ownerId: number | null) {
     type: "owner",
     content: `Endret eier til ${owner.name}`,
   });
+  await notifyDealOwnerAssigned(me.id, dealId, ownerId);
   revalidateDealViews(dealId);
 }
 
@@ -1515,6 +1635,7 @@ export async function bulkSetDealOwner(dealIds: number[], ownerId: number) {
       content: `Endret eier til ${owner.name}`,
     }))
   );
+  for (const dealId of dealIds) await notifyDealOwnerAssigned(me.id, dealId, ownerId);
   revalidateDealViews();
 }
 
@@ -1566,6 +1687,7 @@ export async function bulkAddDealOwner(dealIds: number[], userId: number) {
       content: `La til ${user.name} som eier`,
     }))
   );
+  for (const dealId of dealIds) await notifyDealOwnerAssigned(me.id, dealId, userId);
   revalidateDealViews();
 }
 
@@ -2262,6 +2384,7 @@ export async function addDealOwner(dealId: number, userId: number) {
       content: `La til ${added.name} som eier`,
     });
   }
+  await notifyDealOwnerAssigned(me.id, dealId, userId);
   revalidateDealViews(dealId);
 }
 
@@ -2411,7 +2534,8 @@ export async function updateCompanyLogo(companyId: number, formData: FormData) {
 }
 
 export async function updateCompany(companyId: number, formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
+  const before = await db.query.companies.findFirst({ where: eq(companies.id, companyId) });
   const set: Record<string, unknown> = {};
 
   if (formData.has("name")) {
@@ -2458,6 +2582,13 @@ export async function updateCompany(companyId: number, formData: FormData) {
 
   if (Object.keys(set).length === 0) return;
   await db.update(companies).set(set).where(eq(companies.id, companyId));
+
+  if (
+    typeof set.ownerId === "number" &&
+    set.ownerId !== before?.ownerId
+  ) {
+    await notifyCompanyOwnerAssigned(me.id, companyId, set.ownerId);
+  }
 
   // Velger man en person som hovedkontakt, skal personen automatisk regnes
   // som tilknyttet dette selskapet — selv om de ikke var koblet fra før.
@@ -2762,9 +2893,12 @@ export async function autoMatchAllCompanies(): Promise<{
 
 // Setter samme ansvarlig (eier) på flere valgte selskaper samtidig.
 export async function bulkSetCompanyOwner(companyIds: number[], ownerId: number | null) {
-  await requireUser();
+  const me = await requireUser();
   if (companyIds.length === 0) return;
   await db.update(companies).set({ ownerId }).where(inArray(companies.id, companyIds));
+  if (ownerId != null) {
+    for (const companyId of companyIds) await notifyCompanyOwnerAssigned(me.id, companyId, ownerId);
+  }
   revalidateDealViews();
 }
 
@@ -2774,19 +2908,21 @@ export async function bulkSetCompanyOwner(companyIds: number[], ownerId: number 
 // med-kontaktene, redigerbart fra samme flervalgs-popover som i Pipeline.
 
 export async function updateCompanyOwner(companyId: number, ownerId: number | null) {
-  await requireUser();
+  const me = await requireUser();
   if (ownerId != null) {
     const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
     if (!owner) return;
   }
   await db.update(companies).set({ ownerId }).where(eq(companies.id, companyId));
+  if (ownerId != null) await notifyCompanyOwnerAssigned(me.id, companyId, ownerId);
   revalidatePath("/companies");
   revalidatePath(`/companies/${companyId}`);
 }
 
 export async function addCompanyOwner(companyId: number, userId: number) {
-  await requireUser();
+  const me = await requireUser();
   await db.insert(companyOwners).values({ companyId, userId }).onConflictDoNothing();
+  await notifyCompanyOwnerAssigned(me.id, companyId, userId);
   revalidatePath("/companies");
   revalidatePath(`/companies/${companyId}`);
 }
