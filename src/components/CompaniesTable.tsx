@@ -7,6 +7,7 @@ import CompanyLogo from "@/components/CompanyLogo";
 import CompanyOwnerCell from "@/components/CompanyOwnerCell";
 import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
 import BulkTagPicker from "@/components/BulkTagPicker";
+import { useRangeToggle } from "@/lib/useRangeToggle";
 import {
   bulkDeleteCompanies,
   bulkSetCompanyOwner,
@@ -213,14 +214,7 @@ export default function CompaniesTable({
     });
   }
 
-  function toggleOne(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const toggleOne = useRangeToggle(setSelected, visible);
 
   function clearSelection() {
     setSelected(new Set());
@@ -478,13 +472,14 @@ export default function CompaniesTable({
           </p>
         ) : (
           <ul>
-            {visible.map((c) => (
+            {visible.map((c, i) => (
               <li key={c.id} className="border-b border-line last:border-b-0">
                 <div className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}>
                   <input
                     type="checkbox"
                     checked={selected.has(c.id)}
-                    onChange={() => toggleOne(c.id)}
+                    onChange={() => {}}
+                    onClick={(e) => toggleOne(c.id, i, e.shiftKey)}
                     className="h-3.5 w-3.5"
                   />
                   <Link href={`/companies/${c.id}`} className="contents">

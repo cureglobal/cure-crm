@@ -24,6 +24,7 @@ import BulkStagePicker from "@/components/BulkStagePicker";
 import BulkTagPicker from "@/components/BulkTagPicker";
 import LostReasonDialog, { type LostReasonOption } from "@/components/LostReasonDialog";
 import { celebrateWin } from "@/components/WonCelebration";
+import { useRangeToggle } from "@/lib/useRangeToggle";
 import type { Stage } from "@/lib/stages";
 import { ArrowDown, ArrowUp, Trash2, X } from "lucide-react";
 
@@ -108,7 +109,7 @@ function Row({
 }: {
   deal: DealRow;
   selected: boolean;
-  onToggle: () => void;
+  onToggle: (shiftKey: boolean) => void;
   owners: { id: number; name: string; avatarDataUrl: string | null }[];
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
@@ -143,7 +144,13 @@ function Row({
       } ${dragOver ? "bg-accent-soft/40" : ""}`}
     >
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
-        <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => {}}
+          onClick={(e) => onToggle(e.shiftKey)}
+          className="h-3.5 w-3.5"
+        />
         <Link href={`/leads/${deal.slug}`} className="flex min-w-0 items-center gap-3">
           <CompanyLogo logoUrl={deal.logoUrl} name={deal.companyName} size={32} radius={9} />
           <span className="min-w-0">
@@ -322,15 +329,6 @@ export default function DealsTable({
     });
   }
 
-  function toggleOne(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function toggleGroup(items: DealRow[]) {
     const allSelected = items.length > 0 && items.every((r) => selected.has(r.id));
     setSelected((prev) => {
@@ -455,6 +453,18 @@ export default function DealsTable({
       }))
       .filter((g) => isDragging || g.items.length > 0);
   }, [sorted, groupByStage, stages, isDragging]);
+
+  // Flat visningsrekkefølge for shift-klikk-intervaller — samme som det
+  // brukeren faktisk ser, uansett om radene er gruppert på fase eller ikke.
+  const visibleOrder = useMemo(
+    () => (groups ? groups.flatMap((g) => g.items) : sorted),
+    [groups, sorted]
+  );
+  const indexById = useMemo(
+    () => new Map(visibleOrder.map((r, i) => [r.id, i])),
+    [visibleOrder]
+  );
+  const toggleOne = useRangeToggle(setSelected, visibleOrder);
 
   const header = (
     <div
@@ -597,7 +607,9 @@ export default function DealsTable({
                       key={deal.id}
                       deal={deal}
                       selected={selected.has(deal.id)}
-                      onToggle={() => toggleOne(deal.id)}
+                      onToggle={(shiftKey) =>
+                        toggleOne(deal.id, indexById.get(deal.id) ?? 0, shiftKey)
+                      }
                       owners={owners}
                       draggable
                       onDragStart={(e) => handleDragStart(deal.id, e)}
@@ -626,7 +638,7 @@ export default function DealsTable({
                   key={deal.id}
                   deal={deal}
                   selected={selected.has(deal.id)}
-                  onToggle={() => toggleOne(deal.id)}
+                  onToggle={(shiftKey) => toggleOne(deal.id, indexById.get(deal.id) ?? 0, shiftKey)}
                   owners={owners}
                   draggable
                   onDragStart={(e) => handleDragStart(deal.id, e)}

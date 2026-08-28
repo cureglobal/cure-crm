@@ -12,6 +12,7 @@ import {
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import BulkTagPicker from "@/components/BulkTagPicker";
+import { useRangeToggle } from "@/lib/useRangeToggle";
 import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, Trash2, X } from "lucide-react";
 
 export interface PersonRow {
@@ -70,7 +71,7 @@ function PersonRowItem({
 }: {
   person: PersonRow;
   selected: boolean;
-  onToggle: () => void;
+  onToggle: (shiftKey: boolean) => void;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -88,7 +89,13 @@ function PersonRowItem({
   return (
     <li className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
-        <input type="checkbox" checked={selected} onChange={onToggle} className="h-3.5 w-3.5" />
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => {}}
+          onClick={(e) => onToggle(e.shiftKey)}
+          className="h-3.5 w-3.5"
+        />
         <Link href={`/people/${person.id}`} className="flex min-w-0 items-center gap-3">
           <Avatar name={person.name} size={32} />
           <span className="truncate text-[13.5px] font-medium hover:text-accent">
@@ -218,14 +225,7 @@ export default function PeopleTable({
     });
   }
 
-  function toggleOne(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  const toggleOne = useRangeToggle(setSelected, visible);
 
   function clearSelection() {
     setSelected(new Set());
@@ -428,12 +428,12 @@ export default function PeopleTable({
             </p>
           ) : (
             <ul>
-              {visible.map((p) => (
+              {visible.map((p, i) => (
                 <PersonRowItem
                   key={p.id}
                   person={p}
                   selected={selected.has(p.id)}
-                  onToggle={() => toggleOne(p.id)}
+                  onToggle={(shiftKey) => toggleOne(p.id, i, shiftKey)}
                 />
               ))}
             </ul>
