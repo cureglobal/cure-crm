@@ -54,6 +54,7 @@ const KIND_LABEL: Record<string, string> = {
   telefon: "telefon",
   epost: "e-post",
   annet: "kontakt",
+  deal: "aktiv deal",
 };
 
 // brreg oppgir beløp i hele kroner; vi viser tusen kroner slik brreg/Proff gjør.

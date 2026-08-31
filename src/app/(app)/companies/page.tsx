@@ -33,6 +33,7 @@ export default async function CompaniesPage() {
         companyId: deals.companyId,
         stage: deals.stage,
         value: deals.value,
+        updatedAt: deals.updatedAt,
       })
       .from(deals),
     db
@@ -94,6 +95,15 @@ export default async function CompaniesPage() {
     const at = Number(r.maxAt);
     const existing = lastContactByCompany.get(r.companyId);
     if (existing == null || at > existing) lastContactByCompany.set(r.companyId, at);
+  }
+  // "Sist kontakt" skal samsvare med aktivitet i pipeline: en aktiv (ikke
+  // vunnet/tapt) deal som nylig er oppdatert regnes som kontakt med
+  // selskapet, ikke bare manuelt loggført kontakt eller synket e-post.
+  for (const d of allDeals) {
+    if (wonStageIds.has(d.stage) || lostStageIds.has(d.stage)) continue;
+    const at = d.updatedAt.getTime();
+    const existing = lastContactByCompany.get(d.companyId);
+    if (existing == null || at > existing) lastContactByCompany.set(d.companyId, at);
   }
 
   const rows: CompanyRow[] = allCompanies.map((c) => {

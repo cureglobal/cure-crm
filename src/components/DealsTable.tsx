@@ -139,7 +139,7 @@ function Row({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`border-b border-line last:border-b-0 transition-colors ${pending ? "opacity-60" : ""} ${
+      className={`group border-b border-line last:border-b-0 transition-colors ${pending ? "opacity-60" : ""} ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
       } ${dragOver ? "bg-accent-soft/40" : ""}`}
     >
@@ -149,7 +149,9 @@ function Row({
           checked={selected}
           onChange={() => {}}
           onClick={(e) => onToggle(e.shiftKey)}
-          className="h-3.5 w-3.5"
+          className={`h-3.5 w-3.5 transition-opacity ${
+            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
         />
         <Link href={`/leads/${deal.slug}`} className="flex min-w-0 items-center gap-3">
           <CompanyLogo logoUrl={deal.logoUrl} name={deal.companyName} size={32} radius={9} />

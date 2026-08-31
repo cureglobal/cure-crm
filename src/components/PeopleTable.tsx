@@ -12,6 +12,11 @@ import {
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import BulkTagPicker from "@/components/BulkTagPicker";
+import TagFilterPicker, {
+  ALL_TAGS_FILTER,
+  matchesTagFilter,
+  type TagFilterValue,
+} from "@/components/TagFilterPicker";
 import { useRangeToggle } from "@/lib/useRangeToggle";
 import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, Trash2, X } from "lucide-react";
 
@@ -87,14 +92,16 @@ function PersonRowItem({
     "field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] hover:!border-line focus:!border-accent focus:!bg-surface";
 
   return (
-    <li className={`border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
+    <li className={`group border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <input
           type="checkbox"
           checked={selected}
           onChange={() => {}}
           onClick={(e) => onToggle(e.shiftKey)}
-          className="h-3.5 w-3.5"
+          className={`h-3.5 w-3.5 transition-opacity ${
+            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
         />
         <Link href={`/people/${person.id}`} className="flex min-w-0 items-center gap-3">
           <Avatar name={person.name} size={32} />
@@ -161,7 +168,7 @@ export default function PeopleTable({
   tags: { id: number; label: string }[];
 }) {
   const [search, setSearch] = useState("");
-  const [tagFilter, setTagFilter] = useState<"alle" | number>("alle");
+  const [tagFilter, setTagFilter] = useState<TagFilterValue>(ALL_TAGS_FILTER);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
     key: "navn",
     dir: 1,
@@ -190,8 +197,8 @@ export default function PeopleTable({
             p.companies.some((c) => c.name.toLowerCase().includes(q))
         )
       : rows;
-    if (tagFilter !== "alle") {
-      list = list.filter((p) => p.tagIds.includes(tagFilter));
+    if (tagFilter.ids.length > 0) {
+      list = list.filter((p) => matchesTagFilter(p.tagIds, tagFilter));
     }
     if (sort) {
       const dir = sort.dir;
@@ -277,18 +284,7 @@ export default function PeopleTable({
           />
         </div>
         {tags.length > 0 && (
-          <select
-            value={tagFilter === "alle" ? "alle" : String(tagFilter)}
-            onChange={(e) => setTagFilter(e.target.value === "alle" ? "alle" : Number(e.target.value))}
-            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-          >
-            <option value="alle">Alle tagger</option>
-            {tags.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          <TagFilterPicker tags={tags} value={tagFilter} onChange={setTagFilter} />
         )}
         <button onClick={() => setShowNew((v) => !v)} className="btn btn-primary ml-auto">
           <Plus size={15} strokeWidth={2.2} />

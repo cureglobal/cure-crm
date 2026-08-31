@@ -7,6 +7,11 @@ import CompanyLogo from "@/components/CompanyLogo";
 import CompanyOwnerCell from "@/components/CompanyOwnerCell";
 import MergeCompaniesDialog from "@/components/MergeCompaniesDialog";
 import BulkTagPicker from "@/components/BulkTagPicker";
+import TagFilterPicker, {
+  ALL_TAGS_FILTER,
+  matchesTagFilter,
+  type TagFilterValue,
+} from "@/components/TagFilterPicker";
 import { useRangeToggle } from "@/lib/useRangeToggle";
 import {
   bulkDeleteCompanies,
@@ -138,7 +143,7 @@ export default function CompaniesTable({
   tags: { id: number; label: string }[];
 }) {
   const [search, setSearch] = useState("");
-  const [tagFilter, setTagFilter] = useState<"alle" | number>("alle");
+  const [tagFilter, setTagFilter] = useState<TagFilterValue>(ALL_TAGS_FILTER);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>({
     key: "navn",
     dir: 1,
@@ -171,8 +176,8 @@ export default function CompaniesTable({
             r.people.some((p) => p.toLowerCase().includes(q))
         )
       : rows;
-    if (tagFilter !== "alle") {
-      list = list.filter((r) => r.tagIds.includes(tagFilter));
+    if (tagFilter.ids.length > 0) {
+      list = list.filter((r) => matchesTagFilter(r.tagIds, tagFilter));
     }
     if (sort) {
       const dir = sort.dir;
@@ -324,18 +329,7 @@ export default function CompaniesTable({
           />
         </div>
         {tags.length > 0 && (
-          <select
-            value={tagFilter === "alle" ? "alle" : String(tagFilter)}
-            onChange={(e) => setTagFilter(e.target.value === "alle" ? "alle" : Number(e.target.value))}
-            className="field !w-auto !rounded-full !py-1.5 text-[12.5px]"
-          >
-            <option value="alle">Alle tagger</option>
-            {tags.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          <TagFilterPicker tags={tags} value={tagFilter} onChange={setTagFilter} />
         )}
       </div>
 
@@ -472,15 +466,21 @@ export default function CompaniesTable({
           </p>
         ) : (
           <ul>
-            {visible.map((c, i) => (
-              <li key={c.id} className="border-b border-line last:border-b-0">
+            {visible.map((c, i) => {
+              const companyTags = c.tagIds
+                .map((id) => tags.find((t) => t.id === id))
+                .filter((t): t is { id: number; label: string } => t != null);
+              return (
+              <li key={c.id} className="group border-b border-line last:border-b-0">
                 <div className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}>
                   <input
                     type="checkbox"
                     checked={selected.has(c.id)}
                     onChange={() => {}}
                     onClick={(e) => toggleOne(c.id, i, e.shiftKey)}
-                    className="h-3.5 w-3.5"
+                    className={`h-3.5 w-3.5 transition-opacity ${
+                      selected.has(c.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
                   />
                   <Link href={`/companies/${c.id}`} className="contents">
                     <span className="flex min-w-0 items-center gap-3">
@@ -503,6 +503,18 @@ export default function CompaniesTable({
                               ? c.website.replace(/^https?:\/\//, "")
                               : ""}
                         </span>
+                        {companyTags.length > 0 && (
+                          <span className="mt-1 flex flex-wrap gap-1">
+                            {companyTags.map((t) => (
+                              <span
+                                key={t.id}
+                                className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent"
+                              >
+                                {t.label}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     </span>
                     <span className="text-[12.5px] tabular-nums text-ink-soft">
@@ -547,7 +559,8 @@ export default function CompaniesTable({
                   </span>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
         </div>

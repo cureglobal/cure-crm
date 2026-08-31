@@ -74,6 +74,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       value: deals.value,
       followUpAt: deals.followUpAt,
       comment: deals.comment,
+      updatedAt: deals.updatedAt,
       ownerName: users.name,
       ownerAvatarUrl: users.avatarDataUrl,
     })
@@ -82,6 +83,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     .where(eq(deals.companyId, companyId))
     .orderBy(desc(deals.updatedAt));
   const dealSlugMap = await getDealSlugMap();
+
+  const stages = await getStages();
+  const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
+  const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
   const contacts = await db
     .select({
@@ -159,13 +164,25 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
     .slice(0, 12);
 
-  const lastContact = contactHistory[0]
+  const fromHistory = contactHistory[0]
     ? {
         at: contactHistory[0].occurredAt.getTime(),
         by: contactHistory[0].userName,
         kind: contactHistory[0].kind,
       }
     : null;
+  // "Sist kontakt" skal samsvare med pipeline: en aktiv (ikke vunnet/tapt)
+  // deal som nylig er oppdatert regnes som kontakt, samme logikk som på
+  // bedriftsoversikten (companies/page.tsx).
+  const activeDealUpdates = companyDeals
+    .filter((d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage))
+    .map((d) => d.updatedAt.getTime());
+  const lastActiveDealAt = activeDealUpdates.length > 0 ? Math.max(...activeDealUpdates) : null;
+
+  const lastContact =
+    lastActiveDealAt != null && (fromHistory == null || lastActiveDealAt > fromHistory.at)
+      ? { at: lastActiveDealAt, by: null, kind: "deal" }
+      : fromHistory;
 
   const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const companyOwner = allUsers.find((u) => u.id === company.ownerId);
@@ -175,10 +192,6 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
   const allPeopleOptions = await db.query.people.findMany({ orderBy: [asc(people.name)] });
   const businessUnitRows = await getBusinessUnits();
   const pipelineRows = await getPipelines();
-
-  const stages = await getStages();
-  const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
-  const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
   const openDeals = companyDeals.filter(
     (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
