@@ -12,7 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
-import { formatDateTime, formatMoney, startOfDay } from "@/lib/format";
+import { formatDateTime, formatMoney, relativeDay, startOfDay } from "@/lib/format";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
 import MonthCalendar from "@/components/MonthCalendar";
@@ -25,6 +25,47 @@ function greeting(name: string) {
   if (hour < 10) return `God morgen, ${first}`;
   if (hour < 18) return `God dag, ${first}`;
   return `God kveld, ${first}`;
+}
+
+interface FollowUpDeal {
+  id: number;
+  slug: string;
+  companyName: string;
+  title: string;
+  followUpAt: Date;
+  value: number | null;
+}
+
+// Selskap - dealnavn - dato - verdi, brukt av begge gruppene under "Mine
+// oppfølginger". Forfalte får rød dato (relativeDay gir "overdue"-tone for
+// alt før i dag, uansett hvor lenge siden).
+function FollowUpRow({ d }: { d: FollowUpDeal }) {
+  const rel = relativeDay(d.followUpAt);
+  return (
+    <li>
+      <Link
+        href={`/leads/${d.slug}`}
+        className="flex items-center justify-between gap-3 text-[13px] hover:text-accent"
+      >
+        <span className="min-w-0 truncate">
+          <span className="font-medium">{d.companyName}</span>{" "}
+          <span className="text-ink-soft">· {d.title}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span
+            className={`text-[11.5px] ${
+              rel.tone === "overdue" ? "font-medium text-danger" : "text-ink-faint"
+            }`}
+          >
+            {rel.label}
+          </span>
+          {d.value != null && (
+            <span className="tabular-nums text-ink-soft">{formatMoney(d.value)}</span>
+          )}
+        </span>
+      </Link>
+    </li>
+  );
 }
 
 export default async function Dashboard() {
@@ -80,14 +121,21 @@ export default async function Dashboard() {
     (d) => d.followUpAt! >= today && d.followUpAt! < endOfWeek
   );
 
-  // "Mine oppfølginger" — samme ukeavgrensning som over, men kun mine egne
-  // deals (hovedeier), delt i "i dag" og "resten av uken".
+  // "Mine oppfølginger" — kun mine egne deals (hovedeier), delt i "i dag"
+  // (som også tar med det som er forfalt — de skal jo følges opp NÅ, ikke
+  // gjemmes bort) og resten av uken. Maks 3 synlige per gruppe, resten
+  // oppsummert som "+X andre".
+  const MY_FOLLOWUPS_VISIBLE = 3;
   const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
   const myWithFollowUp = withFollowUp.filter((d) => d.ownerId === me.id);
-  const myToday = myWithFollowUp.filter((d) => d.followUpAt! >= today && d.followUpAt! < tomorrow);
+  const myTodayAndOverdue = myWithFollowUp.filter((d) => d.followUpAt! < tomorrow);
   const myRestOfWeek = myWithFollowUp.filter(
     (d) => d.followUpAt! >= tomorrow && d.followUpAt! < endOfWeek
   );
+  const myTodayVisible = myTodayAndOverdue.slice(0, MY_FOLLOWUPS_VISIBLE);
+  const myTodayExtra = myTodayAndOverdue.length - myTodayVisible.length;
+  const myRestVisible = myRestOfWeek.slice(0, MY_FOLLOWUPS_VISIBLE);
+  const myRestExtra = myRestOfWeek.length - myRestVisible.length;
 
   // Innsynsforespørsler til meg — lenker til nyeste deal på selskapet.
   const pendingRequests = await db
@@ -223,61 +271,63 @@ export default async function Dashboard() {
         <div className="flex flex-col gap-6">
           <section className="card p-6">
             <h2 className="mb-4 text-[16px] font-semibold tracking-tight">Mine oppfølginger</h2>
-            {myToday.length === 0 && myRestOfWeek.length === 0 ? (
+            {myTodayAndOverdue.length === 0 && myRestOfWeek.length === 0 ? (
               <p className="py-6 text-center text-[13px] text-ink-faint">
                 Ingen oppfølginger på dine deals denne uken.
               </p>
             ) : (
               <div className="flex flex-col gap-4">
-                {myToday.length > 0 && (
+                {myTodayVisible.length > 0 && (
                   <div>
                     <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
                       I dag
                     </p>
                     <ul className="flex flex-col gap-2">
-                      {myToday.map((d) => (
-                        <li key={d.id}>
-                          <Link
-                            href={`/leads/${slugMap.get(d.id) ?? d.id}`}
-                            className="flex items-center justify-between gap-3 text-[13px] hover:text-accent"
-                          >
-                            <span className="min-w-0 truncate">
-                              <span className="font-medium">{d.companyName}</span>{" "}
-                              <span className="text-ink-soft">· {d.title}</span>
-                            </span>
-                            {d.value != null && (
-                              <span className="shrink-0 tabular-nums text-ink-soft">
-                                {formatMoney(d.value)}
-                              </span>
-                            )}
-                          </Link>
-                        </li>
+                      {myTodayVisible.map((d) => (
+                        <FollowUpRow
+                          key={d.id}
+                          d={{
+                            id: d.id,
+                            slug: slugMap.get(d.id) ?? String(d.id),
+                            companyName: d.companyName,
+                            title: d.title,
+                            followUpAt: d.followUpAt!,
+                            value: d.value,
+                          }}
+                        />
                       ))}
+                      {myTodayExtra > 0 && (
+                        <li className="pt-0.5 text-[12px] text-ink-faint">
+                          +{myTodayExtra} andre
+                        </li>
+                      )}
                     </ul>
                   </div>
                 )}
-                {myRestOfWeek.length > 0 && (
+                {myRestVisible.length > 0 && (
                   <div>
                     <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
                       Resten av uken
                     </p>
                     <ul className="flex flex-col gap-2">
-                      {myRestOfWeek.map((d) => (
-                        <li key={d.id}>
-                          <Link
-                            href={`/leads/${slugMap.get(d.id) ?? d.id}`}
-                            className="flex items-center justify-between gap-3 text-[13px] hover:text-accent"
-                          >
-                            <span className="min-w-0 truncate">
-                              <span className="font-medium">{d.companyName}</span>{" "}
-                              <span className="text-ink-soft">· {d.title}</span>
-                            </span>
-                            <span className="shrink-0 text-[11.5px] text-ink-faint">
-                              {d.followUpAt!.toLocaleDateString("nb-NO", { weekday: "short" })}
-                            </span>
-                          </Link>
-                        </li>
+                      {myRestVisible.map((d) => (
+                        <FollowUpRow
+                          key={d.id}
+                          d={{
+                            id: d.id,
+                            slug: slugMap.get(d.id) ?? String(d.id),
+                            companyName: d.companyName,
+                            title: d.title,
+                            followUpAt: d.followUpAt!,
+                            value: d.value,
+                          }}
+                        />
                       ))}
+                      {myRestExtra > 0 && (
+                        <li className="pt-0.5 text-[12px] text-ink-faint">
+                          +{myRestExtra} andre
+                        </li>
+                      )}
                     </ul>
                   </div>
                 )}
