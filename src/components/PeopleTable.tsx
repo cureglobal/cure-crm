@@ -92,7 +92,7 @@ function PersonRowItem({
     "field !border-transparent !bg-transparent !px-2 !py-1.5 text-[13px] hover:!border-line focus:!border-accent focus:!bg-surface";
 
   return (
-    <li className={`group border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
+    <li className={`list-row group border-b border-line last:border-b-0 ${pending ? "opacity-60" : ""}`}>
       <div className={`${GRID} px-5 py-2.5 transition hover:bg-mist/[0.015]`}>
         <input
           type="checkbox"

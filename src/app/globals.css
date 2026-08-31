@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Selvhostet (ikke Google Fonts-lenke) — next.config.ts sin CSP tillater
+   bare font-src 'self'. Latin-delmengden dekker æ/ø/å (U+0000-00FF). */
+@font-face {
+  font-family: "Pixelify Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/pixelify-sans-latin.woff2") format("woff2");
+}
+
 @theme {
   --color-canvas: #f7f4ec;
   --color-surface: #ffffff;
@@ -75,6 +85,38 @@
   --color-ink: #000000;
 }
 
+/* POKÉMON — retro GBA-menystil: tanfargede vindusbokser med tykk mørk
+   kant, harde "pikselskygger" (ingen blur) i stedet for myke skygger, og
+   en selvhostet pikselfont (se @font-face øverst i fila). */
+:root[data-theme="pokemon"] {
+  --color-canvas: #fff6e0;
+  --color-surface: #f8d890;
+  --color-ink: #302010;
+  --color-ink-soft: #6b4a28;
+  --color-ink-faint: #a8825a;
+  --color-accent: #3868b8;
+  --color-accent-ink: #ffffff;
+  --color-accent-soft: #c8e0f8;
+  --color-line: #503018;
+  --color-mist: #503018;
+  --color-chip-dark: #302010;
+  --color-success: #78c850;
+  --color-success-ink: #3a7a28;
+  --color-warning: #f8d030;
+  --color-warning-ink: #8a6a00;
+  --color-danger: #e83828;
+  --font-sans: "Pixelify Sans", ui-monospace, "Courier New", monospace;
+  --radius-card: 10px;
+  --radius-btn: 8px;
+  --shadow-card: 3px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-pop: 5px 5px 0 rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="pokemon"] body {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -98,6 +140,22 @@ body {
   border: 1px solid var(--color-line);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="pokemon"] .card {
+  border-width: 3px;
+}
+
+/* Hver rad i lister (Pipeline/Bedrifter/Personer) blir sin egen tanfargede
+   boks med tykk kant — samme idé som partiliste-/HP-boksene i spillet — i
+   stedet for en flat, kantdelt liste. Klassen er tom/uten effekt i de andre
+   temaene. */
+:root[data-theme="pokemon"] .list-row {
+  margin: 6px 8px;
+  border: 3px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.25);
 }
 
 .field {
@@ -150,6 +208,15 @@ body {
   box-shadow: 0 0 0 2px var(--color-canvas);
 }
 
+:root[data-theme="pokemon"] .field {
+  border-width: 2px;
+  border-radius: 6px;
+}
+
+:root[data-theme="pokemon"] .field:focus {
+  box-shadow: 0 0 0 3px rgba(56, 104, 184, 0.35);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -168,6 +235,12 @@ body {
   transform: scale(0.98);
 }
 
+:root[data-theme="pokemon"] .btn {
+  border: 2px solid var(--color-line);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .btn-primary {
   background: var(--color-accent);
   color: var(--color-accent-ink);
@@ -183,6 +256,10 @@ body {
 
 :root[data-theme="elguide"] .btn-primary:hover {
   background: #1a1a1a;
+}
+
+:root[data-theme="pokemon"] .btn-primary:hover {
+  background: #2a4f8c;
 }
 
 .btn-secondary {
@@ -211,6 +288,14 @@ body {
   background: rgba(0, 0, 0, 0.18);
 }
 
+:root[data-theme="pokemon"] .btn-secondary {
+  background: rgba(80, 48, 24, 0.08);
+}
+
+:root[data-theme="pokemon"] .btn-secondary:hover {
+  background: rgba(80, 48, 24, 0.16);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--color-accent);
@@ -235,5 +320,10 @@ body {
 
 :root[data-theme="elguide"] ::selection {
   background: #000080;
+  color: #ffffff;
+}
+
+:root[data-theme="pokemon"] ::selection {
+  background: #3868b8;
   color: #ffffff;
 }

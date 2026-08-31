@@ -3432,7 +3432,7 @@ export async function completeOnboarding() {
   revalidatePath("/", "layout");
 }
 
-const THEMES = ["lys", "dark", "elguide"] as const;
+const THEMES = ["lys", "dark", "elguide", "pokemon"] as const;
 
 export async function updateTheme(formData: FormData) {
   const me = await requireUser();

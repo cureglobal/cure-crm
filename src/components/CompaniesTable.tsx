@@ -471,7 +471,7 @@ export default function CompaniesTable({
                 .map((id) => tags.find((t) => t.id === id))
                 .filter((t): t is { id: number; label: string } => t != null);
               return (
-              <li key={c.id} className="group border-b border-line last:border-b-0">
+              <li key={c.id} className="list-row group border-b border-line last:border-b-0">
                 <div className={`${GRID} px-5 py-3 transition hover:bg-mist/[0.02]`}>
                   <input
                     type="checkbox"

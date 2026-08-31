@@ -32,13 +32,22 @@ const THEMES = [
     accent: "#000000",
     font: "'Courier New', monospace",
   },
+  {
+    id: "pokemon",
+    label: "Pokémon",
+    desc: "Retro spillmeny, pikselfont.",
+    canvas: "#fff6e0",
+    surface: "#f8d890",
+    accent: "#3868b8",
+    font: "'Pixelify Sans', monospace",
+  },
 ] as const;
 
 export default function ThemePicker({ current }: { current: string }) {
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {THEMES.map((t) => {
         const active = current === t.id;
         return (

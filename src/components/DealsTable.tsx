@@ -139,7 +139,7 @@ function Row({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`group border-b border-line last:border-b-0 transition-colors ${pending ? "opacity-60" : ""} ${
+      className={`list-row group border-b border-line last:border-b-0 transition-colors ${pending ? "opacity-60" : ""} ${
         draggable ? "cursor-grab active:cursor-grabbing" : ""
       } ${dragOver ? "bg-accent-soft/40" : ""}`}
     >
