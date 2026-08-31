@@ -42,6 +42,7 @@ export default async function Dashboard() {
       companyId: deals.companyId,
       companyName: companies.name,
       logoUrl: companies.logoUrl,
+      ownerId: deals.ownerId,
       ownerName: users.name,
       ownerAvatarUrl: users.avatarDataUrl,
     })
@@ -77,6 +78,15 @@ export default async function Dashboard() {
   // I dag først, deretter kronologisk resten av uken.
   const thisWeek = withFollowUp.filter(
     (d) => d.followUpAt! >= today && d.followUpAt! < endOfWeek
+  );
+
+  // "Mine oppfølginger" — samme ukeavgrensning som over, men kun mine egne
+  // deals (hovedeier), delt i "i dag" og "resten av uken".
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const myWithFollowUp = withFollowUp.filter((d) => d.ownerId === me.id);
+  const myToday = myWithFollowUp.filter((d) => d.followUpAt! >= today && d.followUpAt! < tomorrow);
+  const myRestOfWeek = myWithFollowUp.filter(
+    (d) => d.followUpAt! >= tomorrow && d.followUpAt! < endOfWeek
   );
 
   // Innsynsforespørsler til meg — lenker til nyeste deal på selskapet.
@@ -210,43 +220,109 @@ export default async function Dashboard() {
           }))}
         />
 
-        <section className="card p-6">
-          <h2 className="mb-4 text-[16px] font-semibold tracking-tight">Siste aktivitet</h2>
-          {recent.length === 0 ? (
-            <p className="py-6 text-center text-[13px] text-ink-faint">
-              Ingen aktivitet ennå. Opprett din første deal for å komme i gang.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {recent.map((a) => (
-                <li key={a.id} className="flex gap-3 text-[13px]">
-                  <span
-                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
-                      a.type === "won" ? "bg-success" : "bg-ink-faint"
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p className={a.type === "won" ? "text-success-ink" : "text-ink"}>
-                      <span className="font-medium">{a.userName ?? "System"}</span>{" "}
-                      <span className={a.type === "won" ? "text-success-ink" : "text-ink-soft"}>
-                        {a.content}
-                      </span>
+        <div className="flex flex-col gap-6">
+          <section className="card p-6">
+            <h2 className="mb-4 text-[16px] font-semibold tracking-tight">Mine oppfølginger</h2>
+            {myToday.length === 0 && myRestOfWeek.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-ink-faint">
+                Ingen oppfølginger på dine deals denne uken.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {myToday.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                      I dag
                     </p>
-                    <p className="mt-0.5 text-[12px] text-ink-faint">
-                      <Link
-                        href={`/leads/${slugMap.get(a.dealId) ?? a.dealId}`}
-                        className="hover:text-accent"
-                      >
-                        {a.companyName} · {a.dealTitle}
-                      </Link>{" "}
-                      · {formatDateTime(a.createdAt)}
-                    </p>
+                    <ul className="flex flex-col gap-2">
+                      {myToday.map((d) => (
+                        <li key={d.id}>
+                          <Link
+                            href={`/leads/${slugMap.get(d.id) ?? d.id}`}
+                            className="flex items-center justify-between gap-3 text-[13px] hover:text-accent"
+                          >
+                            <span className="min-w-0 truncate">
+                              <span className="font-medium">{d.companyName}</span>{" "}
+                              <span className="text-ink-soft">· {d.title}</span>
+                            </span>
+                            {d.value != null && (
+                              <span className="shrink-0 tabular-nums text-ink-soft">
+                                {formatMoney(d.value)}
+                              </span>
+                            )}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                )}
+                {myRestOfWeek.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                      Resten av uken
+                    </p>
+                    <ul className="flex flex-col gap-2">
+                      {myRestOfWeek.map((d) => (
+                        <li key={d.id}>
+                          <Link
+                            href={`/leads/${slugMap.get(d.id) ?? d.id}`}
+                            className="flex items-center justify-between gap-3 text-[13px] hover:text-accent"
+                          >
+                            <span className="min-w-0 truncate">
+                              <span className="font-medium">{d.companyName}</span>{" "}
+                              <span className="text-ink-soft">· {d.title}</span>
+                            </span>
+                            <span className="shrink-0 text-[11.5px] text-ink-faint">
+                              {d.followUpAt!.toLocaleDateString("nb-NO", { weekday: "short" })}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="card p-6">
+            <h2 className="mb-4 text-[16px] font-semibold tracking-tight">Siste aktivitet</h2>
+            {recent.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-ink-faint">
+                Ingen aktivitet ennå. Opprett din første deal for å komme i gang.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {recent.map((a) => (
+                  <li key={a.id} className="flex gap-3 text-[13px]">
+                    <span
+                      className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
+                        a.type === "won" ? "bg-success" : "bg-ink-faint"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className={a.type === "won" ? "text-success-ink" : "text-ink"}>
+                        <span className="font-medium">{a.userName ?? "System"}</span>{" "}
+                        <span className={a.type === "won" ? "text-success-ink" : "text-ink-soft"}>
+                          {a.content}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-ink-faint">
+                        <Link
+                          href={`/leads/${slugMap.get(a.dealId) ?? a.dealId}`}
+                          className="hover:text-accent"
+                        >
+                          {a.companyName} · {a.dealTitle}
+                        </Link>{" "}
+                        · {formatDateTime(a.createdAt)}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
