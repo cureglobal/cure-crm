@@ -22,6 +22,7 @@ import CalendarSyncButton from "@/components/CalendarSyncButton";
 import BrregMatchAll from "@/components/BrregMatchAll";
 import DuplicateCompaniesFinder from "@/components/DuplicateCompaniesFinder";
 import BulkCreateDeals from "@/components/BulkCreateDeals";
+import BulkMarkContacted from "@/components/BulkMarkContacted";
 import ThemePicker from "@/components/ThemePicker";
 import PipelinesAndStagesManager from "@/components/PipelinesAndStagesManager";
 import CollapsibleSection from "@/components/CollapsibleSection";
@@ -516,6 +517,24 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           currentUserId={me.id}
           pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
         />
+      </section>
+
+      <section className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+            <Clock size={16} />
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              Sist kontakt fra masseutsendelse
+            </h2>
+            <p className="text-[12.5px] text-ink-soft">
+              Last opp en CSV med e-postadresser fra en utsendelse — selskapene bak matchede
+              personer får «sist kontakt» satt til i dag.
+            </p>
+          </div>
+        </div>
+        <BulkMarkContacted />
       </section>
 
       <section className="card mb-6 p-6">

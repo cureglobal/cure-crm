@@ -3307,6 +3307,62 @@ export async function logContact(companyId: number, formData: FormData) {
   revalidateDealViews();
 }
 
+export interface BulkMarkContactedResult {
+  matchedPeople: number;
+  matchedCompanies: number;
+  unmatched: string[];
+}
+
+// Engangsverktøy: etter en masseutsendelse kan man laste opp CSV-en med hvem
+// som ble kontaktet og få «sist kontakt» satt til i dag på selskapene bak.
+// Matcher på e-post (det utsendelsen faktisk er basert på), ikke navn — én
+// contact_events-rad per RAMT selskap, ikke per person, siden «sist kontakt»
+// uansett er selskapsnivå.
+export async function bulkMarkContactedByEmail(
+  emails: string[],
+  note: string
+): Promise<BulkMarkContactedResult> {
+  const me = await requireUser();
+  const wanted = new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean));
+  if (wanted.size === 0) return { matchedPeople: 0, matchedCompanies: 0, unmatched: [] };
+
+  const allPeople = await db.query.people.findMany();
+  const matchedPersonIds: number[] = [];
+  const matchedEmails = new Set<string>();
+  for (const p of allPeople) {
+    const email = (p.email ?? "").trim().toLowerCase();
+    if (email && wanted.has(email)) {
+      matchedPersonIds.push(p.id);
+      matchedEmails.add(email);
+    }
+  }
+  const unmatched = [...wanted].filter((e) => !matchedEmails.has(e)).sort();
+
+  const companyIds = new Set<number>();
+  if (matchedPersonIds.length > 0) {
+    const links = await db
+      .select({ companyId: companyPeople.companyId })
+      .from(companyPeople)
+      .where(inArray(companyPeople.personId, matchedPersonIds));
+    for (const l of links) companyIds.add(l.companyId);
+  }
+
+  const occurredAt = new Date();
+  const trimmedNote = note.trim() || null;
+  for (const companyId of companyIds) {
+    await db.insert(contactEvents).values({
+      companyId,
+      userId: me.id,
+      kind: "epost",
+      note: trimmedNote,
+      occurredAt,
+    });
+  }
+
+  revalidateDealViews();
+  return { matchedPeople: matchedPersonIds.length, matchedCompanies: companyIds.size, unmatched };
+}
+
 export async function deleteContactEvent(eventId: number, companyId: number) {
   await requireUser();
   await db
