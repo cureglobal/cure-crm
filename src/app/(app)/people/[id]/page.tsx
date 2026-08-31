@@ -123,16 +123,15 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
         </div>
       </div>
 
-      {personTagOptions.length > 0 && (
-        <div className="mb-6">
-          <TagsEditor
-            allTags={personTagOptions.map((t) => ({ id: t.id, label: t.label }))}
-            initialSelectedIds={personTagIds}
-            onAdd={addPersonTag.bind(null, person.id)}
-            onRemove={removePersonTag.bind(null, person.id)}
-          />
-        </div>
-      )}
+      <div className="mb-6">
+        <TagsEditor
+          entityType="person"
+          allTags={personTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+          initialSelectedIds={personTagIds}
+          onAdd={addPersonTag.bind(null, person.id)}
+          onRemove={removePersonTag.bind(null, person.id)}
+        />
+      </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_1fr]">
         <div className="flex flex-col gap-6">

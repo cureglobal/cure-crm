@@ -273,16 +273,15 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
         />
       </div>
 
-      {dealTagOptions.length > 0 && (
-        <div className="mb-8">
-          <TagsEditor
-            allTags={dealTagOptions.map((t) => ({ id: t.id, label: t.label }))}
-            initialSelectedIds={dealTagIds}
-            onAdd={addDealTag.bind(null, deal.id)}
-            onRemove={removeDealTag.bind(null, deal.id)}
-          />
-        </div>
-      )}
+      <div className="mb-8">
+        <TagsEditor
+          entityType="deal"
+          allTags={dealTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+          initialSelectedIds={dealTagIds}
+          onAdd={addDealTag.bind(null, deal.id)}
+          onRemove={removeDealTag.bind(null, deal.id)}
+        />
+      </div>
 
       {myPendingRequests.map((r) => (
         <div key={r.id} className="mb-4">

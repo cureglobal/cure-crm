@@ -265,16 +265,15 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         />
       </div>
 
-      {companyTagOptions.length > 0 && (
-        <div className="mb-6">
-          <TagsEditor
-            allTags={companyTagOptions.map((t) => ({ id: t.id, label: t.label }))}
-            initialSelectedIds={companyTagIds}
-            onAdd={addCompanyTag.bind(null, company.id)}
-            onRemove={removeCompanyTag.bind(null, company.id)}
-          />
-        </div>
-      )}
+      <div className="mb-6">
+        <TagsEditor
+          entityType="company"
+          allTags={companyTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+          initialSelectedIds={companyTagIds}
+          onAdd={addCompanyTag.bind(null, company.id)}
+          onRemove={removeCompanyTag.bind(null, company.id)}
+        />
+      </div>
 
       <div className="mb-6 grid grid-cols-4 gap-4">
         {[
