@@ -554,7 +554,7 @@ export default function CompaniesTable({
                         {relativeDay(new Date(c.lastContactAt)).label}
                       </span>
                     ) : (
-                      <span className="text-danger">Aldri</span>
+                      <span className="text-danger">Ikke registrert</span>
                     )}
                   </span>
                 </div>

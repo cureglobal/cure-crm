@@ -184,7 +184,9 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const quarterWeights = salesTarget
     ? [salesTarget.q1Weight, salesTarget.q2Weight, salesTarget.q3Weight, salesTarget.q4Weight]
     : [25, 25, 25, 25];
-  const totalTarget = salesTarget?.totalAmount ?? 0;
+  // Årsmålet er ikke lenger et eget tall — det er summen av salgsmål per
+  // selskap, satt under Innstillinger (se updateBusinessUnitTarget).
+  const totalTarget = businessUnitTargetRows.reduce((acc, t) => acc + t.totalAmount, 0);
   const quarterTargets = quarterWeights.map((w) => Math.round((totalTarget * w) / 100));
 
   // Per selskap: kan bare regnes ut fra vunnet-deals REGISTRERT I DENNE

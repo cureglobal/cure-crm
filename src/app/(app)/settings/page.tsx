@@ -326,13 +326,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight">Salgsmål</h2>
             <p className="text-[12.5px] text-ink-soft">
-              Årsmål fordelt på kvartal, vist mot faktisk salg på Statistikk-siden.
+              Sett salgsmål per selskap under — årsmålet er summen av disse, fordelt på kvartal
+              etter samme prosentsplitt for alle. Vist mot faktisk salg på Statistikk-siden.
             </p>
           </div>
         </div>
         <SalesTargetManager
           year={salesTargetYear}
-          totalAmount={salesTarget?.totalAmount ?? 0}
+          totalAmount={businessUnitTargetRows.reduce((acc, r) => acc + r.totalAmount, 0)}
           q1Weight={salesTarget?.q1Weight ?? 25}
           q2Weight={salesTarget?.q2Weight ?? 25}
           q3Weight={salesTarget?.q3Weight ?? 25}
@@ -344,10 +345,6 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               businessUnitId: u.id,
               name: u.name,
               totalAmount: t?.totalAmount ?? 0,
-              q1Weight: t?.q1Weight ?? 25,
-              q2Weight: t?.q2Weight ?? 25,
-              q3Weight: t?.q3Weight ?? 25,
-              q4Weight: t?.q4Weight ?? 25,
             };
           })}
         />

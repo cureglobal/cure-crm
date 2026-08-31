@@ -28,10 +28,6 @@ export interface BusinessUnitTargetRow {
   businessUnitId: number;
   name: string;
   totalAmount: number;
-  q1Weight: number;
-  q2Weight: number;
-  q3Weight: number;
-  q4Weight: number;
 }
 
 function QuarterWeightInputs({
@@ -73,22 +69,11 @@ function BusinessUnitRow({ unit, year }: { unit: BusinessUnitTargetRow; year: nu
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(formatNumberInput(unit.totalAmount));
-  const [weights, setWeights] = useState({
-    q1: unit.q1Weight,
-    q2: unit.q2Weight,
-    q3: unit.q3Weight,
-    q4: unit.q4Weight,
-  });
-  const weightSum = weights.q1 + weights.q2 + weights.q3 + weights.q4;
 
   function save() {
     setError(null);
     const fd = new FormData();
     fd.set("totalAmount", total);
-    fd.set("q1Weight", String(weights.q1));
-    fd.set("q2Weight", String(weights.q2));
-    fd.set("q3Weight", String(weights.q3));
-    fd.set("q4Weight", String(weights.q4));
     startTransition(async () => {
       const res = await updateBusinessUnitTarget(year, unit.businessUnitId, fd);
       if (!res.ok) setError(res.message);
@@ -97,25 +82,26 @@ function BusinessUnitRow({ unit, year }: { unit: BusinessUnitTargetRow; year: nu
 
   return (
     <div className="rounded-xl bg-mist/[0.03] p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-medium">{unit.name}</span>
-        <input
-          value={total}
-          onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))}
-          inputMode="numeric"
-          placeholder="0"
-          className="field !w-36 !py-1.5 text-right text-[13px]"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={total}
+            onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))}
+            inputMode="numeric"
+            placeholder="0"
+            className="field !w-36 !py-1.5 text-right text-[13px]"
+          />
+          <button
+            onClick={save}
+            disabled={pending}
+            className="btn btn-secondary !py-1.5 !text-[12px]"
+          >
+            Lagre
+          </button>
+        </div>
       </div>
-      <QuarterWeightInputs weights={weights} onChange={setWeights} />
       {error && <p className="mt-1.5 text-[11.5px] text-danger">{error}</p>}
-      <button
-        onClick={save}
-        disabled={pending || weightSum !== 100}
-        className="btn btn-secondary mt-2 !py-1 !text-[12px]"
-      >
-        Lagre
-      </button>
     </div>
   );
 }
@@ -142,15 +128,13 @@ export default function SalesTargetManager({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [total, setTotal] = useState(formatNumberInput(totalAmount));
   const [weights, setWeights] = useState({ q1: q1Weight, q2: q2Weight, q3: q3Weight, q4: q4Weight });
   const weightSum = weights.q1 + weights.q2 + weights.q3 + weights.q4;
 
-  function saveTarget() {
+  function saveWeights() {
     setError(null);
     setMessage(null);
     const fd = new FormData();
-    fd.set("totalAmount", total);
     fd.set("q1Weight", String(weights.q1));
     fd.set("q2Weight", String(weights.q2));
     fd.set("q3Weight", String(weights.q3));
@@ -179,40 +163,11 @@ export default function SalesTargetManager({
         </p>
       )}
 
-      <div className="mb-4">
-        <label className="mb-1 block text-[12px] font-medium text-ink-soft">
-          Årsmål {year}
-        </label>
-        <input
-          value={total}
-          onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))}
-          inputMode="numeric"
-          placeholder="14 000 000"
-          className="field !w-48"
-        />
-      </div>
-
-      <div className="mb-2">
-        <p className="mb-1.5 text-[12px] font-medium text-ink-soft">
-          Fordeling på kvartal (må summere til 100 %)
-        </p>
-        <QuarterWeightInputs weights={weights} onChange={setWeights} />
-      </div>
-
-      <button
-        onClick={saveTarget}
-        disabled={pending || weightSum !== 100}
-        className="btn btn-secondary"
-      >
-        Lagre salgsmål
-      </button>
-
       {businessUnitTargets.length > 0 && (
-        <div className="mt-6 border-t border-line pt-5">
+        <div className="mb-6">
           <h3 className="mb-1 text-[13.5px] font-semibold">Salgsmål per selskap</h3>
           <p className="mb-3 text-[12px] text-ink-soft">
-            Egen fordeling per selskap — trenger ikke summere til årsmålet over, men bør
-            normalt gjøre det.
+            Sett salgsmål for hvert selskap — årsmålet under regnes automatisk ut som summen.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {businessUnitTargets.map((u) => (
@@ -221,6 +176,29 @@ export default function SalesTargetManager({
           </div>
         </div>
       )}
+
+      <div className="mb-4">
+        <p className="mb-1 text-[12px] font-medium text-ink-soft">Overordnet årsmål {year}</p>
+        <p className="text-[20px] font-semibold tabular-nums">
+          {formatMoney(totalAmount) || "0kr"}
+        </p>
+        <p className="text-[11.5px] text-ink-faint">Summen av salgsmål per selskap over.</p>
+      </div>
+
+      <div className="mb-2">
+        <p className="mb-1.5 text-[12px] font-medium text-ink-soft">
+          Fordeling på kvartal — gjelder alle selskap (må summere til 100 %)
+        </p>
+        <QuarterWeightInputs weights={weights} onChange={setWeights} />
+      </div>
+
+      <button
+        onClick={saveWeights}
+        disabled={pending || weightSum !== 100}
+        className="btn btn-secondary"
+      >
+        Lagre kvartalsfordeling
+      </button>
 
       <div className="mt-6 border-t border-line pt-5">
         <h3 className="mb-1 text-[13.5px] font-semibold">Faktisk salg per måned</h3>

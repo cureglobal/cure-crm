@@ -1066,17 +1066,21 @@ export async function bulkAddCompanyTag(companyIds: number[], tagId: number) {
 
 // ---------- Salgsmål ----------
 
+// Kvartalsfordelingen er universell — samme prosentsplitt brukes på tvers av
+// alle selskap, i stedet for at hvert selskap satte sin egen (som i praksis
+// aldri ble lest noe sted). Selve årsmålet er ikke lenger et eget felt her —
+// det er summen av business_unit_targets, se getSalesTarget-forbrukerne i
+// settings/page.tsx og statistikk/page.tsx.
 export async function updateSalesTarget(
   year: number,
   formData: FormData
 ): Promise<{ ok: boolean; message: string }> {
   await requireUser();
-  const totalAmount = Number(String(formData.get("totalAmount") ?? "").replace(/\D/g, ""));
   const q1Weight = Number(formData.get("q1Weight"));
   const q2Weight = Number(formData.get("q2Weight"));
   const q3Weight = Number(formData.get("q3Weight"));
   const q4Weight = Number(formData.get("q4Weight"));
-  if (![totalAmount, q1Weight, q2Weight, q3Weight, q4Weight].every(Number.isFinite)) {
+  if (![q1Weight, q2Weight, q3Weight, q4Weight].every(Number.isFinite)) {
     return { ok: false, message: "Ugyldig tall." };
   }
   const weightSum = q1Weight + q2Weight + q3Weight + q4Weight;
@@ -1085,15 +1089,15 @@ export async function updateSalesTarget(
   }
 
   const existing = await db.query.salesTargets.findFirst({ where: eq(salesTargets.year, year) });
-  const set = { totalAmount, q1Weight, q2Weight, q3Weight, q4Weight };
+  const set = { q1Weight, q2Weight, q3Weight, q4Weight };
   if (existing) {
     await db.update(salesTargets).set(set).where(eq(salesTargets.id, existing.id));
   } else {
-    await db.insert(salesTargets).values({ year, ...set });
+    await db.insert(salesTargets).values({ year, totalAmount: 0, ...set });
   }
   revalidatePath("/settings");
   revalidatePath("/statistikk");
-  return { ok: true, message: "Salgsmål oppdatert." };
+  return { ok: true, message: "Kvartalsfordeling oppdatert." };
 }
 
 // Tom/fjernet verdi (amount === null) sletter raden — måneden faller da
@@ -1120,7 +1124,10 @@ export async function upsertMonthlyActual(year: number, month: number, formData:
 
 // Bryter salgsmålet ned per eget selskap (business_units) — se
 // businessUnitTargets i schema.ts for hvorfor dette er en egen tabell i
-// stedet for en nullable business_unit_id på sales_targets.
+// stedet for en nullable business_unit_id på sales_targets. Selve
+// kvartalsfordelingen er universell (se updateSalesTarget) og settes ikke
+// per selskap lenger — q1-q4-kolonnene her beholder bare sin DEFAULT-verdi
+// og leses ikke noe sted.
 export async function updateBusinessUnitTarget(
   year: number,
   businessUnitId: number,
@@ -1128,26 +1135,17 @@ export async function updateBusinessUnitTarget(
 ): Promise<{ ok: boolean; message: string }> {
   await requireUser();
   const totalAmount = Number(String(formData.get("totalAmount") ?? "").replace(/\D/g, ""));
-  const q1Weight = Number(formData.get("q1Weight"));
-  const q2Weight = Number(formData.get("q2Weight"));
-  const q3Weight = Number(formData.get("q3Weight"));
-  const q4Weight = Number(formData.get("q4Weight"));
-  if (![totalAmount, q1Weight, q2Weight, q3Weight, q4Weight].every(Number.isFinite)) {
+  if (!Number.isFinite(totalAmount)) {
     return { ok: false, message: "Ugyldig tall." };
-  }
-  const weightSum = q1Weight + q2Weight + q3Weight + q4Weight;
-  if (Math.round(weightSum) !== 100) {
-    return { ok: false, message: `Kvartalsvektene må summere til 100 % (er nå ${weightSum} %).` };
   }
 
   const existing = await db.query.businessUnitTargets.findFirst({
     where: and(eq(businessUnitTargets.year, year), eq(businessUnitTargets.businessUnitId, businessUnitId)),
   });
-  const set = { totalAmount, q1Weight, q2Weight, q3Weight, q4Weight };
   if (existing) {
-    await db.update(businessUnitTargets).set(set).where(eq(businessUnitTargets.id, existing.id));
+    await db.update(businessUnitTargets).set({ totalAmount }).where(eq(businessUnitTargets.id, existing.id));
   } else {
-    await db.insert(businessUnitTargets).values({ year, businessUnitId, ...set });
+    await db.insert(businessUnitTargets).values({ year, businessUnitId, totalAmount });
   }
   revalidatePath("/settings");
   revalidatePath("/statistikk");
