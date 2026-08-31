@@ -113,7 +113,36 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const til = typeof params.til === "string" ? params.til : "";
   const { start, end } = periodRange(periode, fra, til);
 
-  const pipelines = await getPipelines();
+  // Salgsmål er selskapsbredt — regnes derfor på tvers av ALLE pipelines,
+  // ikke bare den valgte, til forskjell fra resten av siden.
+  const salesTargetYear = new Date().getFullYear();
+
+  // Alt under er uavhengig av hverandre bortsett fra selve
+  // pipeline → pipelineId → stages-kjeden (løses rett etter) — hentes
+  // parallelt i stedet for i serie (produksjon går mot en ekstern
+  // Turso-database, så hvert await er en ekte nettverkstur).
+  const [
+    pipelines,
+    allUsers,
+    allDealsEverywhere,
+    salesTarget,
+    manualActuals,
+    allStagesEverywhere,
+    businessUnitTargetRows,
+    businessUnitRowsAll,
+    allCompaniesEverywhere,
+  ] = await Promise.all([
+    getPipelines(),
+    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.deals.findMany(),
+    getSalesTarget(salesTargetYear),
+    getMonthlyActuals(salesTargetYear),
+    db.query.stages.findMany(),
+    getBusinessUnitTargets(salesTargetYear),
+    getBusinessUnits(),
+    db.query.companies.findMany(),
+  ]);
+
   const pipelineParam = typeof params.pipeline === "string" ? Number(params.pipeline) : NaN;
   const pipelineId = pipelines.some((p) => p.id === pipelineParam)
     ? pipelineParam
@@ -124,19 +153,11 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
-  const allDealsEverywhere = await db.query.deals.findMany();
   const allDeals = allDealsEverywhere.filter((d) => pipelineStageIds.has(d.stage));
 
   const stageById = new Map(stages.map((s) => [String(s.id), s]));
 
-  // Salgsmål er selskapsbredt — regnes derfor på tvers av ALLE pipelines,
-  // ikke bare den valgte, til forskjell fra resten av siden.
-  const salesTargetYear = new Date().getFullYear();
-  const salesTarget = await getSalesTarget(salesTargetYear);
-  const manualActuals = await getMonthlyActuals(salesTargetYear);
   const manualByMonth = new Map(manualActuals.map((m) => [m.month, m.amount]));
-  const allStagesEverywhere = await db.query.stages.findMany();
   const wonStageIdsEverywhere = new Set(
     allStagesEverywhere.filter((s) => s.isWon).map((s) => String(s.id))
   );
@@ -170,9 +191,6 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   // APPEN (koblet via companies.business_unit_id) — historikken fra det
   // gamle CRM-et i monthly_actuals er ikke brutt ned per selskap, så den
   // blandes ikke inn her slik totalen over gjør.
-  const businessUnitTargetRows = await getBusinessUnitTargets(salesTargetYear);
-  const businessUnitRowsAll = await getBusinessUnits();
-  const allCompaniesEverywhere = await db.query.companies.findMany();
   const businessUnitIdByCompany = new Map(
     allCompaniesEverywhere.map((c) => [c.id, c.businessUnitId])
   );

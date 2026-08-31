@@ -9,27 +9,58 @@ import NewCompanyButton from "@/components/NewCompanyButton";
 
 export default async function CompaniesPage() {
   await requireUser();
-  const stages = await getStages();
+
+  // Alle spørringene under er uavhengige av hverandre — hentes parallelt i
+  // stedet for i serie (produksjon går mot en ekstern Turso-database, så
+  // hvert await er en ekte nettverkstur).
+  const [
+    stages,
+    allCompanies,
+    allDeals,
+    links,
+    allUsers,
+    coOwnerRows,
+    tagOptions,
+    tagLinks,
+    lastManualContact,
+    lastEmailContact,
+    businessUnitRows,
+  ] = await Promise.all([
+    getStages(),
+    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+    db
+      .select({
+        companyId: deals.companyId,
+        stage: deals.stage,
+        value: deals.value,
+      })
+      .from(deals),
+    db
+      .select({ companyId: companyPeople.companyId, name: people.name })
+      .from(companyPeople)
+      .innerJoin(people, eq(companyPeople.personId, people.id))
+      .orderBy(asc(companyPeople.createdAt)),
+    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.companyOwners.findMany(),
+    getTags("company"),
+    db.query.companyTags.findMany(),
+    // "Sist kontakt" = nyeste av manuelt loggført kontakt og synket e-post —
+    // samme kombinasjon som bedriftssidens egen "Sist kontakt" (se
+    // companies/[id]/page.tsx), bare aggregert på tvers av alle selskap her.
+    db
+      .select({ companyId: contactEvents.companyId, maxAt: sql<number>`MAX(${contactEvents.occurredAt})` })
+      .from(contactEvents)
+      .groupBy(contactEvents.companyId),
+    db
+      .select({ companyId: emailMessages.companyId, maxAt: sql<number>`MAX(${emailMessages.sentAt})` })
+      .from(emailMessages)
+      .where(isNotNull(emailMessages.sentAt))
+      .groupBy(emailMessages.companyId),
+    getBusinessUnits(),
+  ]);
+
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
-
-  const allCompanies = await db.query.companies.findMany({
-    orderBy: [asc(companies.name)],
-  });
-
-  const allDeals = await db
-    .select({
-      companyId: deals.companyId,
-      stage: deals.stage,
-      value: deals.value,
-    })
-    .from(deals);
-
-  const links = await db
-    .select({ companyId: companyPeople.companyId, name: people.name })
-    .from(companyPeople)
-    .innerJoin(people, eq(companyPeople.personId, people.id))
-    .orderBy(asc(companyPeople.createdAt));
 
   const peopleByCompany = new Map<number, string[]>();
   for (const l of links) {
@@ -38,11 +69,9 @@ export default async function CompaniesPage() {
     peopleByCompany.set(l.companyId, list);
   }
 
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
   const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
 
-  const coOwnerRows = await db.query.companyOwners.findMany();
   const coOwnerIdsByCompany = new Map<number, number[]>();
   for (const r of coOwnerRows) {
     const list = coOwnerIdsByCompany.get(r.companyId) ?? [];
@@ -50,8 +79,6 @@ export default async function CompaniesPage() {
     coOwnerIdsByCompany.set(r.companyId, list);
   }
 
-  const tagOptions = await getTags("company");
-  const tagLinks = await db.query.companyTags.findMany();
   const tagIdsByCompany = new Map<number, number[]>();
   for (const l of tagLinks) {
     const list = tagIdsByCompany.get(l.companyId) ?? [];
@@ -59,18 +86,6 @@ export default async function CompaniesPage() {
     tagIdsByCompany.set(l.companyId, list);
   }
 
-  // "Sist kontakt" = nyeste av manuelt loggført kontakt og synket e-post —
-  // samme kombinasjon som bedriftssidens egen "Sist kontakt" (se
-  // companies/[id]/page.tsx), bare aggregert på tvers av alle selskap her.
-  const lastManualContact = await db
-    .select({ companyId: contactEvents.companyId, maxAt: sql<number>`MAX(${contactEvents.occurredAt})` })
-    .from(contactEvents)
-    .groupBy(contactEvents.companyId);
-  const lastEmailContact = await db
-    .select({ companyId: emailMessages.companyId, maxAt: sql<number>`MAX(${emailMessages.sentAt})` })
-    .from(emailMessages)
-    .where(isNotNull(emailMessages.sentAt))
-    .groupBy(emailMessages.companyId);
   const lastContactByCompany = new Map<number, number>();
   for (const r of lastManualContact) {
     lastContactByCompany.set(r.companyId, Number(r.maxAt));
@@ -111,8 +126,6 @@ export default async function CompaniesPage() {
   const totalWon = allDeals
     .filter((d) => wonStageIds.has(d.stage))
     .reduce((acc, d) => acc + (d.value ?? 0), 0);
-
-  const businessUnitRows = await getBusinessUnits();
 
   return (
     <div>

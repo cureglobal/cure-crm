@@ -11,12 +11,17 @@ import OnboardingTour from "@/components/OnboardingTour";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const stages = await getStages();
-  const pipelines = await getPipelines();
-  const dealTags = await getTags("deal");
-  const companyTags = await getTags("company");
-  const personTags = await getTags("person");
-  const unreadCount = await getUnreadNotificationCount();
+  // Uavhengige spørringer — kjøres parallelt i stedet for i serie, siden
+  // dette gjelder HVER ENESTE sidenavigasjon i hele appen (produksjon går
+  // mot en ekstern Turso-database, så hvert await er en ekte nettverkstur).
+  const [stages, pipelines, dealTags, companyTags, personTags, unreadCount] = await Promise.all([
+    getStages(),
+    getPipelines(),
+    getTags("deal"),
+    getTags("company"),
+    getTags("person"),
+    getUnreadNotificationCount(),
+  ]);
 
   return (
     <>

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, asc, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import {
   db,
   users,
@@ -1572,10 +1572,11 @@ export async function listNotifications(): Promise<NotificationDTO[]> {
 
 export async function getUnreadNotificationCount(): Promise<number> {
   const me = await requireUser();
-  const rows = await db.query.notifications.findMany({
-    where: and(eq(notifications.userId, me.id), isNull(notifications.readAt)),
-  });
-  return rows.length;
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(notifications)
+    .where(and(eq(notifications.userId, me.id), isNull(notifications.readAt)));
+  return value;
 }
 
 export async function markNotificationRead(id: number) {

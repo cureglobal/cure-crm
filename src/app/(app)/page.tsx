@@ -71,27 +71,76 @@ function FollowUpRow({ d }: { d: FollowUpDeal }) {
 export default async function Dashboard() {
   const me = await requireUser();
 
-  const allDeals = await db
-    .select({
-      id: deals.id,
-      title: deals.title,
-      stage: deals.stage,
-      value: deals.value,
-      followUpAt: deals.followUpAt,
-      updatedAt: deals.updatedAt,
-      closedAt: deals.closedAt,
-      companyId: deals.companyId,
-      companyName: companies.name,
-      logoUrl: companies.logoUrl,
-      ownerId: deals.ownerId,
-      ownerName: users.name,
-      ownerAvatarUrl: users.avatarDataUrl,
-    })
-    .from(deals)
-    .innerJoin(companies, eq(deals.companyId, companies.id))
-    .leftJoin(users, eq(deals.ownerId, users.id));
+  // Uavhengige spørringer — hentes parallelt i stedet for i serie
+  // (produksjon går mot en ekstern Turso-database, så hvert await er en
+  // ekte nettverkstur).
+  const [allDeals, stages, pendingRequests, companyOptionsRaw, pipelineRows, slugMap, recent] =
+    await Promise.all([
+      db
+        .select({
+          id: deals.id,
+          title: deals.title,
+          stage: deals.stage,
+          value: deals.value,
+          followUpAt: deals.followUpAt,
+          updatedAt: deals.updatedAt,
+          closedAt: deals.closedAt,
+          companyId: deals.companyId,
+          companyName: companies.name,
+          logoUrl: companies.logoUrl,
+          ownerId: deals.ownerId,
+          ownerName: users.name,
+          ownerAvatarUrl: users.avatarDataUrl,
+        })
+        .from(deals)
+        .innerJoin(companies, eq(deals.companyId, companies.id))
+        .leftJoin(users, eq(deals.ownerId, users.id)),
+      getStages(),
+      // Innsynsforespørsler til meg — lenker til nyeste deal på selskapet.
+      db
+        .select({
+          id: emailAccessGrants.id,
+          companyId: emailAccessGrants.companyId,
+          requesterName: users.name,
+          companyName: companies.name,
+        })
+        .from(emailAccessGrants)
+        .innerJoin(users, eq(emailAccessGrants.granteeUserId, users.id))
+        .innerJoin(companies, eq(emailAccessGrants.companyId, companies.id))
+        .where(
+          and(
+            eq(emailAccessGrants.ownerUserId, me.id),
+            eq(emailAccessGrants.status, "requested")
+          )
+        ),
+      db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+      getPipelines(),
+      getDealSlugMap(),
+      db
+        .select({
+          id: activities.id,
+          content: activities.content,
+          type: activities.type,
+          createdAt: activities.createdAt,
+          userName: users.name,
+          dealId: activities.dealId,
+          dealTitle: deals.title,
+          companyName: companies.name,
+        })
+        .from(activities)
+        .innerJoin(deals, eq(activities.dealId, deals.id))
+        .innerJoin(companies, eq(deals.companyId, companies.id))
+        .leftJoin(users, eq(activities.userId, users.id))
+        .orderBy(desc(activities.createdAt))
+        .limit(8),
+    ]);
+  const companyOptions = companyOptionsRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    logoUrl: c.logoUrl,
+  }));
+  const pipelineOptions = pipelineRows.map((p) => ({ id: p.id, name: p.name }));
 
-  const stages = await getStages();
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
@@ -137,56 +186,14 @@ export default async function Dashboard() {
   const myRestVisible = myRestOfWeek.slice(0, MY_FOLLOWUPS_VISIBLE);
   const myRestExtra = myRestOfWeek.length - myRestVisible.length;
 
-  // Innsynsforespørsler til meg — lenker til nyeste deal på selskapet.
-  const pendingRequests = await db
-    .select({
-      id: emailAccessGrants.id,
-      companyId: emailAccessGrants.companyId,
-      requesterName: users.name,
-      companyName: companies.name,
-    })
-    .from(emailAccessGrants)
-    .innerJoin(users, eq(emailAccessGrants.granteeUserId, users.id))
-    .innerJoin(companies, eq(emailAccessGrants.companyId, companies.id))
-    .where(
-      and(
-        eq(emailAccessGrants.ownerUserId, me.id),
-        eq(emailAccessGrants.status, "requested")
-      )
-    );
-
-  const companyOptions = (
-    await db.query.companies.findMany({ orderBy: [asc(companies.name)] })
-  ).map((c) => ({ id: c.id, name: c.name, logoUrl: c.logoUrl }));
-  const pipelineOptions = (await getPipelines()).map((p) => ({ id: p.id, name: p.name }));
-
   const dealForCompany = new Map<number, number>();
   for (const d of allDeals) {
     if (!dealForCompany.has(d.companyId)) dealForCompany.set(d.companyId, d.id);
   }
-  const slugMap = await getDealSlugMap();
   function dealSlugForCompany(companyId: number): string | null {
     const dealId = dealForCompany.get(companyId);
     return dealId == null ? null : (slugMap.get(dealId) ?? String(dealId));
   }
-
-  const recent = await db
-    .select({
-      id: activities.id,
-      content: activities.content,
-      type: activities.type,
-      createdAt: activities.createdAt,
-      userName: users.name,
-      dealId: activities.dealId,
-      dealTitle: deals.title,
-      companyName: companies.name,
-    })
-    .from(activities)
-    .innerJoin(deals, eq(activities.dealId, deals.id))
-    .innerJoin(companies, eq(deals.companyId, companies.id))
-    .leftJoin(users, eq(activities.userId, users.id))
-    .orderBy(desc(activities.createdAt))
-    .limit(8);
 
   const stats = [
     {

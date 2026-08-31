@@ -7,23 +7,23 @@ import PeopleTable, { type PersonRow } from "@/components/PeopleTable";
 export default async function PeoplePage() {
   await requireUser();
 
-  const allPeople = await db.query.people.findMany({ orderBy: [asc(people.name)] });
-  const allCompanies = await db.query.companies.findMany({ orderBy: [asc(companies.name)] });
-
-  const links = await db
-    .select({
-      personId: companyPeople.personId,
-      companyId: companies.id,
-      companyName: companies.name,
-      logoUrl: companies.logoUrl,
-      role: companyPeople.role,
-    })
-    .from(companyPeople)
-    .innerJoin(companies, eq(companyPeople.companyId, companies.id))
-    .orderBy(asc(companies.name));
-
-  const tagOptions = await getTags("person");
-  const tagLinks = await db.query.personTags.findMany();
+  const [allPeople, allCompanies, links, tagOptions, tagLinks] = await Promise.all([
+    db.query.people.findMany({ orderBy: [asc(people.name)] }),
+    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+    db
+      .select({
+        personId: companyPeople.personId,
+        companyId: companies.id,
+        companyName: companies.name,
+        logoUrl: companies.logoUrl,
+        role: companyPeople.role,
+      })
+      .from(companyPeople)
+      .innerJoin(companies, eq(companyPeople.companyId, companies.id))
+      .orderBy(asc(companies.name)),
+    getTags("person"),
+    db.query.personTags.findMany(),
+  ]);
   const tagIdsByPerson = new Map<number, number[]>();
   for (const l of tagLinks) {
     const list = tagIdsByPerson.get(l.personId) ?? [];

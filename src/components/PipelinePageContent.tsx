@@ -25,36 +25,72 @@ export default async function PipelinePageContent({
 }) {
   const me = await requireUser();
 
+  // Bare pipeline → pipelineId → stages er en ekte avhengighetskjede — alt
+  // annet under er uavhengig og hentes parallelt i stedet for i serie
+  // (produksjon går mot en ekstern Turso-database, så hvert await er en
+  // ekte nettverkstur; 12 sekvensielle spørringer på appens mest besøkte
+  // side var en stor del av at alt føltes tregt).
   const pipelines = await getPipelines();
   const pipelineId =
     filters.pipelineId != null && pipelines.some((p) => p.id === filters.pipelineId)
       ? filters.pipelineId
       : await getDefaultPipelineId();
 
-  const rows = await db
-    .select({
-      id: dealsTable.id,
-      title: dealsTable.title,
-      stage: dealsTable.stage,
-      value: dealsTable.value,
-      updatedAt: dealsTable.updatedAt,
-      followUpAt: dealsTable.followUpAt,
-      comment: dealsTable.comment,
-      ownerId: dealsTable.ownerId,
-      companyId: dealsTable.companyId,
-      companyName: companies.name,
-      logoUrl: companies.logoUrl,
-      companyBusinessUnitId: companies.businessUnitId,
-    })
-    .from(dealsTable)
-    .innerJoin(companies, eq(dealsTable.companyId, companies.id))
-    .orderBy(desc(dealsTable.updatedAt));
+  const [
+    rows,
+    allUsers,
+    coOwnerRows,
+    dealTagOptions,
+    dealTagRows,
+    companyOptionsRaw,
+    dealLineRows,
+    commentActivity,
+    stages,
+    businessUnits,
+    lostReasons,
+    slugMap,
+  ] = await Promise.all([
+    db
+      .select({
+        id: dealsTable.id,
+        title: dealsTable.title,
+        stage: dealsTable.stage,
+        value: dealsTable.value,
+        updatedAt: dealsTable.updatedAt,
+        followUpAt: dealsTable.followUpAt,
+        comment: dealsTable.comment,
+        ownerId: dealsTable.ownerId,
+        companyId: dealsTable.companyId,
+        companyName: companies.name,
+        logoUrl: companies.logoUrl,
+        companyBusinessUnitId: companies.businessUnitId,
+      })
+      .from(dealsTable)
+      .innerJoin(companies, eq(dealsTable.companyId, companies.id))
+      .orderBy(desc(dealsTable.updatedAt)),
+    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.dealOwners.findMany(),
+    getTags("deal"),
+    db.query.dealTags.findMany(),
+    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+    db.query.dealLines.findMany(),
+    // Hvem som sist rørte kommentarfeltet — "comment" er vanlig redigering,
+    // "lost" fordi tapt-flyten også kan legge til tekst i kommentaren.
+    // Mangler helt for CSV-importerte deals, som ikke logger en aktivitet.
+    db
+      .select({ dealId: activities.dealId, userId: activities.userId, createdAt: activities.createdAt })
+      .from(activities)
+      .where(inArray(activities.type, ["comment", "lost"]))
+      .orderBy(desc(activities.createdAt)),
+    getStages(pipelineId),
+    getBusinessUnits(),
+    getLostReasons(),
+    getDealSlugMap(),
+  ]);
 
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
   const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
 
-  const coOwnerRows = await db.query.dealOwners.findMany();
   const coOwnerIdsByDeal = new Map<number, number[]>();
   for (const r of coOwnerRows) {
     const list = coOwnerIdsByDeal.get(r.dealId) ?? [];
@@ -62,8 +98,6 @@ export default async function PipelinePageContent({
     coOwnerIdsByDeal.set(r.dealId, list);
   }
 
-  const dealTagOptions = await getTags("deal");
-  const dealTagRows = await db.query.dealTags.findMany();
   const tagIdsByDeal = new Map<number, number[]>();
   for (const r of dealTagRows) {
     const list = tagIdsByDeal.get(r.dealId) ?? [];
@@ -71,20 +105,14 @@ export default async function PipelinePageContent({
     tagIdsByDeal.set(r.dealId, list);
   }
 
-  const companyOptions = (
-    await db.query.companies.findMany({ orderBy: [asc(companies.name)] })
-  ).map((c) => ({ id: c.id, name: c.name, logoUrl: c.logoUrl }));
+  const companyOptions = companyOptionsRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    logoUrl: c.logoUrl,
+  }));
 
-  const lineDealIds = new Set((await db.query.dealLines.findMany()).map((l) => l.dealId));
+  const lineDealIds = new Set(dealLineRows.map((l) => l.dealId));
 
-  // Hvem som sist rørte kommentarfeltet — "comment" er vanlig redigering,
-  // "lost" fordi tapt-flyten også kan legge til tekst i kommentaren.
-  // Mangler helt for CSV-importerte deals, som ikke logger en aktivitet.
-  const commentActivity = await db
-    .select({ dealId: activities.dealId, userId: activities.userId, createdAt: activities.createdAt })
-    .from(activities)
-    .where(inArray(activities.type, ["comment", "lost"]))
-    .orderBy(desc(activities.createdAt));
   const commentActivityByDeal = new Map<number, { userId: number | null; createdAt: Date }>();
   for (const a of commentActivity) {
     if (!commentActivityByDeal.has(a.dealId)) {
@@ -99,11 +127,7 @@ export default async function PipelinePageContent({
     return commentActivityByDeal.get(dealId)?.createdAt.getTime() ?? null;
   }
 
-  const stages = await getStages(pipelineId);
   const pipelineStageIds = new Set(stages.map((s) => String(s.id)));
-  const businessUnits = await getBusinessUnits();
-  const lostReasons = await getLostReasons();
-  const slugMap = await getDealSlugMap();
   const stageOrder = new Map(stages.map((s, i) => [String(s.id), i]));
   const dealRows: DealRow[] = rows
     .filter((d) => pipelineStageIds.has(d.stage))

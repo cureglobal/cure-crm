@@ -284,8 +284,18 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_company_people_person ON company_people(person_id)",
   "CREATE INDEX IF NOT EXISTS idx_people_email ON people(email)",
   "CREATE INDEX IF NOT EXISTS idx_messages_company ON email_messages(company_id)",
+  // Dekker MAX(sent_at) GROUP BY company_id-aggregatet for "Sist kontakt"
+  // (bedriftsoversikten og enkelt-selskapssiden) — uten denne må hele
+  // tabellen skannes for hvert oppslag, og den vokser kontinuerlig med
+  // e-postsynken.
+  "CREATE INDEX IF NOT EXISTS idx_messages_company_sent ON email_messages(company_id, sent_at)",
   "CREATE INDEX IF NOT EXISTS idx_deal_lines_deal ON deal_lines(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_activities_deal ON activities(deal_id)",
+  // Pipeline-siden slår opp "hvem sist rørte kommentarfeltet" med
+  // WHERE type IN (...) ORDER BY created_at — uten denne blir det en full
+  // tabellskann + sortering av HELE aktivitetsloggen på hver eneste
+  // sidevisning, og den er den tabellen som vokser raskest i hele appen.
+  "CREATE INDEX IF NOT EXISTS idx_activities_type_created ON activities(type, created_at)",
   "CREATE INDEX IF NOT EXISTS idx_contact_events_company ON contact_events(company_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
