@@ -3371,11 +3371,38 @@ export async function deleteContactEvent(eventId: number, companyId: number) {
 
 // ---------- Notater ----------
 
+// Kort verb per kontakttype — brukt til å generere kontakthistorikk-
+// setningen automatisk når et notat markeres som faktisk kundekontakt (i
+// motsetning til et internt notat, f.eks. "telefonsvar", som ikke skal telle
+// som kontakt og derfor ikke har noe treff her).
+const NOTE_CONTACT_VERBS: Record<string, string> = {
+  epost: "sendte e-post om",
+  moete: "hadde møte om",
+  telefon: "snakket med kunden om",
+  tilbud: "sendte tilbud på",
+  annet: "hadde kontakt om",
+};
+
 export async function addNote(dealId: number, formData: FormData) {
   const me = await requireUser();
   const content = String(formData.get("content") ?? "").trim();
   if (!content) return;
   await db.insert(activities).values({ dealId, userId: me.id, type: "note", content });
+
+  const kind = String(formData.get("kind") ?? "").trim();
+  const verb = NOTE_CONTACT_VERBS[kind];
+  if (verb) {
+    const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+    if (deal) {
+      await db.insert(contactEvents).values({
+        companyId: deal.companyId,
+        userId: me.id,
+        kind,
+        note: `${me.name} ${verb} deal «${deal.title}».`,
+        occurredAt: new Date(),
+      });
+    }
+  }
   revalidateDealViews(dealId);
 }
 
@@ -3643,7 +3670,7 @@ export async function sendQuoteEmail(
     companyId: company.id,
     userId: me.id,
     kind: "tilbud",
-    note: `Pristilbud: ${deal.title}`,
+    note: `${me.name} sendte tilbud på deal «${deal.title}».`,
     occurredAt: new Date(),
   });
   revalidateDealViews(dealId);

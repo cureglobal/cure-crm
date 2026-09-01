@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { deleteContactEvent, logContact } from "@/lib/actions";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import Avatar from "@/components/Avatar";
-import { Plus, Trash2, Users, Phone, Mail, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Users, Phone, Mail, MessageSquare, FileText } from "lucide-react";
 
 export interface ContactLogItem {
   id: number;
@@ -19,6 +19,7 @@ const KINDS = [
   { id: "moete", label: "Møte", icon: <Users size={13} /> },
   { id: "telefon", label: "Telefon", icon: <Phone size={13} /> },
   { id: "epost", label: "E-post", icon: <Mail size={13} /> },
+  { id: "tilbud", label: "Tilbud", icon: <FileText size={13} /> },
   { id: "annet", label: "Annet", icon: <MessageSquare size={13} /> },
 ];
 

@@ -20,7 +20,6 @@ import {
 import { requireUser } from "@/lib/auth";
 import {
   addPersonToCompany,
-  addNote,
   unlinkPersonFromCompany,
   setFollowUp,
   updateDealDetails,
@@ -46,6 +45,7 @@ import SendQuoteButton from "@/components/SendQuoteButton";
 import DialogLog from "@/components/DialogLog";
 import DealOwners from "@/components/DealOwners";
 import DealTitleEdit from "@/components/DealTitleEdit";
+import AddNoteForm from "@/components/AddNoteForm";
 import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
@@ -202,7 +202,6 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   const rel = deal.followUpAt ? relativeDay(deal.followUpAt) : null;
 
   const addContactBound = addPersonToCompany.bind(null, company.id, dealId);
-  const addNoteBound = addNote.bind(null, dealId);
   const setFollowUpBound = setFollowUp.bind(null, dealId);
   const updateDetailsBound = updateDealDetails.bind(null, dealId);
 
@@ -621,18 +620,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
 
           <section className="card p-6">
             <h2 className="mb-3 text-[15px] font-semibold tracking-tight">Notater og aktivitet</h2>
-            <form action={addNoteBound} className="mb-5 flex flex-col gap-2">
-              <textarea
-                name="content"
-                rows={2}
-                required
-                placeholder="Skriv et notat …"
-                className="field resize-none"
-              />
-              <button type="submit" className="btn btn-secondary self-end">
-                Legg til notat
-              </button>
-            </form>
+            <AddNoteForm dealId={dealId} />
             <ul className="flex flex-col gap-4">
               {activityRows.map((a) => (
                 <li key={a.id} className="flex gap-3">
