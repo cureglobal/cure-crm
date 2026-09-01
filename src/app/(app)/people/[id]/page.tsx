@@ -26,6 +26,7 @@ import { getTags } from "@/lib/tags.server";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import DeletePersonButton from "@/components/DeletePersonButton";
+import ExportPersonDataButton from "@/components/ExportPersonDataButton";
 import TagsEditor from "@/components/TagsEditor";
 import { ArrowLeft, Mail, Phone, Plus, Trash2, TriangleAlert } from "lucide-react";
 
@@ -234,7 +235,8 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
             </form>
           </section>
 
-          <div className="self-start">
+          <div className="flex items-center gap-2 self-start">
+            <ExportPersonDataButton personId={personId} name={person.name} />
             <DeletePersonButton personId={personId} name={person.name} />
           </div>
         </div>

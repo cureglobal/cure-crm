@@ -2453,6 +2453,92 @@ export async function deletePerson(personId: number) {
   redirect("/people");
 }
 
+export interface PersonExportData {
+  exportedAt: string;
+  person: {
+    id: number;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    notes: string | null;
+    createdAt: string;
+  };
+  tags: string[];
+  companies: { name: string; role: string | null; since: string }[];
+  emails: {
+    direction: string;
+    subject: string | null;
+    fromAddr: string | null;
+    toAddr: string | null;
+    sentAt: string | null;
+    bodyText: string | null;
+  }[];
+}
+
+// GDPR-innsyn/dataportabilitet (art. 15/20): samler alt CRM-et faktisk har
+// lagret om én navngitt person — selve personkortet, selskapskoblinger og
+// e-poster adressert til/fra e-posten deres. Utelater bevisst frie
+// deal-notater (activities) — de er ikke strukturert per person, og å
+// grave etter navnetreff i fritekst ville gitt et upålitelig utvalg.
+export async function exportPersonData(personId: number): Promise<PersonExportData | null> {
+  await requireUser();
+  const person = await db.query.people.findFirst({ where: eq(people.id, personId) });
+  if (!person) return null;
+
+  const tagRows = await db
+    .select({ label: tags.label })
+    .from(personTags)
+    .innerJoin(tags, eq(personTags.tagId, tags.id))
+    .where(eq(personTags.personId, personId));
+
+  const companyRows = await db
+    .select({ name: companies.name, role: companyPeople.role, since: companyPeople.createdAt })
+    .from(companyPeople)
+    .innerJoin(companies, eq(companyPeople.companyId, companies.id))
+    .where(eq(companyPeople.personId, personId));
+
+  const email = person.email?.trim().toLowerCase();
+  const emailRows = email
+    ? await db
+        .select({
+          direction: emailMessages.direction,
+          subject: emailMessages.subject,
+          fromAddr: emailMessages.fromAddr,
+          toAddr: emailMessages.toAddr,
+          sentAt: emailMessages.sentAt,
+          bodyText: emailMessages.bodyText,
+        })
+        .from(emailMessages)
+        .where(or(like(emailMessages.fromAddr, `%${email}%`), like(emailMessages.toAddr, `%${email}%`)))
+    : [];
+
+  return {
+    exportedAt: new Date().toISOString(),
+    person: {
+      id: person.id,
+      name: person.name,
+      email: person.email,
+      phone: person.phone,
+      notes: person.notes,
+      createdAt: person.createdAt.toISOString(),
+    },
+    tags: tagRows.map((t) => t.label),
+    companies: companyRows.map((c) => ({
+      name: c.name,
+      role: c.role,
+      since: c.since.toISOString(),
+    })),
+    emails: emailRows.map((m) => ({
+      direction: m.direction,
+      subject: m.subject,
+      fromAddr: m.fromAddr,
+      toAddr: m.toAddr,
+      sentAt: m.sentAt ? m.sentAt.toISOString() : null,
+      bodyText: m.bodyText,
+    })),
+  };
+}
+
 // Knytter flere valgte personer til samme selskap samtidig, fra flervalg i listevisningen.
 export async function bulkLinkPeopleToCompany(personIds: number[], companyId: number) {
   await requireUser();

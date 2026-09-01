@@ -22,6 +22,9 @@ export async function createSession(userId: number) {
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
+    // Ikke satt i dev — en Secure-cookie blir stille forkastet av nettleseren
+    // på et usikret http://localhost, som ville brutt innlogging lokalt.
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
