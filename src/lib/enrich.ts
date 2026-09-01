@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { isSafeExternalUrl } from "@/lib/urlSafety";
 
 // E-postleverandører der domenet ikke sier noe om firmaet.
 const FREE_PROVIDERS = new Set([
@@ -45,6 +46,7 @@ export function logoUrlForDomain(domain: string): string {
 }
 
 async function fetchHtml(url: string): Promise<string | null> {
+  if (!(await isSafeExternalUrl(url))) return null;
   try {
     const res = await fetch(url, {
       redirect: "follow",

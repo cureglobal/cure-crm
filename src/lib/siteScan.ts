@@ -1,11 +1,16 @@
 import * as cheerio from "cheerio";
 import { estimateHours, type PhaseKey, type ScanSignals } from "@/lib/estimator";
 import { cleanTitle, fallbackNameFromDomain } from "@/lib/enrich";
+import { isSafeExternalUrl } from "@/lib/urlSafety";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
+// Sjekkes for HVER fetch her, ikke bare på URL-en brukeren opprinnelig
+// oppga — en robots.txt/sitemap hentet fra en ellers gyldig nettside kan
+// selv peke videre til en intern adresse (SSRF-kjeding).
 async function fetchText(url: string, xml = false): Promise<string | null> {
+  if (!(await isSafeExternalUrl(url))) return null;
   try {
     const res = await fetch(url, {
       redirect: "follow",

@@ -37,7 +37,13 @@ import {
   notifications,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
-import { perEmailLoginLimiter, perIpLoginLimiter } from "@/lib/rateLimit";
+import {
+  perEmailLoginLimiter,
+  perIpLoginLimiter,
+  sendQuoteLimiter,
+  manualSyncLimiter,
+  brregMatchAllLimiter,
+} from "@/lib/rateLimit";
 import { encrypt, decrypt } from "@/lib/crypto";
 import {
   isGoogleCalendarConfigured,
@@ -280,11 +286,16 @@ export async function updateUserName(userId: number, formData: FormData) {
 }
 
 // Admin kan endre bilde på hvem som helst; alle andre kan bare endre sitt eget.
+// Grensen matcher klientens 1,5 MB-sjekk (AvatarUpload/CompanyLogoUpload),
+// med litt margin for base64-overhead (~33 %) — klientsjekken alene stopper
+// ikke noen som kaller server-handlingen direkte med et større bilde.
+const MAX_IMAGE_DATA_URL_LENGTH = 2.1 * 1024 * 1024;
+
 export async function updateAvatar(userId: number, formData: FormData) {
   const me = await requireUser();
   if (me.id !== userId && !me.isAdmin) return;
   const avatar = String(formData.get("avatar") ?? "");
-  if (!avatar.startsWith("data:image/")) return;
+  if (!avatar.startsWith("data:image/") || avatar.length > MAX_IMAGE_DATA_URL_LENGTH) return;
   await db.update(users).set({ avatarDataUrl: avatar }).where(eq(users.id, userId));
   revalidatePath("/settings");
   revalidatePath("/", "layout");
@@ -308,7 +319,8 @@ export async function setUserBusinessUnit(userId: number, businessUnitId: number
 // ---------- Egne selskap (business units) ----------
 
 export async function createBusinessUnit(formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
+  if (!me.isAdmin) return null;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return null;
   const existing = await db.query.businessUnits.findMany({
@@ -324,7 +336,8 @@ export async function createBusinessUnit(formData: FormData) {
 }
 
 export async function updateBusinessUnit(id: number, formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
+  if (!me.isAdmin) return;
   const set: Record<string, unknown> = {};
   if (formData.has("name")) {
     const name = String(formData.get("name") ?? "").trim();
@@ -342,7 +355,8 @@ export async function updateBusinessUnit(id: number, formData: FormData) {
 export async function deleteBusinessUnit(
   id: number
 ): Promise<{ ok: boolean; message: string }> {
-  await requireUser();
+  const me = await requireUser();
+  if (!me.isAdmin) return { ok: false, message: "Krever administratortilgang." };
   const usedByUser = await db.query.users.findFirst({
     where: eq(users.businessUnitId, id),
   });
@@ -2481,7 +2495,7 @@ export interface PersonExportData {
 // deal-notater (activities) — de er ikke strukturert per person, og å
 // grave etter navnetreff i fritekst ville gitt et upålitelig utvalg.
 export async function exportPersonData(personId: number): Promise<PersonExportData | null> {
-  await requireUser();
+  const me = await requireUser();
   const person = await db.query.people.findFirst({ where: eq(people.id, personId) });
   if (!person) return null;
 
@@ -2498,19 +2512,45 @@ export async function exportPersonData(personId: number): Promise<PersonExportDa
     .where(eq(companyPeople.personId, personId));
 
   const email = person.email?.trim().toLowerCase();
-  const emailRows = email
+  const emailRowsRaw = email
     ? await db
         .select({
+          companyId: emailMessages.companyId,
           direction: emailMessages.direction,
           subject: emailMessages.subject,
           fromAddr: emailMessages.fromAddr,
           toAddr: emailMessages.toAddr,
           sentAt: emailMessages.sentAt,
           bodyText: emailMessages.bodyText,
+          ownerUserId: emailAccounts.userId,
         })
         .from(emailMessages)
+        .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
         .where(or(like(emailMessages.fromAddr, `%${email}%`), like(emailMessages.toAddr, `%${email}%`)))
     : [];
+
+  // Ikke-admin får bare med e-poster de selv eier eller har fått godkjent
+  // innsyn i, akkurat som på selskapssiden — ellers ville "eksporter data"
+  // vært en bakvei forbi hele godkjenningsflyten i emailAccessGrants og latt
+  // hvem som helst lese en kollegas private dialog. Admin får hele
+  // historikken, siden et reelt GDPR-innsynskrav er et virksomhetsansvar.
+  let emailRows = emailRowsRaw;
+  if (!me.isAdmin) {
+    const ownerIds = [...new Set(emailRowsRaw.map((m) => m.ownerUserId))];
+    const grants = ownerIds.length
+      ? await db.query.emailAccessGrants.findMany({
+          where: and(
+            eq(emailAccessGrants.granteeUserId, me.id),
+            eq(emailAccessGrants.status, "granted"),
+            inArray(emailAccessGrants.ownerUserId, ownerIds)
+          ),
+        })
+      : [];
+    const grantedPairs = new Set(grants.map((g) => `${g.companyId}:${g.ownerUserId}`));
+    emailRows = emailRowsRaw.filter(
+      (m) => m.ownerUserId === me.id || grantedPairs.has(`${m.companyId}:${m.ownerUserId}`)
+    );
+  }
 
   return {
     exportedAt: new Date().toISOString(),
@@ -2612,7 +2652,7 @@ export async function createCompany(formData: FormData) {
 export async function updateCompanyLogo(companyId: number, formData: FormData) {
   await requireUser();
   const logo = String(formData.get("logo") ?? "");
-  if (!logo.startsWith("data:image/")) return;
+  if (!logo.startsWith("data:image/") || logo.length > MAX_IMAGE_DATA_URL_LENGTH) return;
   await db.update(companies).set({ logoUrl: logo }).where(eq(companies.id, companyId));
   revalidatePath(`/companies/${companyId}`);
   revalidateDealViews();
@@ -2949,8 +2989,12 @@ export async function autoMatchAllCompanies(): Promise<{
   checked: number;
   matched: number;
   unresolved: UnresolvedCompany[];
+  limited?: boolean;
 }> {
-  await requireUser();
+  const me = await requireUser();
+  if (!brregMatchAllLimiter.tryConsume(String(me.id))) {
+    return { checked: 0, matched: 0, unresolved: [], limited: true };
+  }
   const pending = await db.query.companies.findMany({
     where: eq(companies.brregVerified, false),
   });
@@ -3558,6 +3602,9 @@ export async function updateTheme(formData: FormData) {
 
 export async function syncEmailsNow(): Promise<{ ok: boolean; message: string }> {
   const me = await requireUser();
+  if (!manualSyncLimiter.tryConsume(String(me.id))) {
+    return { ok: false, message: "Vent litt før du synker igjen." };
+  }
   const account = await db.query.emailAccounts.findFirst({
     where: eq(emailAccounts.userId, me.id),
   });
@@ -3678,12 +3725,16 @@ export async function syncGoogleCalendarNow(): Promise<{ ok: boolean; message: s
     revalidatePath("/settings");
     return { ok: true, message: `Synk fullført — ${logged} nye møter logget.` };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Samme prinsipp som i sendQuoteEmail: rå Google API-feil kan inneholde
+    // interne detaljer, logges i sin helhet server-side, generell melding
+    // til brukeren (også den som lagres som lastError og vises i UI).
+    console.error("syncGoogleCalendarNow feilet:", err);
+    const message = "Synk feilet. Prøv å koble til Google Kalender på nytt om problemet vedvarer.";
     await db
       .update(calendarAccounts)
       .set({ lastError: message })
       .where(eq(calendarAccounts.id, account.id));
-    return { ok: false, message: `Synk feilet: ${message}` };
+    return { ok: false, message };
   }
 }
 
@@ -3694,8 +3745,14 @@ export async function sendQuoteEmail(
   recipients: string[]
 ): Promise<{ ok: boolean; message: string }> {
   const me = await requireUser();
+  if (!sendQuoteLimiter.tryConsume(String(me.id))) {
+    return { ok: false, message: "For mange tilbud sendt på kort tid — prøv igjen om litt." };
+  }
   const clean = [...new Set(recipients.map((r) => r.trim().toLowerCase()).filter(Boolean))];
   if (clean.length === 0) return { ok: false, message: "Velg minst én mottaker." };
+  if (clean.length > 10) {
+    return { ok: false, message: "Maks 10 mottakere per pristilbud." };
+  }
 
   const account = await db.query.emailAccounts.findFirst({
     where: eq(emailAccounts.userId, me.id),
@@ -3711,7 +3768,7 @@ export async function sendQuoteEmail(
 
   const lines = await db.query.dealLines.findMany({ where: eq(dealLines.dealId, dealId) });
   if (lines.length === 0) {
-    return { ok: false, message: "Ingen varelinjer å sende — legg til priser under Prisverktøy først." };
+    return { ok: false, message: "Ingen varelinjer å sende — legg til priser under Varelinjer først." };
   }
 
   const dateLabel = formatDateShort(new Date());
@@ -3740,9 +3797,13 @@ export async function sendQuoteEmail(
       attachment: { filename, content: pdfBuffer },
     });
   } catch (err) {
+    // Rå SMTP/IMAP-feilmeldinger kan inneholde interne detaljer (auth-tokens,
+    // interne verts-/portnummer) — logges i sin helhet server-side, men
+    // brukeren får bare en generell melding.
+    console.error("sendQuoteEmail feilet:", err);
     return {
       ok: false,
-      message: `Sending feilet: ${err instanceof Error ? err.message : "ukjent feil"}`,
+      message: "Sending feilet. Sjekk at e-postkontoen din i Innstillinger fortsatt er koblet til.",
     };
   }
 

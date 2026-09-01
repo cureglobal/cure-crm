@@ -46,7 +46,7 @@ import DialogLog from "@/components/DialogLog";
 import DealOwners from "@/components/DealOwners";
 import DealTitleEdit from "@/components/DealTitleEdit";
 import AddNoteForm from "@/components/AddNoteForm";
-import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock, Calculator } from "lucide-react";
+import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock } from "lucide-react";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getLostReasons } from "@/lib/lostReasons.server";
@@ -496,13 +496,6 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
                     Dealverdi: {formatMoney(deal.value)}
                   </span>
                 )}
-                <Link
-                  href={`/estimat?dealId=${deal.id}`}
-                  className="flex items-center gap-1.5 text-[12.5px] font-medium text-accent hover:underline"
-                >
-                  <Calculator size={13} />
-                  Prisverktøy
-                </Link>
               </div>
             </div>
             {lines.length === 0 && (

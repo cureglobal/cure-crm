@@ -120,6 +120,7 @@ export default function BrregMatchAll({ unverified }: { unverified: number }) {
   const [pending, startTransition] = useTransition();
   const [summary, setSummary] = useState<{ checked: number; matched: number } | null>(null);
   const [unresolved, setUnresolved] = useState<UnresolvedCompany[]>([]);
+  const [limited, setLimited] = useState(false);
 
   function removeResolved(id: number) {
     setUnresolved((prev) => prev.filter((u) => u.id !== id));
@@ -139,7 +140,12 @@ export default function BrregMatchAll({ unverified }: { unverified: number }) {
           onClick={() =>
             startTransition(async () => {
               setSummary(null);
+              setLimited(false);
               const res = await autoMatchAllCompanies();
+              if (res.limited) {
+                setLimited(true);
+                return;
+              }
               setSummary({ checked: res.checked, matched: res.matched });
               setUnresolved(res.unresolved);
             })
@@ -151,6 +157,11 @@ export default function BrregMatchAll({ unverified }: { unverified: number }) {
         </button>
       )}
 
+      {limited && (
+        <p className="rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] font-medium text-warning-ink">
+          Kjørt nylig — vent noen minutter før du prøver igjen.
+        </p>
+      )}
       {summary && (
         <p className="rounded-xl bg-success/10 px-4 py-2.5 text-[13px] font-medium text-success-ink">
           {summary.matched} av {summary.checked} selskaper ble bekreftet automatisk.

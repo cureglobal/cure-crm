@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { completeOnboarding } from "@/lib/actions";
-import { Columns3, Building2, Calculator, Settings, X, ArrowRight, ArrowLeft, PartyPopper } from "lucide-react";
+import { Columns3, Building2, Settings, X, ArrowRight, ArrowLeft, PartyPopper } from "lucide-react";
 
 interface Step {
   icon: ReactNode;
@@ -25,11 +25,6 @@ const STEPS: Step[] = [
     icon: <Building2 size={20} />,
     title: "Ny deal og ny bedrift",
     body: "«Ny deal»-knappen finnes på Oversikt og Pipeline — søk opp selskapet i Brønnøysundregisteret eller legg det inn manuelt. Bedrifter kan også opprettes direkte fra Bedrifter-siden.",
-  },
-  {
-    icon: <Calculator size={20} />,
-    title: "Prisverktøy",
-    body: "Skann en nettside for et automatisk startestimat, juster timene selv, og lagre rett på en ny eller eksisterende deal — du kan til og med sende tilbudet til kunden derfra.",
   },
   {
     icon: <Settings size={20} />,

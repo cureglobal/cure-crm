@@ -1,12 +1,16 @@
 import { asc, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { db, deals as dealsTable, companies, referenceProjects as referenceProjectsTable } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import EstimateTool from "@/components/EstimateTool";
 import type { ReferenceProjectData } from "@/components/ReferenceProjects";
 
+// Prisverktøyet er ikke klart ennå — skjult fra navigasjonen, og
+// direkte-URL-tilgang stenges her også.
 export default async function EstimatePage({ searchParams }: PageProps<"/estimat">) {
-  await requireUser();
+  const me = await requireUser();
+  if (!me.isAdmin) redirect("/");
   const params = await searchParams;
 
   const dealIdParam = Number(params.dealId);

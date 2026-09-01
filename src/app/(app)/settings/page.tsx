@@ -438,35 +438,37 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         </CollapsibleSection>
       </section>
 
-      <section className="card mb-6 p-6">
-        <div className="mb-4 flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-            <Landmark size={16} />
-          </span>
-          <div>
-            <h2 className="text-[15px] font-semibold tracking-tight">Våre selskap</h2>
-            <p className="text-[12.5px] text-ink-soft">
-              De juridiske enhetene vi selv jobber i (f.eks. Cure AS, Cure Christiania AS).
-              Knytt brukere til riktig selskap nedenfor i Brukere, og kunder inne på hver
-              enkelt bedriftsside.
-            </p>
+      {me.isAdmin && (
+        <section className="card mb-6 p-6">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+              <Landmark size={16} />
+            </span>
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-tight">Våre selskap</h2>
+              <p className="text-[12.5px] text-ink-soft">
+                De juridiske enhetene vi selv jobber i (f.eks. Cure AS, Cure Christiania AS).
+                Knytt brukere til riktig selskap nedenfor i Brukere, og kunder inne på hver
+                enkelt bedriftsside. Kun synlig for administratorer.
+              </p>
+            </div>
           </div>
-        </div>
-        <CollapsibleSection>
-          <BusinessUnitsManager
-            units={businessUnitRows.map((u) => ({
-              id: u.id,
-              name: u.name,
-              orgNumber: u.orgNumber,
-              orgName: u.orgName,
-              brregVerified: u.brregVerified,
-              address: u.address,
-              postalCode: u.postalCode,
-              city: u.city,
-            }))}
-          />
-        </CollapsibleSection>
-      </section>
+          <CollapsibleSection>
+            <BusinessUnitsManager
+              units={businessUnitRows.map((u) => ({
+                id: u.id,
+                name: u.name,
+                orgNumber: u.orgNumber,
+                orgName: u.orgName,
+                brregVerified: u.brregVerified,
+                address: u.address,
+                postalCode: u.postalCode,
+                city: u.city,
+              }))}
+            />
+          </CollapsibleSection>
+        </section>
+      )}
 
       <section className="card mb-6 p-6">
         <div className="mb-4 flex items-center gap-2.5">

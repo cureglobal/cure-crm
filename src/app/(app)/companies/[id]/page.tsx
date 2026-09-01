@@ -147,15 +147,24 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     .where(eq(contactEvents.companyId, companyId))
     .orderBy(desc(contactEvents.occurredAt));
 
+  // Emne, avsender og hvilken kollega som eier dialogen er privat inntil
+  // innsyn er godkjent (se dialogOwners/grants-sjekken lenger ned som styrer
+  // selve e-posttråden) — kontakthistorikken skal derfor ikke lekke det
+  // samme innholdet via en generell "noen har vært i kontakt"-oversikt.
   const emailContacts = messages
     .filter((m) => m.sentAt)
-    .map((m) => ({
-      id: m.id,
-      kind: "epost",
-      note: m.subject,
-      occurredAt: m.sentAt!,
-      userName: ownerNameById.get(m.ownerUserId) ?? null,
-    }));
+    .map((m) => {
+      const isMine = m.ownerUserId === me.id;
+      const grant = grants.find((g) => g.ownerUserId === m.ownerUserId);
+      const canSee = isMine || grant?.status === "granted";
+      return {
+        id: m.id,
+        kind: "epost",
+        note: canSee ? m.subject : "Noen fra oss har kontaktet selskapet",
+        occurredAt: m.sentAt!,
+        userName: canSee ? (ownerNameById.get(m.ownerUserId) ?? null) : null,
+      };
+    });
 
   const contactHistory = [
     ...manualContacts.map((c) => ({ ...c, source: "manuell" as const })),
