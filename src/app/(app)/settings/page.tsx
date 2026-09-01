@@ -33,7 +33,6 @@ import LostReasonsManager from "@/components/LostReasonsManager";
 import TagsManager from "@/components/TagsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
 import AvatarUpload from "@/components/AvatarUpload";
-import Avatar from "@/components/Avatar";
 import UserNameEdit from "@/components/UserNameEdit";
 import AdminToggle from "@/components/AdminToggle";
 import UserActions from "@/components/UserActions";
@@ -331,23 +330,25 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <SalesTargetManager
-          year={salesTargetYear}
-          totalAmount={businessUnitTargetRows.reduce((acc, r) => acc + r.totalAmount, 0)}
-          q1Weight={salesTarget?.q1Weight ?? 25}
-          q2Weight={salesTarget?.q2Weight ?? 25}
-          q3Weight={salesTarget?.q3Weight ?? 25}
-          q4Weight={salesTarget?.q4Weight ?? 25}
-          monthlyActuals={monthlyActualRows.map((m) => ({ month: m.month, amount: m.amount }))}
-          businessUnitTargets={businessUnitRows.map((u) => {
-            const t = businessUnitTargetRows.find((r) => r.businessUnitId === u.id);
-            return {
-              businessUnitId: u.id,
-              name: u.name,
-              totalAmount: t?.totalAmount ?? 0,
-            };
-          })}
-        />
+        <CollapsibleSection>
+          <SalesTargetManager
+            year={salesTargetYear}
+            totalAmount={businessUnitTargetRows.reduce((acc, r) => acc + r.totalAmount, 0)}
+            q1Weight={salesTarget?.q1Weight ?? 25}
+            q2Weight={salesTarget?.q2Weight ?? 25}
+            q3Weight={salesTarget?.q3Weight ?? 25}
+            q4Weight={salesTarget?.q4Weight ?? 25}
+            monthlyActuals={monthlyActualRows.map((m) => ({ month: m.month, amount: m.amount }))}
+            businessUnitTargets={businessUnitRows.map((u) => {
+              const t = businessUnitTargetRows.find((r) => r.businessUnitId === u.id);
+              return {
+                businessUnitId: u.id,
+                name: u.name,
+                totalAmount: t?.totalAmount ?? 0,
+              };
+            })}
+          />
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">
@@ -384,9 +385,11 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <LostReasonsManager
-          reasons={lostReasonRows.map((r) => ({ id: r.id, label: r.label }))}
-        />
+        <CollapsibleSection>
+          <LostReasonsManager
+            reasons={lostReasonRows.map((r) => ({ id: r.id, label: r.label }))}
+          />
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">
@@ -449,18 +452,20 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <BusinessUnitsManager
-          units={businessUnitRows.map((u) => ({
-            id: u.id,
-            name: u.name,
-            orgNumber: u.orgNumber,
-            orgName: u.orgName,
-            brregVerified: u.brregVerified,
-            address: u.address,
-            postalCode: u.postalCode,
-            city: u.city,
-          }))}
-        />
+        <CollapsibleSection>
+          <BusinessUnitsManager
+            units={businessUnitRows.map((u) => ({
+              id: u.id,
+              name: u.name,
+              orgNumber: u.orgNumber,
+              orgName: u.orgName,
+              brregVerified: u.brregVerified,
+              address: u.address,
+              postalCode: u.postalCode,
+              city: u.city,
+            }))}
+          />
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">
@@ -509,11 +514,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
           </div>
         </div>
-        <BulkCreateDeals
-          owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
-          currentUserId={me.id}
-          pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
-        />
+        <CollapsibleSection>
+          <BulkCreateDeals
+            owners={allUsers.map((u) => ({ id: u.id, name: u.name }))}
+            currentUserId={me.id}
+            pipelines={pipelineRows.map((p) => ({ id: p.id, name: p.name }))}
+          />
+        </CollapsibleSection>
       </section>
 
       <section className="card mb-6 p-6">
@@ -534,65 +541,50 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <BulkMarkContacted />
       </section>
 
-      <section className="card mb-6 p-6">
-        <div className="mb-4 flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-            <Users size={16} />
-          </span>
-          <div>
-            <h2 className="text-[15px] font-semibold tracking-tight">Brukere</h2>
-            <p className="text-[12.5px] text-ink-soft">
-              Alle brukere ser leads, faser og kontakter — men e-postdialog er privat per bruker.
-            </p>
+      {me.isAdmin && (
+        <section className="card p-6">
+          <div className="mb-4 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
+              <Users size={16} />
+            </span>
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-tight">Brukere</h2>
+              <p className="text-[12.5px] text-ink-soft">
+                Alle brukere ser leads, faser og kontakter — men e-postdialog er privat per
+                bruker. Kun synlig for administratorer.
+              </p>
+            </div>
           </div>
-        </div>
-        <ul className="mb-5 flex flex-col gap-2">
-          {allUsers.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-3">
-              <AvatarUpload
-                userId={u.id}
-                name={u.name}
-                avatarDataUrl={u.avatarDataUrl}
-                size={36}
-                editable={me.isAdmin || u.id === me.id}
-              />
-              <div className="min-w-0 flex-1">
-                {me.isAdmin || u.id === me.id ? (
+          <ul className="mb-5 flex flex-col gap-2">
+            {allUsers.map((u) => (
+              <li
+                key={u.id}
+                className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-3"
+              >
+                <AvatarUpload
+                  userId={u.id}
+                  name={u.name}
+                  avatarDataUrl={u.avatarDataUrl}
+                  size={36}
+                  editable
+                />
+                <div className="min-w-0 flex-1">
                   <UserNameEdit userId={u.id} initialName={u.name} isSelf={u.id === me.id} />
-                ) : (
-                  <p className="text-[13.5px] font-medium">{u.name}</p>
-                )}
-                <p className="text-[12.5px] text-ink-soft">{u.email}</p>
-              </div>
-              {me.isAdmin ? (
-                <>
-                  <UserBusinessUnitSelect
-                    userId={u.id}
-                    initialBusinessUnitId={u.businessUnitId}
-                    units={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
-                  />
-                  <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
-                  <UserActions userId={u.id} canDelete={u.id !== me.id} />
-                </>
-              ) : (
-                <>
-                  {businessUnitRows.find((b) => b.id === u.businessUnitId) && (
-                    <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
-                      {businessUnitRows.find((b) => b.id === u.businessUnitId)?.name}
-                    </span>
-                  )}
-                  {u.isAdmin && (
-                    <span className="shrink-0 rounded-full bg-mist/[0.06] px-2.5 py-1 text-[11px] font-medium text-ink-soft">
-                      Administrator
-                    </span>
-                  )}
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+                  <p className="text-[12.5px] text-ink-soft">
+                    {u.email} · Sist online {relativeTimeAgo(u.lastSeenAt)}
+                  </p>
+                </div>
+                <UserBusinessUnitSelect
+                  userId={u.id}
+                  initialBusinessUnitId={u.businessUnitId}
+                  units={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
+                />
+                <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
+                <UserActions userId={u.id} canDelete={u.id !== me.id} />
+              </li>
+            ))}
+          </ul>
 
-        {me.isAdmin && (
           <form action={addUser} className="flex flex-col gap-2.5 border-t border-line pt-5">
             <h3 className="text-[13.5px] font-semibold">Legg til bruker</h3>
             <div className="grid grid-cols-2 gap-2">
@@ -622,43 +614,6 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               Opprett bruker
             </button>
           </form>
-        )}
-      </section>
-
-      {me.isAdmin && (
-        <section className="card p-6">
-          <div className="mb-4 flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-accent-soft text-accent">
-              <Clock size={16} />
-            </span>
-            <div>
-              <h2 className="text-[15px] font-semibold tracking-tight">Sist online</h2>
-              <p className="text-[12.5px] text-ink-soft">
-                Kun synlig for administratorer. Oppdateres når brukeren gjør noe i CRM-et.
-              </p>
-            </div>
-          </div>
-          <CollapsibleSection prominent>
-            <ul className="flex flex-col gap-1.5">
-              {allUsers
-                .slice()
-                .sort((a, b) => (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0))
-                .map((u) => (
-                  <li
-                    key={u.id}
-                    className="flex items-center gap-3 rounded-xl bg-mist/[0.03] px-4 py-2.5"
-                  >
-                    <Avatar name={u.name} imageUrl={u.avatarDataUrl} size={28} />
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                      {u.name}
-                    </span>
-                    <span className="shrink-0 text-[12.5px] text-ink-soft">
-                      {relativeTimeAgo(u.lastSeenAt)}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          </CollapsibleSection>
         </section>
       )}
     </div>
