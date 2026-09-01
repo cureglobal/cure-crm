@@ -3750,8 +3750,8 @@ export async function sendQuoteEmail(
   }
   const clean = [...new Set(recipients.map((r) => r.trim().toLowerCase()).filter(Boolean))];
   if (clean.length === 0) return { ok: false, message: "Velg minst én mottaker." };
-  if (clean.length > 10) {
-    return { ok: false, message: "Maks 10 mottakere per pristilbud." };
+  if (clean.length > 20) {
+    return { ok: false, message: "Maks 20 mottakere per pristilbud." };
   }
 
   const account = await db.query.emailAccounts.findFirst({

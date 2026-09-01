@@ -57,9 +57,9 @@ function createActionLimiter(maxPerWindow: number, windowMs: number) {
   };
 }
 
-// Maks 20 pristilbud sendt per bruker per time — langt over reelt behov for
+// Maks 40 pristilbud sendt per bruker per time — langt over reelt behov for
 // et lite salgsteam, men stopper at en konto brukt til å spamme ut e-post.
-export const sendQuoteLimiter = createActionLimiter(20, 60 * 60 * 1000);
+export const sendQuoteLimiter = createActionLimiter(40, 60 * 60 * 1000);
 // Maks én manuell synk-utløsning per bruker/konto per 30 sekunder.
 export const manualSyncLimiter = createActionLimiter(1, 30 * 1000);
 // Maks én "match alle mot Brreg"-kjøring per bruker per 5 minutter — den
