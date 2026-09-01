@@ -825,28 +825,44 @@ export async function bulkCreateDealsForCompanies(
 
 export async function updateDealStage(dealId: number, stage: string) {
   const me = await requireUser();
-  const stageRow = await db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) });
-  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  const [stageRow, deal] = await Promise.all([
+    db.query.stages.findFirst({ where: eq(stages.id, Number(stage)) }),
+    db.query.deals.findFirst({ where: eq(deals.id, dealId) }),
+  ]);
   if (!deal) return;
 
   const set: Record<string, unknown> = { stage, updatedAt: new Date() };
   if (stageRow?.isWon) set.closedAt = new Date();
-  await db.update(deals).set(set).where(eq(deals.id, dealId));
 
-  let type = "stage";
-  let content = `Flyttet til «${stageRow?.label ?? stage}»`;
   if (stageRow?.isWon) {
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, deal.companyId),
+    const [, company, names] = await Promise.all([
+      db.update(deals).set(set).where(eq(deals.id, dealId)),
+      db.query.companies.findFirst({ where: eq(companies.id, deal.companyId) }),
+      taggedNames(dealId, deal.ownerId),
+    ]);
+    await db.insert(activities).values({
+      dealId,
+      userId: me.id,
+      type: "won",
+      content: `${formatNameList(names)} solgte «${deal.title}» til ${
+        company?.name ?? "kunden"
+      } for ${formatMoney(deal.value ?? 0)}! 🎉`,
     });
-    const names = await taggedNames(dealId, deal.ownerId);
-    type = "won";
-    content = `${formatNameList(names)} solgte «${deal.title}» til ${
-      company?.name ?? "kunden"
-    } for ${formatMoney(deal.value ?? 0)}! 🎉`;
+  } else {
+    // Vanligste tilfellet (flytting mellom vanlige faser) — oppdatering og
+    // aktivitetslogg er uavhengige av hverandre, kjøres samtidig i stedet for
+    // i serie. Dette er den hyppigst brukte handlingen i hele appen
+    // (dra-og-slipp i Pipeline), så antall runder her merkes godt.
+    await Promise.all([
+      db.update(deals).set(set).where(eq(deals.id, dealId)),
+      db.insert(activities).values({
+        dealId,
+        userId: me.id,
+        type: "stage",
+        content: `Flyttet til «${stageRow?.label ?? stage}»`,
+      }),
+    ]);
   }
-
-  await db.insert(activities).values({ dealId, userId: me.id, type, content });
   revalidateDealViews(dealId);
 }
 
@@ -1369,33 +1385,36 @@ export async function updateDealDetails(dealId: number, formData: FormData) {
       ? Math.max(0, Math.min(100, Math.round(probabilityNum)))
       : null;
 
-  if (comment !== deal.comment) {
-    await db.insert(activities).values({
-      dealId,
-      userId: me.id,
-      type: "comment",
-      content: comment ? `Oppdaterte kommentaren: «${comment}»` : "Fjernet kommentaren",
-    });
-  }
-
-  await db
-    .update(deals)
-    .set({
-      ...(title ? { title } : {}),
-      comment,
-      // Verdi styres av varelinjene når de finnes; da sendes ikke feltet inn.
-      ...(hasValueField ? { value: valueRaw ? Number(valueRaw) : null } : {}),
-      ...(hasProbabilityField ? { probabilityOverride } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(deals.id, dealId));
-
   const companyName = String(formData.get("companyName") ?? "").trim();
   const website = String(formData.get("website") ?? "").trim() || null;
-  await db
-    .update(companies)
-    .set({ ...(companyName ? { name: companyName } : {}), website })
-    .where(eq(companies.id, deal.companyId));
+
+  // De tre skrivingene under er uavhengige av hverandre (ulike rader/
+  // tabeller) — kjøres samtidig i stedet for i serie.
+  await Promise.all([
+    comment !== deal.comment
+      ? db.insert(activities).values({
+          dealId,
+          userId: me.id,
+          type: "comment",
+          content: comment ? `Oppdaterte kommentaren: «${comment}»` : "Fjernet kommentaren",
+        })
+      : Promise.resolve(),
+    db
+      .update(deals)
+      .set({
+        ...(title ? { title } : {}),
+        comment,
+        // Verdi styres av varelinjene når de finnes; da sendes ikke feltet inn.
+        ...(hasValueField ? { value: valueRaw ? Number(valueRaw) : null } : {}),
+        ...(hasProbabilityField ? { probabilityOverride } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(deals.id, dealId)),
+    db
+      .update(companies)
+      .set({ ...(companyName ? { name: companyName } : {}), website })
+      .where(eq(companies.id, deal.companyId)),
+  ]);
 
   revalidateDealViews(dealId);
 }
@@ -1435,6 +1454,10 @@ export async function updateDealInline(dealId: number, formData: FormData) {
     set.value = valueRaw ? Number(valueRaw) : null;
   }
 
+  // Selve oppdateringen starter med det samme — den er uavhengig av
+  // kommentar-sjekken under, så de to kjører samtidig i stedet for i serie.
+  const updatePromise = db.update(deals).set(set).where(eq(deals.id, dealId));
+
   // Logges kun i "Notater og aktivitet" hvis kommentaren faktisk endres —
   // ellers ville hver blur på et uendret felt skapt en aktivitetsrad.
   if (newComment !== undefined) {
@@ -1449,7 +1472,7 @@ export async function updateDealInline(dealId: number, formData: FormData) {
     }
   }
 
-  await db.update(deals).set(set).where(eq(deals.id, dealId));
+  await updatePromise;
   revalidateDealViews(dealId);
 }
 
