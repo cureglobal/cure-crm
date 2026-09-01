@@ -14,6 +14,7 @@ import {
 import { parseCsv, findColumn, cell, parseNumber, parseDate } from "@/lib/csv";
 import { firstStageId, type Stage } from "@/lib/stages";
 import { formatMoney } from "@/lib/format";
+import BulkProgress from "@/components/BulkProgress";
 import {
   Upload,
   X,
@@ -855,6 +856,12 @@ export default function ImportDialog({
                     </>
                   )}
                 </button>
+                <BulkProgress
+                  active={pending}
+                  label="Importerer"
+                  itemCount={parsed.count}
+                  secondsPerItem={0.5}
+                />
                 {parsed.kind === "bedrifter" && (
                   <p className="-mt-2 text-[12px] text-ink-faint">
                     Bedrifter slås automatisk opp i Enhetsregisteret etter import.

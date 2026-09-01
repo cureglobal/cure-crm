@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions";
 import { toDateStr } from "@/components/CalendarPopover";
 import { formatOrgNumber } from "@/components/CompanyFacts";
+import BulkProgress from "@/components/BulkProgress";
 import { Search, Plus } from "lucide-react";
 
 type Resolution = number | "new";
@@ -312,6 +313,15 @@ export default function BulkCreateDeals({
           <Plus size={14} />
           {creating ? "Oppretter …" : `Opprett ${preview.length} deals`}
         </button>
+      )}
+
+      {preview && (
+        <BulkProgress
+          active={creating}
+          label="Oppretter deals"
+          itemCount={preview.length}
+          secondsPerItem={0.4}
+        />
       )}
 
       {result && (

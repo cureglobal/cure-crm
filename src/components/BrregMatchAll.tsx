@@ -8,6 +8,7 @@ import {
   type UnresolvedCompany,
 } from "@/lib/actions";
 import type { BrregHit } from "@/lib/brreg";
+import BulkProgress from "@/components/BulkProgress";
 import { Wand2, Search, Check } from "lucide-react";
 
 function formatOrgNumber(org: string | null): string {
@@ -156,6 +157,13 @@ export default function BrregMatchAll({ unverified }: { unverified: number }) {
           {pending ? "Søker i Enhetsregisteret …" : `Match ${unverified} selskaper`}
         </button>
       )}
+
+      <BulkProgress
+        active={pending}
+        label="Søker i Enhetsregisteret"
+        itemCount={unverified}
+        secondsPerItem={1}
+      />
 
       {limited && (
         <p className="rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] font-medium text-warning-ink">
