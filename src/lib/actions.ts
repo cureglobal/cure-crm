@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { and, asc, count, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or } from "drizzle-orm";
 import {
   db,
   users,
@@ -196,6 +196,59 @@ async function taggedNames(dealId: number, ownerId: number | null): Promise<stri
     (n): n is string => !!n
   );
   return names.map(firstName);
+}
+
+// Samme som taggedNames + selskapsnavn, men for en HEL gruppe deals i tre
+// batchede spørringer i stedet for taggedNames + et selskapsoppslag per deal
+// — brukt i bulkMarkDealsLost/bulkSetDealStage sine vunnet-/tapt-meldinger,
+// som ellers gjorde 3 runder per deal.
+async function bulkDealMessageContext(
+  targetDeals: { id: number; companyId: number; ownerId: number | null }[]
+): Promise<{
+  companyNameById: Map<number, string>;
+  namesFor: (deal: { id: number; ownerId: number | null }) => string[];
+}> {
+  const companyIds = [...new Set(targetDeals.map((d) => d.companyId))];
+  const ownerIds = [
+    ...new Set(targetDeals.map((d) => d.ownerId).filter((id): id is number => id != null)),
+  ];
+  const dealIds = targetDeals.map((d) => d.id);
+
+  const [companyRows, ownerRows, coOwnerRows] = await Promise.all([
+    companyIds.length
+      ? db
+          .select({ id: companies.id, name: companies.name })
+          .from(companies)
+          .where(inArray(companies.id, companyIds))
+      : Promise.resolve([]),
+    ownerIds.length
+      ? db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ownerIds))
+      : Promise.resolve([]),
+    db
+      .select({ dealId: dealOwners.dealId, name: users.name })
+      .from(dealOwners)
+      .innerJoin(users, eq(dealOwners.userId, users.id))
+      .where(inArray(dealOwners.dealId, dealIds)),
+  ]);
+
+  const companyNameById = new Map(companyRows.map((c) => [c.id, c.name]));
+  const ownerNameById = new Map(ownerRows.map((u) => [u.id, u.name]));
+  const coOwnerNamesByDeal = new Map<number, string[]>();
+  for (const r of coOwnerRows) {
+    const list = coOwnerNamesByDeal.get(r.dealId) ?? [];
+    list.push(r.name);
+    coOwnerNamesByDeal.set(r.dealId, list);
+  }
+
+  function namesFor(deal: { id: number; ownerId: number | null }): string[] {
+    const owner = deal.ownerId != null ? ownerNameById.get(deal.ownerId) : undefined;
+    const names = [owner, ...(coOwnerNamesByDeal.get(deal.id) ?? [])].filter(
+      (n): n is string => !!n
+    );
+    return names.map(firstName);
+  }
+
+  return { companyNameById, namesFor };
 }
 
 function revalidateDealViews(dealId?: number) {
@@ -866,6 +919,7 @@ export async function bulkMarkDealsLost(
 
   const trimmedComment = comment.trim();
   const reasonLabel = reasonRow?.label ?? "Ukjent grunn";
+  const { companyNameById, namesFor } = await bulkDealMessageContext(targetDeals);
   for (const deal of targetDeals) {
     const newComment = trimmedComment
       ? [deal.comment, trimmedComment].filter(Boolean).join("\n")
@@ -881,20 +935,18 @@ export async function bulkMarkDealsLost(
         updatedAt: new Date(),
       })
       .where(eq(deals.id, deal.id));
+  }
 
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, deal.companyId),
-    });
-    const names = await taggedNames(deal.id, deal.ownerId);
-    await db.insert(activities).values({
+  await db.insert(activities).values(
+    targetDeals.map((deal) => ({
       dealId: deal.id,
       userId: me.id,
       type: "lost",
-      content: `${formatNameList(names)} markerte «${deal.title}» hos ${
-        company?.name ?? "kunden"
+      content: `${formatNameList(namesFor(deal))} markerte «${deal.title}» hos ${
+        companyNameById.get(deal.companyId) ?? "kunden"
       } som tapt (${reasonLabel})${trimmedComment ? `: ${trimmedComment}` : ""}`,
-    });
-  }
+    }))
+  );
 
   revalidateDealViews();
 }
@@ -1020,9 +1072,11 @@ export async function removeDealTag(dealId: number, tagId: number) {
 // fjerner) samme tag på flere valgte deals samtidig.
 export async function bulkAddDealTag(dealIds: number[], tagId: number) {
   await requireUser();
-  for (const dealId of dealIds) {
-    await db.insert(dealTags).values({ dealId, tagId }).onConflictDoNothing();
-  }
+  if (dealIds.length === 0) return;
+  await db
+    .insert(dealTags)
+    .values(dealIds.map((dealId) => ({ dealId, tagId })))
+    .onConflictDoNothing();
   revalidateDealViews();
 }
 
@@ -1046,9 +1100,11 @@ export async function removePersonTag(personId: number, tagId: number) {
 // fjern"-oppførsel som bulkAddDealTag.
 export async function bulkAddPersonTag(personIds: number[], tagId: number) {
   await requireUser();
-  for (const personId of personIds) {
-    await db.insert(personTags).values({ personId, tagId }).onConflictDoNothing();
-  }
+  if (personIds.length === 0) return;
+  await db
+    .insert(personTags)
+    .values(personIds.map((personId) => ({ personId, tagId })))
+    .onConflictDoNothing();
   revalidatePath("/people");
 }
 
@@ -1072,9 +1128,11 @@ export async function removeCompanyTag(companyId: number, tagId: number) {
 // fjern"-oppførsel som bulkAddDealTag/bulkAddPersonTag.
 export async function bulkAddCompanyTag(companyIds: number[], tagId: number) {
   await requireUser();
-  for (const companyId of companyIds) {
-    await db.insert(companyTags).values({ companyId, tagId }).onConflictDoNothing();
-  }
+  if (companyIds.length === 0) return;
+  await db
+    .insert(companyTags)
+    .values(companyIds.map((companyId) => ({ companyId, tagId })))
+    .onConflictDoNothing();
   revalidatePath("/companies");
 }
 
@@ -1469,22 +1527,21 @@ export async function bulkSetDealStage(dealIds: number[], stage: string) {
   await db.update(deals).set(set).where(inArray(deals.id, dealIds));
 
   if (stageRow?.isWon) {
-    // Hver deal har eget selskap/verdi/tagget-liste, så meldingen bygges per deal.
+    // Hver deal har eget selskap/verdi/tagget-liste, så meldingen bygges per
+    // deal — men selskapsnavn og eier/med-eier-navn hentes i tre batchede
+    // spørringer (bulkDealMessageContext) i stedet for to per deal.
     const targetDeals = await db.query.deals.findMany({ where: inArray(deals.id, dealIds) });
-    for (const deal of targetDeals) {
-      const company = await db.query.companies.findFirst({
-        where: eq(companies.id, deal.companyId),
-      });
-      const names = await taggedNames(deal.id, deal.ownerId);
-      await db.insert(activities).values({
+    const { companyNameById, namesFor } = await bulkDealMessageContext(targetDeals);
+    await db.insert(activities).values(
+      targetDeals.map((deal) => ({
         dealId: deal.id,
         userId: me.id,
         type: "won",
-        content: `${formatNameList(names)} solgte «${deal.title}» til ${
-          company?.name ?? "kunden"
+        content: `${formatNameList(namesFor(deal))} solgte «${deal.title}» til ${
+          companyNameById.get(deal.companyId) ?? "kunden"
         } for ${formatMoney(deal.value ?? 0)}! 🎉`,
-      });
-    }
+      }))
+    );
   } else {
     await db.insert(activities).values(
       dealIds.map((dealId) => ({
@@ -1648,7 +1705,20 @@ export async function bulkSetDealOwner(dealIds: number[], ownerId: number) {
       content: `Endret eier til ${owner.name}`,
     }))
   );
-  for (const dealId of dealIds) await notifyDealOwnerAssigned(me.id, dealId, ownerId);
+  if (ownerId !== me.id) {
+    const dealRows = await db
+      .select({ id: deals.id, companyId: deals.companyId })
+      .from(deals)
+      .where(inArray(deals.id, dealIds));
+    await db.insert(notifications).values(
+      dealRows.map((d) => ({
+        userId: ownerId,
+        actorUserId: me.id,
+        dealId: d.id,
+        companyId: d.companyId,
+      }))
+    );
+  }
   revalidateDealViews();
 }
 
@@ -1689,9 +1759,10 @@ export async function bulkAddDealOwner(dealIds: number[], userId: number) {
   if (dealIds.length === 0) return;
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) return;
-  for (const dealId of dealIds) {
-    await db.insert(dealOwners).values({ dealId, userId }).onConflictDoNothing();
-  }
+  await db
+    .insert(dealOwners)
+    .values(dealIds.map((dealId) => ({ dealId, userId })))
+    .onConflictDoNothing();
   await db.insert(activities).values(
     dealIds.map((dealId) => ({
       dealId,
@@ -1700,7 +1771,20 @@ export async function bulkAddDealOwner(dealIds: number[], userId: number) {
       content: `La til ${user.name} som eier`,
     }))
   );
-  for (const dealId of dealIds) await notifyDealOwnerAssigned(me.id, dealId, userId);
+  if (userId !== me.id) {
+    const dealRows = await db
+      .select({ id: deals.id, companyId: deals.companyId })
+      .from(deals)
+      .where(inArray(deals.id, dealIds));
+    await db.insert(notifications).values(
+      dealRows.map((d) => ({
+        userId,
+        actorUserId: me.id,
+        dealId: d.id,
+        companyId: d.companyId,
+      }))
+    );
+  }
   revalidateDealViews();
 }
 
@@ -3025,8 +3109,14 @@ export async function bulkSetCompanyOwner(companyIds: number[], ownerId: number 
   const me = await requireUser();
   if (companyIds.length === 0) return;
   await db.update(companies).set({ ownerId }).where(inArray(companies.id, companyIds));
-  if (ownerId != null) {
-    for (const companyId of companyIds) await notifyCompanyOwnerAssigned(me.id, companyId, ownerId);
+  if (ownerId != null && ownerId !== me.id) {
+    await db.insert(notifications).values(
+      companyIds.map((companyId) => ({
+        userId: ownerId,
+        actorUserId: me.id,
+        companyId,
+      }))
+    );
   }
   revalidateDealViews();
 }
@@ -3477,14 +3567,16 @@ export async function bulkMarkContactedByEmail(
 
   const occurredAt = new Date();
   const trimmedNote = note.trim() || null;
-  for (const companyId of companyIds) {
-    await db.insert(contactEvents).values({
-      companyId,
-      userId: me.id,
-      kind: "epost",
-      note: trimmedNote,
-      occurredAt,
-    });
+  if (companyIds.size > 0) {
+    await db.insert(contactEvents).values(
+      [...companyIds].map((companyId) => ({
+        companyId,
+        userId: me.id,
+        kind: "epost",
+        note: trimmedNote,
+        occurredAt,
+      }))
+    );
   }
 
   revalidateDealViews();
@@ -3681,7 +3773,7 @@ export async function syncGoogleCalendarNow(): Promise<{ ok: boolean; message: s
       emailToCompanyIds.set(email, set);
     }
 
-    let logged = 0;
+    const candidates: { companyId: number; occurredAt: Date; note: string | null }[] = [];
     for (const event of events) {
       if (!event.startedAt) continue;
 
@@ -3696,24 +3788,39 @@ export async function syncGoogleCalendarNow(): Promise<{ ok: boolean; message: s
       if (matchedCompanyIds.size === 0) continue;
 
       for (const companyId of matchedCompanyIds) {
-        // Unngår duplikater ved gjentatt synk av samme møte.
-        const already = await db.query.contactEvents.findFirst({
-          where: and(
-            eq(contactEvents.companyId, companyId),
-            eq(contactEvents.kind, "moete"),
-            eq(contactEvents.occurredAt, event.startedAt)
-          ),
-        });
-        if (already) continue;
+        candidates.push({ companyId, occurredAt: event.startedAt, note: event.summary });
+      }
+    }
 
-        await db.insert(contactEvents).values({
-          companyId,
-          userId: me.id,
-          kind: "moete",
-          note: event.summary,
-          occurredAt: event.startedAt,
-        });
-        logged++;
+    // Unngår duplikater ved gjentatt synk av samme møte — henter eksisterende
+    // møter i HELE vinduet i én spørring i stedet for én per kandidat.
+    let logged = 0;
+    if (candidates.length > 0) {
+      const existing = await db
+        .select({ companyId: contactEvents.companyId, occurredAt: contactEvents.occurredAt })
+        .from(contactEvents)
+        .where(
+          and(
+            eq(contactEvents.kind, "moete"),
+            gte(contactEvents.occurredAt, timeMin),
+            lte(contactEvents.occurredAt, timeMax)
+          )
+        );
+      const existingKeys = new Set(existing.map((e) => `${e.companyId}:${e.occurredAt.getTime()}`));
+      const toInsert = candidates.filter(
+        (c) => !existingKeys.has(`${c.companyId}:${c.occurredAt.getTime()}`)
+      );
+      if (toInsert.length > 0) {
+        await db.insert(contactEvents).values(
+          toInsert.map((c) => ({
+            companyId: c.companyId,
+            userId: me.id,
+            kind: "moete",
+            note: c.note,
+            occurredAt: c.occurredAt,
+          }))
+        );
+        logged = toInsert.length;
       }
     }
 

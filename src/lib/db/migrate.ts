@@ -296,7 +296,13 @@ const INDEX_STATEMENTS = [
   // tabellskann + sortering av HELE aktivitetsloggen på hver eneste
   // sidevisning, og den er den tabellen som vokser raskest i hele appen.
   "CREATE INDEX IF NOT EXISTS idx_activities_type_created ON activities(type, created_at)",
-  "CREATE INDEX IF NOT EXISTS idx_contact_events_company ON contact_events(company_id)",
+  // Dashbordets "siste aktivitet" sorterer HELE tabellen på created_at uten
+  // noe type-filter — idx_activities_type_created over dekker ikke det,
+  // siden type ikke er begrenset i den spørringen.
+  "CREATE INDEX IF NOT EXISTS idx_activities_created ON activities(created_at)",
+  // Dekker MAX(occurred_at) GROUP BY company_id ("Sist kontakt") på samme
+  // måte som idx_messages_company_sent gjør for email_messages.
+  "CREATE INDEX IF NOT EXISTS idx_contact_events_company_occurred ON contact_events(company_id, occurred_at)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_deal ON deal_owners(deal_id)",
   "CREATE INDEX IF NOT EXISTS idx_deal_owners_user ON deal_owners(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_company_owners_company ON company_owners(company_id)",
@@ -317,7 +323,13 @@ const INDEX_STATEMENTS = [
   "CREATE INDEX IF NOT EXISTS idx_monthly_actuals_year ON monthly_actuals(year)",
   "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_year ON business_unit_targets(year)",
   "CREATE INDEX IF NOT EXISTS idx_business_unit_targets_unit ON business_unit_targets(business_unit_id)",
-  "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)",
+  // Erstatter idx_notifications_user (droppet i migrate() under) — dekker
+  // både "user_id ="-oppslag alene og WHERE user_id = ? AND read_at IS NULL,
+  // som kjøres på HVER sidevisning (uleste varsler i layout.tsx) og polles
+  // fra klienten hvert 45. sekund.
+  "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at)",
+  // Dashbordet spør etter ventende innsynsforespørsler på hver visning.
+  "CREATE INDEX IF NOT EXISTS idx_email_access_grants_owner_status ON email_access_grants(owner_user_id, status)",
 ];
 
 // Kolonner lagt til etter at tabellene først ble opprettet. libSQL/SQLite har
@@ -774,6 +786,11 @@ export async function migrate(client: Client) {
   // Må kjøre før indeksene — ombyggingen dropper dem sammen med tabellen.
   await dropDealsOwnerNotNull(client);
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);
+  // Erstattet av bredere sammensatte indekser over — en enkeltkolonne-indeks
+  // er et strengt prefiks av den nye og gir ingen ekstra verdi, bare unødig
+  // skrivekostnad.
+  await client.execute("DROP INDEX IF EXISTS idx_contact_events_company");
+  await client.execute("DROP INDEX IF EXISTS idx_notifications_user");
   // Må kjøre etter at både stages- og deals-tabellen finnes.
   await seedStagesAndMigrateLegacy(client);
   if (!hadProbabilityColumn) await backfillStageProbabilityDefaults(client);

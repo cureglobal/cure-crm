@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import {
   db,
   people,
@@ -36,55 +36,62 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
   const personId = Number(id);
   if (!Number.isFinite(personId)) notFound();
 
-  const person = await db.query.people.findFirst({ where: eq(people.id, personId) });
+  // Uavhengige av hverandre — bare av personId — så de hentes parallelt i
+  // stedet for i serie (produksjon går mot en ekstern Turso-database, så
+  // hvert await ellers ville vært en egen nettverkstur etter den forrige).
+  const [person, stages, personTagOptions, personTagRows, links, dealSlugMap] =
+    await Promise.all([
+      db.query.people.findFirst({ where: eq(people.id, personId) }),
+      getStages(),
+      getTags("person"),
+      db.query.personTags.findMany({ where: eq(personTags.personId, personId) }),
+      db
+        .select({
+          companyId: companies.id,
+          companyName: companies.name,
+          logoUrl: companies.logoUrl,
+          website: companies.website,
+          role: companyPeople.role,
+          since: companyPeople.createdAt,
+        })
+        .from(companyPeople)
+        .innerJoin(companies, eq(companyPeople.companyId, companies.id))
+        .where(eq(companyPeople.personId, personId))
+        .orderBy(asc(companies.name)),
+      getDealSlugMap(),
+    ]);
   if (!person) notFound();
-  const stages = await getStages();
-  const personTagOptions = await getTags("person");
-  const personTagRows = await db.query.personTags.findMany({
-    where: eq(personTags.personId, personId),
-  });
   const personTagIds = personTagRows.map((t) => t.tagId);
 
-  const links = await db
-    .select({
-      companyId: companies.id,
-      companyName: companies.name,
-      logoUrl: companies.logoUrl,
-      website: companies.website,
-      role: companyPeople.role,
-      since: companyPeople.createdAt,
-    })
-    .from(companyPeople)
-    .innerJoin(companies, eq(companyPeople.companyId, companies.id))
-    .where(eq(companyPeople.personId, personId))
-    .orderBy(asc(companies.name));
-
+  // Begge trenger companyIds fra links over, men ikke hverandre.
   const companyIds = links.map((l) => l.companyId);
-  const relatedDeals = companyIds.length
-    ? await db
-        .select({
-          id: deals.id,
-          title: deals.title,
-          stage: deals.stage,
-          value: deals.value,
-          followUpAt: deals.followUpAt,
-          companyId: deals.companyId,
-          companyName: companies.name,
-          ownerName: users.name,
-          ownerAvatarUrl: users.avatarDataUrl,
-        })
-        .from(deals)
-        .innerJoin(companies, eq(deals.companyId, companies.id))
-        .leftJoin(users, eq(deals.ownerId, users.id))
-        .where(inArray(deals.companyId, companyIds))
-        .orderBy(desc(deals.updatedAt))
-    : [];
-  const dealSlugMap = await getDealSlugMap();
-
-  const availableCompanies = await db.query.companies.findMany({
-    orderBy: [asc(companies.name)],
-  });
-  const unlinked = availableCompanies.filter((c) => !companyIds.includes(c.id));
+  const [relatedDeals, unlinked] = await Promise.all([
+    companyIds.length
+      ? db
+          .select({
+            id: deals.id,
+            title: deals.title,
+            stage: deals.stage,
+            value: deals.value,
+            followUpAt: deals.followUpAt,
+            companyId: deals.companyId,
+            companyName: companies.name,
+            ownerName: users.name,
+            ownerAvatarUrl: users.avatarDataUrl,
+          })
+          .from(deals)
+          .innerJoin(companies, eq(deals.companyId, companies.id))
+          .leftJoin(users, eq(deals.ownerId, users.id))
+          .where(inArray(deals.companyId, companyIds))
+          .orderBy(desc(deals.updatedAt))
+      : Promise.resolve([]),
+    // Filteret på "ikke allerede knyttet" skjer i spørringen i stedet for å
+    // hente hele selskapstabellen og filtrere i JS etterpå.
+    db.query.companies.findMany({
+      where: companyIds.length ? notInArray(companies.id, companyIds) : undefined,
+      orderBy: [asc(companies.name)],
+    }),
+  ]);
 
   const updateBound = updatePerson.bind(null, personId);
   const linkBound = linkPersonToCompany.bind(null, personId);

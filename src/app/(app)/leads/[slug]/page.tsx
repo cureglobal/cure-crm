@@ -62,142 +62,157 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
 
   const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
   if (!deal) notFound();
-  const company = await db.query.companies.findFirst({
-    where: eq(companies.id, deal.companyId),
-  });
+
+  // Alt under er uavhengig av hverandre bortsett fra "grants"/"ownerUsers"
+  // lenger ned (som trenger dialogOwners fra messages) — hentes parallelt i
+  // stedet for i serie (produksjon går mot en ekstern Turso-database, så
+  // hvert await ellers ville vært en egen nettverkstur etter den forrige).
+  // Bruker deal.companyId i stedet for å vente på "company" spesifikt —
+  // samme verdi, men lar disse gå i samme batch som selve company-oppslaget.
+  const [
+    company,
+    slugMap,
+    owner,
+    coOwnerRows,
+    allUsers,
+    allStages,
+    lostReasons,
+    dealTagOptions,
+    dealTagRows,
+    otherDeals,
+    contacts,
+    lines,
+    activityRows,
+    messages,
+    dialogEvents,
+    myPendingRequests,
+  ] = await Promise.all([
+    db.query.companies.findFirst({ where: eq(companies.id, deal.companyId) }),
+    getDealSlugMap(),
+    deal.ownerId == null
+      ? Promise.resolve(null)
+      : db.query.users.findFirst({ where: eq(users.id, deal.ownerId) }),
+    db
+      .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
+      .from(dealOwners)
+      .innerJoin(users, eq(dealOwners.userId, users.id))
+      .where(eq(dealOwners.dealId, dealId))
+      .orderBy(asc(dealOwners.createdAt)),
+    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    getStages(),
+    getLostReasons(),
+    getTags("deal"),
+    db.query.dealTags.findMany({ where: eq(dealTags.dealId, dealId) }),
+    db.query.deals.findMany({
+      where: and(eq(deals.companyId, deal.companyId), ne(deals.id, deal.id)),
+      orderBy: [desc(deals.updatedAt)],
+    }),
+    db
+      .select({
+        id: people.id,
+        name: people.name,
+        email: people.email,
+        phone: people.phone,
+        role: companyPeople.role,
+      })
+      .from(companyPeople)
+      .innerJoin(people, eq(companyPeople.personId, people.id))
+      .where(eq(companyPeople.companyId, deal.companyId))
+      .orderBy(asc(companyPeople.createdAt)),
+    db.query.dealLines.findMany({
+      where: eq(dealLinesTable.dealId, dealId),
+      orderBy: [asc(dealLinesTable.createdAt)],
+    }),
+    db
+      .select({
+        id: activitiesTable.id,
+        type: activitiesTable.type,
+        content: activitiesTable.content,
+        createdAt: activitiesTable.createdAt,
+        userName: users.name,
+      })
+      .from(activitiesTable)
+      .leftJoin(users, eq(activitiesTable.userId, users.id))
+      .where(eq(activitiesTable.dealId, dealId))
+      .orderBy(desc(activitiesTable.createdAt)),
+    // E-postdialog: meldinger på selskapet, gruppert per kontoeier, med tilgangssjekk.
+    db
+      .select({
+        id: emailMessages.id,
+        direction: emailMessages.direction,
+        subject: emailMessages.subject,
+        fromAddr: emailMessages.fromAddr,
+        toAddr: emailMessages.toAddr,
+        snippet: emailMessages.snippet,
+        bodyText: emailMessages.bodyText,
+        sentAt: emailMessages.sentAt,
+        ownerUserId: emailAccounts.userId,
+      })
+      .from(emailMessages)
+      .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
+      .where(eq(emailMessages.companyId, deal.companyId))
+      .orderBy(desc(emailMessages.sentAt)),
+    // Manuelt loggede kontaktpunkter (møte/mail/telefon/tilbud) — selskapsbredt,
+    // vises i "Dialog med X" sammen med den ekte e-postdialogen under.
+    db
+      .select({
+        id: contactEvents.id,
+        kind: contactEvents.kind,
+        note: contactEvents.note,
+        occurredAt: contactEvents.occurredAt,
+        userName: users.name,
+      })
+      .from(contactEvents)
+      .leftJoin(users, eq(contactEvents.userId, users.id))
+      .where(eq(contactEvents.companyId, deal.companyId))
+      .orderBy(desc(contactEvents.occurredAt))
+      .limit(15),
+    db
+      .select({
+        id: emailAccessGrants.id,
+        requesterName: users.name,
+      })
+      .from(emailAccessGrants)
+      .innerJoin(users, eq(emailAccessGrants.granteeUserId, users.id))
+      .where(
+        and(
+          eq(emailAccessGrants.companyId, deal.companyId),
+          eq(emailAccessGrants.ownerUserId, me.id),
+          eq(emailAccessGrants.status, "requested")
+        )
+      ),
+  ]);
   if (!company) notFound();
 
-  const slugMap = await getDealSlugMap();
   const canonicalSlug = slugMap.get(dealId);
   // Gamle tallbaserte lenker (/leads/25) og utdaterte slugs (etter
   // omdøping) sendes videre til riktig, gjeldende URL.
   if (canonicalSlug && canonicalSlug !== slug) redirect(`/leads/${canonicalSlug}`);
 
-  const owner =
-    deal.ownerId == null
-      ? null
-      : await db.query.users.findFirst({ where: eq(users.id, deal.ownerId) });
-
-  const coOwnerRows = await db
-    .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
-    .from(dealOwners)
-    .innerJoin(users, eq(dealOwners.userId, users.id))
-    .where(eq(dealOwners.dealId, dealId))
-    .orderBy(asc(dealOwners.createdAt));
-
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   // Bare fasene fra samme pipeline som deal-en allerede står i — en
   // "Anbud"-deal skal ikke kunne flyttes til en "Salg"-fase eller omvendt.
-  const allStages = await getStages();
   const currentStage = allStages.find((s) => String(s.id) === deal.stage);
   const stages = currentStage
     ? allStages.filter((s) => s.pipelineId === currentStage.pipelineId)
     : allStages;
-  const lostReasons = await getLostReasons();
-  const dealTagOptions = await getTags("deal");
-  const dealTagRows = await db.query.dealTags.findMany({ where: eq(dealTags.dealId, dealId) });
   const dealTagIds = dealTagRows.map((t) => t.tagId);
 
-  const otherDeals = await db.query.deals.findMany({
-    where: and(eq(deals.companyId, company.id), ne(deals.id, deal.id)),
-    orderBy: [desc(deals.updatedAt)],
-  });
-
-  const contacts = await db
-    .select({
-      id: people.id,
-      name: people.name,
-      email: people.email,
-      phone: people.phone,
-      role: companyPeople.role,
-    })
-    .from(companyPeople)
-    .innerJoin(people, eq(companyPeople.personId, people.id))
-    .where(eq(companyPeople.companyId, company.id))
-    .orderBy(asc(companyPeople.createdAt));
-
-  const lines = await db.query.dealLines.findMany({
-    where: eq(dealLinesTable.dealId, dealId),
-    orderBy: [asc(dealLinesTable.createdAt)],
-  });
-
-  const activityRows = await db
-    .select({
-      id: activitiesTable.id,
-      type: activitiesTable.type,
-      content: activitiesTable.content,
-      createdAt: activitiesTable.createdAt,
-      userName: users.name,
-    })
-    .from(activitiesTable)
-    .leftJoin(users, eq(activitiesTable.userId, users.id))
-    .where(eq(activitiesTable.dealId, dealId))
-    .orderBy(desc(activitiesTable.createdAt));
-
-  // E-postdialog: meldinger på selskapet, gruppert per kontoeier, med tilgangssjekk.
-  const messages = await db
-    .select({
-      id: emailMessages.id,
-      direction: emailMessages.direction,
-      subject: emailMessages.subject,
-      fromAddr: emailMessages.fromAddr,
-      toAddr: emailMessages.toAddr,
-      snippet: emailMessages.snippet,
-      bodyText: emailMessages.bodyText,
-      sentAt: emailMessages.sentAt,
-      ownerUserId: emailAccounts.userId,
-    })
-    .from(emailMessages)
-    .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
-    .where(eq(emailMessages.companyId, company.id))
-    .orderBy(desc(emailMessages.sentAt));
-
-  // Manuelt loggede kontaktpunkter (møte/mail/telefon/tilbud) — selskapsbredt,
-  // vises i "Dialog med X" sammen med den ekte e-postdialogen under.
-  const dialogEvents = await db
-    .select({
-      id: contactEvents.id,
-      kind: contactEvents.kind,
-      note: contactEvents.note,
-      occurredAt: contactEvents.occurredAt,
-      userName: users.name,
-    })
-    .from(contactEvents)
-    .leftJoin(users, eq(contactEvents.userId, users.id))
-    .where(eq(contactEvents.companyId, company.id))
-    .orderBy(desc(contactEvents.occurredAt))
-    .limit(15);
-
   const dialogOwners = [...new Set(messages.map((m) => m.ownerUserId))];
-  const grants = dialogOwners.length
-    ? await db.query.emailAccessGrants.findMany({
-        where: and(
-          eq(emailAccessGrants.companyId, company.id),
-          eq(emailAccessGrants.granteeUserId, me.id),
-          inArray(emailAccessGrants.ownerUserId, dialogOwners)
-        ),
-      })
-    : [];
-
-  const ownerUsers = dialogOwners.length
-    ? await db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
-    : [];
+  const [grants, ownerUsers] = await Promise.all([
+    dialogOwners.length
+      ? db.query.emailAccessGrants.findMany({
+          where: and(
+            eq(emailAccessGrants.companyId, deal.companyId),
+            eq(emailAccessGrants.granteeUserId, me.id),
+            inArray(emailAccessGrants.ownerUserId, dialogOwners)
+          ),
+        })
+      : Promise.resolve([]),
+    dialogOwners.length
+      ? db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
+      : Promise.resolve([]),
+  ]);
   const ownerNameById = new Map(ownerUsers.map((u) => [u.id, u.name]));
-
-  const myPendingRequests = await db
-    .select({
-      id: emailAccessGrants.id,
-      requesterName: users.name,
-    })
-    .from(emailAccessGrants)
-    .innerJoin(users, eq(emailAccessGrants.granteeUserId, users.id))
-    .where(
-      and(
-        eq(emailAccessGrants.companyId, company.id),
-        eq(emailAccessGrants.ownerUserId, me.id),
-        eq(emailAccessGrants.status, "requested")
-      )
-    );
 
   const rel = deal.followUpAt ? relativeDay(deal.followUpAt) : null;
 

@@ -64,27 +64,44 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const me = await requireUser();
   const params = await searchParams;
 
-  const account = await db.query.emailAccounts.findFirst({
-    where: eq(emailAccounts.userId, me.id),
-  });
-  const calendarAccount = await db.query.calendarAccounts.findFirst({
-    where: eq(calendarAccounts.userId, me.id),
-  });
-  const allUsers = await db.query.users.findMany();
-  const unverifiedCount = (
-    await db.query.companies.findMany({ where: eq(companies.brregVerified, false) })
-  ).length;
-  const stageRows = await getStages();
-  const pipelineRows = await getPipelines();
-  const businessUnitRows = await getBusinessUnits();
-  const lostReasonRows = await getLostReasons();
-  const dealTagRows = await getTags("deal");
-  const personTagRows = await getTags("person");
-  const companyTagRows = await getTags("company");
   const salesTargetYear = new Date().getFullYear();
-  const salesTarget = await getSalesTarget(salesTargetYear);
-  const monthlyActualRows = await getMonthlyActuals(salesTargetYear);
-  const businessUnitTargetRows = await getBusinessUnitTargets(salesTargetYear);
+
+  // Ingen av spørringene under er avhengige av hverandre — bare av me.id og
+  // salesTargetYear over — så de hentes parallelt i stedet for i serie
+  // (produksjon går mot en ekstern Turso-database, så hvert await ellers
+  // ville vært en egen nettverkstur etter den forrige).
+  const [
+    account,
+    calendarAccount,
+    allUsers,
+    unverifiedCompanies,
+    stageRows,
+    pipelineRows,
+    businessUnitRows,
+    lostReasonRows,
+    dealTagRows,
+    personTagRows,
+    companyTagRows,
+    salesTarget,
+    monthlyActualRows,
+    businessUnitTargetRows,
+  ] = await Promise.all([
+    db.query.emailAccounts.findFirst({ where: eq(emailAccounts.userId, me.id) }),
+    db.query.calendarAccounts.findFirst({ where: eq(calendarAccounts.userId, me.id) }),
+    db.query.users.findMany(),
+    db.query.companies.findMany({ where: eq(companies.brregVerified, false) }),
+    getStages(),
+    getPipelines(),
+    getBusinessUnits(),
+    getLostReasons(),
+    getTags("deal"),
+    getTags("person"),
+    getTags("company"),
+    getSalesTarget(salesTargetYear),
+    getMonthlyActuals(salesTargetYear),
+    getBusinessUnitTargets(salesTargetYear),
+  ]);
+  const unverifiedCount = unverifiedCompanies.length;
 
   const stagesByPipeline: Record<number, StageRow[]> = {};
   for (const p of pipelineRows) {

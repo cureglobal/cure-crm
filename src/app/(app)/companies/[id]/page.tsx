@@ -55,97 +55,117 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
   const companyId = Number(id);
   if (!Number.isFinite(companyId)) notFound();
 
-  const company = await db.query.companies.findFirst({
-    where: eq(companies.id, companyId),
-  });
+  // Ingen av disse spørringene er avhengige av hverandre — bare av
+  // companyId, som allerede er kjent — så de hentes parallelt i stedet for i
+  // serie (produksjon går mot en ekstern Turso-database, så hvert await
+  // ellers ville vært en egen nettverkstur etter den forrige).
+  const [
+    company,
+    companyTagOptions,
+    companyTagRows,
+    companyDeals,
+    dealSlugMap,
+    stages,
+    contacts,
+    messages,
+    manualContacts,
+    allUsers,
+    allPeopleOptions,
+    businessUnitRows,
+    pipelineRows,
+  ] = await Promise.all([
+    db.query.companies.findFirst({ where: eq(companies.id, companyId) }),
+    getTags("company"),
+    db.query.companyTags.findMany({ where: eq(companyTags.companyId, companyId) }),
+    db
+      .select({
+        id: deals.id,
+        title: deals.title,
+        stage: deals.stage,
+        value: deals.value,
+        followUpAt: deals.followUpAt,
+        comment: deals.comment,
+        updatedAt: deals.updatedAt,
+        ownerName: users.name,
+        ownerAvatarUrl: users.avatarDataUrl,
+      })
+      .from(deals)
+      .leftJoin(users, eq(deals.ownerId, users.id))
+      .where(eq(deals.companyId, companyId))
+      .orderBy(desc(deals.updatedAt)),
+    getDealSlugMap(),
+    getStages(),
+    db
+      .select({
+        id: people.id,
+        name: people.name,
+        email: people.email,
+        phone: people.phone,
+        role: companyPeople.role,
+      })
+      .from(companyPeople)
+      .innerJoin(people, eq(companyPeople.personId, people.id))
+      .where(eq(companyPeople.companyId, companyId))
+      .orderBy(asc(companyPeople.createdAt)),
+    db
+      .select({
+        id: emailMessages.id,
+        direction: emailMessages.direction,
+        subject: emailMessages.subject,
+        fromAddr: emailMessages.fromAddr,
+        toAddr: emailMessages.toAddr,
+        snippet: emailMessages.snippet,
+        bodyText: emailMessages.bodyText,
+        sentAt: emailMessages.sentAt,
+        ownerUserId: emailAccounts.userId,
+      })
+      .from(emailMessages)
+      .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
+      .where(eq(emailMessages.companyId, companyId))
+      .orderBy(desc(emailMessages.sentAt)),
+    // Kontakthistorikk = manuelt loggede hendelser + automatisk fra logget e-post.
+    db
+      .select({
+        id: contactEvents.id,
+        kind: contactEvents.kind,
+        note: contactEvents.note,
+        occurredAt: contactEvents.occurredAt,
+        userName: users.name,
+      })
+      .from(contactEvents)
+      .leftJoin(users, eq(contactEvents.userId, users.id))
+      .where(eq(contactEvents.companyId, companyId))
+      .orderBy(desc(contactEvents.occurredAt)),
+    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    // Alle personer i systemet, ikke bare de allerede koblet til dette
+    // selskapet — man skal kunne velge en hovedkontakt som ennå ikke er
+    // knyttet hit, og da kobles de automatisk (se updateCompany).
+    db.query.people.findMany({ orderBy: [asc(people.name)] }),
+    getBusinessUnits(),
+    getPipelines(),
+  ]);
   if (!company) notFound();
 
-  const companyTagOptions = await getTags("company");
-  const companyTagRows = await db.query.companyTags.findMany({
-    where: eq(companyTags.companyId, companyId),
-  });
   const companyTagIds = companyTagRows.map((t) => t.tagId);
-
-  const companyDeals = await db
-    .select({
-      id: deals.id,
-      title: deals.title,
-      stage: deals.stage,
-      value: deals.value,
-      followUpAt: deals.followUpAt,
-      comment: deals.comment,
-      updatedAt: deals.updatedAt,
-      ownerName: users.name,
-      ownerAvatarUrl: users.avatarDataUrl,
-    })
-    .from(deals)
-    .leftJoin(users, eq(deals.ownerId, users.id))
-    .where(eq(deals.companyId, companyId))
-    .orderBy(desc(deals.updatedAt));
-  const dealSlugMap = await getDealSlugMap();
-
-  const stages = await getStages();
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));
 
-  const contacts = await db
-    .select({
-      id: people.id,
-      name: people.name,
-      email: people.email,
-      phone: people.phone,
-      role: companyPeople.role,
-    })
-    .from(companyPeople)
-    .innerJoin(people, eq(companyPeople.personId, people.id))
-    .where(eq(companyPeople.companyId, companyId))
-    .orderBy(asc(companyPeople.createdAt));
-
-  const messages = await db
-    .select({
-      id: emailMessages.id,
-      direction: emailMessages.direction,
-      subject: emailMessages.subject,
-      fromAddr: emailMessages.fromAddr,
-      toAddr: emailMessages.toAddr,
-      snippet: emailMessages.snippet,
-      bodyText: emailMessages.bodyText,
-      sentAt: emailMessages.sentAt,
-      ownerUserId: emailAccounts.userId,
-    })
-    .from(emailMessages)
-    .innerJoin(emailAccounts, eq(emailMessages.accountId, emailAccounts.id))
-    .where(eq(emailMessages.companyId, companyId))
-    .orderBy(desc(emailMessages.sentAt));
-
   const dialogOwners = [...new Set(messages.map((m) => m.ownerUserId))];
-  const grants = dialogOwners.length
-    ? await db.query.emailAccessGrants.findMany({
-        where: and(
-          eq(emailAccessGrants.companyId, companyId),
-          eq(emailAccessGrants.granteeUserId, me.id),
-          inArray(emailAccessGrants.ownerUserId, dialogOwners)
-        ),
-      })
-    : [];
-  const ownerUsers = dialogOwners.length
-    ? await db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
-    : [];
+  const [grants, ownerUsers] = await Promise.all([
+    dialogOwners.length
+      ? db.query.emailAccessGrants.findMany({
+          where: and(
+            eq(emailAccessGrants.companyId, companyId),
+            eq(emailAccessGrants.granteeUserId, me.id),
+            inArray(emailAccessGrants.ownerUserId, dialogOwners)
+          ),
+        })
+      : Promise.resolve([]),
+    dialogOwners.length
+      ? db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
+      : Promise.resolve([]),
+  ]);
   const ownerNameById = new Map(ownerUsers.map((u) => [u.id, u.name]));
-
-  // Kontakthistorikk = manuelt loggede hendelser + automatisk fra logget e-post.
-  const manualContacts = await db
-    .select({
-      id: contactEvents.id,
-      kind: contactEvents.kind,
-      note: contactEvents.note,
-      occurredAt: contactEvents.occurredAt,
-      userName: users.name,
-    })
-    .from(contactEvents)
-    .leftJoin(users, eq(contactEvents.userId, users.id))
-    .where(eq(contactEvents.companyId, companyId))
-    .orderBy(desc(contactEvents.occurredAt));
 
   // Emne, avsender og hvilken kollega som eier dialogen er privat inntil
   // innsyn er godkjent (se dialogOwners/grants-sjekken lenger ned som styrer
@@ -193,14 +213,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       ? { at: lastActiveDealAt, by: null, kind: "deal" }
       : fromHistory;
 
-  const allUsers = await db.query.users.findMany({ orderBy: [asc(users.name)] });
   const companyOwner = allUsers.find((u) => u.id === company.ownerId);
-  // Alle personer i systemet, ikke bare de allerede koblet til dette
-  // selskapet — man skal kunne velge en hovedkontakt som ennå ikke er
-  // knyttet hit, og da kobles de automatisk (se updateCompany).
-  const allPeopleOptions = await db.query.people.findMany({ orderBy: [asc(people.name)] });
-  const businessUnitRows = await getBusinessUnits();
-  const pipelineRows = await getPipelines();
 
   const openDeals = companyDeals.filter(
     (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
