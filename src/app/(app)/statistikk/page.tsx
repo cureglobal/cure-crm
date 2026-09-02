@@ -9,14 +9,25 @@ import { effectiveProbability } from "@/lib/dealProbability";
 import { parsePeriodeParam, periodRange, statistikkQuery } from "@/lib/statistikkPeriod";
 import { getSalesTarget, getMonthlyActuals, getBusinessUnitTargets } from "@/lib/salesTarget.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
+import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import Avatar from "@/components/Avatar";
 import StatistikkPeriodPicker from "@/components/StatistikkPeriodPicker";
-import { Coins, Target, Timer, Scale, Flag } from "lucide-react";
+import { Coins, Target, Timer, Scale, Flag, ChevronDown, Check, X } from "lucide-react";
 
 interface StageBreakdown {
   stage: { id: number; label: string; color: string };
   count: number;
   value: number;
+}
+
+interface RankedDeal {
+  id: number;
+  slug: string;
+  title: string;
+  companyName: string;
+  value: number | null;
+  outcome: "won" | "lost";
+  closedAt: number;
 }
 
 interface SellerStat {
@@ -36,6 +47,10 @@ interface SellerStat {
   // Gjennomsnittlig antall dager fra opprettet til vunnet, for deals som
   // ble vunnet i valgt periode. Null = ingen vunnet i perioden.
   leadTimeDays: number | null;
+  // De faktiske dealene bak vunnet-/tapt-tallene i perioden — til
+  // "vis dealene"-utvidelsen på rangeringslistene.
+  wonDeals: RankedDeal[];
+  lostDeals: RankedDeal[];
 }
 
 function StatTile({
@@ -83,6 +98,7 @@ function RankingSection({
     display: string;
     prefix?: React.ReactNode;
     extra?: React.ReactNode;
+    deals?: RankedDeal[];
   }[];
 }) {
   return (
@@ -91,21 +107,75 @@ function RankingSection({
       {rows.length === 0 ? (
         <p className="py-4 text-center text-[12.5px] text-ink-faint">Ingen data ennå.</p>
       ) : (
-        <ol className="flex flex-col gap-2.5">
-          {rows.map((r, i) => (
-            <li key={r.user.id} className="flex items-center gap-2.5">
+        <ol className="flex flex-col gap-1">
+          {rows.map((r, i) => {
+            const rank = (
               <span className="w-4 shrink-0 text-[12px] font-semibold text-ink-faint">
                 {i + 1}
               </span>
-              <Avatar name={r.user.name} imageUrl={r.user.avatarDataUrl} size={24} />
+            );
+            const name = (
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                 {r.user.name}
               </span>
-              {r.prefix}
+            );
+            const metric = (
               <span className="shrink-0 text-[13px] font-semibold tabular-nums">{r.display}</span>
-              {r.extra}
-            </li>
-          ))}
+            );
+            if (!r.deals || r.deals.length === 0) {
+              return (
+                <li key={r.user.id} className="flex items-center gap-2.5 px-1.5 py-1.5">
+                  {rank}
+                  <Avatar name={r.user.name} imageUrl={r.user.avatarDataUrl} size={24} />
+                  {name}
+                  {r.prefix}
+                  {metric}
+                  {r.extra}
+                </li>
+              );
+            }
+            return (
+              <li key={r.user.id}>
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center gap-2.5 rounded-lg px-1.5 py-1.5 [&::-webkit-details-marker]:hidden transition hover:bg-mist/[0.04]">
+                    {rank}
+                    <Avatar name={r.user.name} imageUrl={r.user.avatarDataUrl} size={24} />
+                    {name}
+                    {r.prefix}
+                    {metric}
+                    {r.extra}
+                    <ChevronDown
+                      size={13}
+                      className="shrink-0 text-ink-faint transition-transform group-open:rotate-180"
+                    />
+                  </summary>
+                  <ul className="ml-[26px] mt-1 mb-1.5 flex flex-col gap-0.5 border-l border-line pl-3">
+                    {r.deals.map((d) => (
+                      <li key={d.id}>
+                        <Link
+                          href={`/leads/${d.slug}`}
+                          className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[12px] transition hover:bg-mist/[0.04]"
+                        >
+                          {d.outcome === "won" ? (
+                            <Check size={12} className="shrink-0 text-success-ink" />
+                          ) : (
+                            <X size={12} className="shrink-0 text-danger" />
+                          )}
+                          <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                          <span className="shrink-0 truncate text-ink-faint">{d.companyName}</span>
+                          {d.value != null && (
+                            <span className="shrink-0 tabular-nums text-ink-soft">
+                              {formatMoney(d.value)}
+                            </span>
+                          )}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>
@@ -138,6 +208,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     businessUnitTargetRows,
     businessUnitRowsAll,
     allCompaniesEverywhere,
+    dealSlugMap,
   ] = await Promise.all([
     getPipelines(),
     db.query.users.findMany({ orderBy: [asc(users.name)] }),
@@ -148,7 +219,9 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     getBusinessUnitTargets(salesTargetYear),
     getBusinessUnits(),
     db.query.companies.findMany(),
+    getDealSlugMap(),
   ]);
+  const companyNameById = new Map(allCompaniesEverywhere.map((c) => [c.id, c.name]));
 
   const pipelineParam = typeof params.pipeline === "string" ? Number(params.pipeline) : NaN;
   const pipelineId = pipelines.some((p) => p.id === pipelineParam)
@@ -314,6 +387,25 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
       const soldValue = wonInPeriod.reduce((acc, d) => acc + (d.value ?? 0), 0);
       const leadTimeDays = avgLeadTimeDays(wonInPeriod);
 
+      function toRankedDeal(d: (typeof wonInPeriod)[number], outcome: "won" | "lost"): RankedDeal {
+        const closedAt = d.closedAt ?? d.updatedAt;
+        return {
+          id: d.id,
+          slug: dealSlugMap.get(d.id) ?? String(d.id),
+          title: d.title,
+          companyName: companyNameById.get(d.companyId) ?? "Ukjent selskap",
+          value: d.value,
+          outcome,
+          closedAt: closedAt.getTime(),
+        };
+      }
+      const wonDeals = wonInPeriod
+        .map((d) => toRankedDeal(d, "won"))
+        .sort((a, b) => b.closedAt - a.closedAt);
+      const lostDeals = lostInPeriod
+        .map((d) => toRankedDeal(d, "lost"))
+        .sort((a, b) => b.closedAt - a.closedAt);
+
       return {
         user,
         byStage,
@@ -326,6 +418,8 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         lostCount: lostInPeriod.length,
         pipelineCount: activeInPeriod.length,
         pipelineValue,
+        wonDeals,
+        lostDeals,
       };
     })
     .filter(
@@ -345,17 +439,18 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
           {s.soldCount}-{s.lostCount}
         </span>
       ),
+      deals: [...s.wonDeals, ...s.lostDeals].sort((a, b) => b.closedAt - a.closedAt),
     }));
 
   const soldValueRows = sellerStats
     .slice()
     .sort((a, b) => b.soldValue - a.soldValue)
-    .map((s) => ({ user: s.user, display: formatMoney(s.soldValue) || "0kr" }));
+    .map((s) => ({ user: s.user, display: formatMoney(s.soldValue) || "0kr", deals: s.wonDeals }));
 
   const soldCountRows = sellerStats
     .slice()
     .sort((a, b) => b.soldCount - a.soldCount)
-    .map((s) => ({ user: s.user, display: String(s.soldCount) }));
+    .map((s) => ({ user: s.user, display: String(s.soldCount), deals: s.wonDeals }));
 
   const pipelineRows = sellerStats
     .slice()
