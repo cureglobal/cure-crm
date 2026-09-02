@@ -13,6 +13,7 @@ import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import { formatDateTime, formatMoney, relativeDay, startOfDay } from "@/lib/format";
+import { effectiveProbability } from "@/lib/dealProbability";
 import NewDealButton from "@/components/NewDealButton";
 import AccessRequestCard from "@/components/AccessRequestCard";
 import MonthCalendar from "@/components/MonthCalendar";
@@ -82,6 +83,7 @@ export default async function Dashboard() {
           title: deals.title,
           stage: deals.stage,
           value: deals.value,
+          probabilityOverride: deals.probabilityOverride,
           followUpAt: deals.followUpAt,
           updatedAt: deals.updatedAt,
           closedAt: deals.closedAt,
@@ -113,7 +115,11 @@ export default async function Dashboard() {
             eq(emailAccessGrants.status, "requested")
           )
         ),
-      db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+      // Kun til "Ny deal"-velgeren (id/navn/logo) — ikke hele selskapsraden.
+      db
+        .select({ id: companies.id, name: companies.name, logoUrl: companies.logoUrl })
+        .from(companies)
+        .orderBy(asc(companies.name)),
       getPipelines(),
       getDealSlugMap(),
       db
@@ -147,7 +153,13 @@ export default async function Dashboard() {
   const activeDeals = allDeals.filter(
     (d) => !wonStageIds.has(d.stage) && !lostStageIds.has(d.stage)
   );
-  const pipelineValue = activeDeals.reduce((acc, d) => acc + (d.value ?? 0), 0);
+  // Verdi × sannsynlighet per fase — samme beregning som "Estimert salg i
+  // pipeline" på Statistikk-siden.
+  const stageById = new Map(stages.map((s) => [String(s.id), { probability: s.probability }]));
+  const weightedValue = activeDeals.reduce(
+    (acc, d) => acc + (d.value ?? 0) * (effectiveProbability(d, stageById) / 100),
+    0
+  );
 
   const withFollowUp = activeDeals
     .filter((d) => d.followUpAt)
@@ -210,8 +222,8 @@ export default async function Dashboard() {
       href: "/leads?view=liste&dato=forfalt&aktive=1",
     },
     {
-      label: "Verdi i pipeline",
-      value: formatMoney(pipelineValue),
+      label: "Vektet verdi",
+      value: formatMoney(Math.round(weightedValue)),
       icon: <Coins size={16} />,
       href: "/leads?view=liste&aktive=1",
     },

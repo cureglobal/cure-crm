@@ -25,6 +25,7 @@ interface SellerStat {
   hitRate: number | null;
   soldValue: number;
   soldCount: number;
+  lostCount: number;
   pipelineCount: number;
   pipelineValue: number;
   // Øyeblikksbilde — ALLE åpne deals eieren har nå, uavhengig av valgt
@@ -77,7 +78,12 @@ function RankingSection({
   rows,
 }: {
   title: string;
-  rows: { user: SellerStat["user"]; display: string; extra?: React.ReactNode }[];
+  rows: {
+    user: SellerStat["user"];
+    display: string;
+    prefix?: React.ReactNode;
+    extra?: React.ReactNode;
+  }[];
 }) {
   return (
     <section className="card p-5">
@@ -95,6 +101,7 @@ function RankingSection({
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                 {r.user.name}
               </span>
+              {r.prefix}
               <span className="shrink-0 text-[13px] font-semibold tabular-nums">{r.display}</span>
               {r.extra}
             </li>
@@ -316,6 +323,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         leadTimeDays,
         soldValue,
         soldCount: wonInPeriod.length,
+        lostCount: lostInPeriod.length,
         pipelineCount: activeInPeriod.length,
         pipelineValue,
       };
@@ -327,7 +335,17 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const hitRateRows = sellerStats
     .filter((s) => s.hitRate != null)
     .sort((a, b) => b.hitRate! - a.hitRate!)
-    .map((s) => ({ user: s.user, display: `${Math.round(s.hitRate! * 100)}%` }));
+    .map((s) => ({
+      user: s.user,
+      display: `${Math.round(s.hitRate! * 100)}%`,
+      // Stilling (vunnet-tapt) i perioden, f.eks. "2-1" — vist til venstre
+      // for selve prosenten.
+      prefix: (
+        <span className="shrink-0 text-[12px] tabular-nums text-ink-faint">
+          {s.soldCount}-{s.lostCount}
+        </span>
+      ),
+    }));
 
   const soldValueRows = sellerStats
     .slice()
