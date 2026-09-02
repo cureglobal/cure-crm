@@ -593,13 +593,15 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                     {u.email} · Sist online {relativeTimeAgo(u.lastSeenAt)}
                   </p>
                 </div>
-                <UserBusinessUnitSelect
-                  userId={u.id}
-                  initialBusinessUnitId={u.businessUnitId}
-                  units={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
-                />
                 <AdminToggle userId={u.id} initialIsAdmin={u.isAdmin} disabled={u.id === me.id} />
-                <UserActions userId={u.id} canDelete={u.id !== me.id} />
+                <div className="flex shrink-0 items-center gap-1">
+                  <UserBusinessUnitSelect
+                    userId={u.id}
+                    initialBusinessUnitId={u.businessUnitId}
+                    units={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
+                  />
+                  <UserActions userId={u.id} canDelete={u.id !== me.id} />
+                </div>
               </li>
             ))}
           </ul>
