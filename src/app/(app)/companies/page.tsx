@@ -27,7 +27,23 @@ export default async function CompaniesPage() {
     businessUnitRows,
   ] = await Promise.all([
     getStages(),
-    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+    // Kun feltene listevisningen faktisk viser — ikke hele selskapsraden
+    // (adresse, omsetning, ansatte, bransje osv. fra Brreg-berikelsen, som
+    // uansett bare vises på selskapets egen detaljside).
+    db
+      .select({
+        id: companies.id,
+        name: companies.name,
+        orgName: companies.orgName,
+        orgNumber: companies.orgNumber,
+        brregVerified: companies.brregVerified,
+        logoUrl: companies.logoUrl,
+        website: companies.website,
+        ownerId: companies.ownerId,
+        createdAt: companies.createdAt,
+      })
+      .from(companies)
+      .orderBy(asc(companies.name)),
     db
       .select({
         companyId: deals.companyId,
@@ -41,7 +57,10 @@ export default async function CompaniesPage() {
       .from(companyPeople)
       .innerJoin(people, eq(companyPeople.personId, people.id))
       .orderBy(asc(companyPeople.createdAt)),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db
+      .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
+      .from(users)
+      .orderBy(asc(users.name)),
     db.query.companyOwners.findMany(),
     getTags("company"),
     db.query.companyTags.findMany(),

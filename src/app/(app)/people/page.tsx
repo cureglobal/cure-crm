@@ -8,8 +8,17 @@ export default async function PeoplePage() {
   await requireUser();
 
   const [allPeople, allCompanies, links, tagOptions, tagLinks] = await Promise.all([
-    db.query.people.findMany({ orderBy: [asc(people.name)] }),
-    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
+    // Kun feltene listevisningen faktisk viser — notat og opprettet-dato
+    // vises bare på personens egen detaljside.
+    db
+      .select({ id: people.id, name: people.name, email: people.email, phone: people.phone })
+      .from(people)
+      .orderBy(asc(people.name)),
+    // Kun til "knytt til selskap"-velgeren — ikke hele selskapsraden.
+    db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .orderBy(asc(companies.name)),
     db
       .select({
         personId: companyPeople.personId,

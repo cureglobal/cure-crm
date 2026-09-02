@@ -1,5 +1,5 @@
 import { desc, eq, asc, inArray } from "drizzle-orm";
-import { db, deals as dealsTable, companies, users, activities } from "@/lib/db";
+import { db, deals as dealsTable, companies, users, activities, dealLines } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
@@ -72,8 +72,14 @@ export default async function PipelinePageContent({
     db.query.dealOwners.findMany(),
     getTags("deal"),
     db.query.dealTags.findMany(),
-    db.query.companies.findMany({ orderBy: [asc(companies.name)] }),
-    db.query.dealLines.findMany(),
+    // Kun til "Ny deal"-velgeren (id/navn/logo) — ikke hele selskapsraden.
+    db
+      .select({ id: companies.id, name: companies.name, logoUrl: companies.logoUrl })
+      .from(companies)
+      .orderBy(asc(companies.name)),
+    // Kun HVILKE deals som har varelinjer (til ikonet i listen) — ikke selve
+    // linjene (tittel/timer/timepris/fakturering for hver enkelt).
+    db.selectDistinct({ dealId: dealLines.dealId }).from(dealLines),
     // Hvem som sist rørte kommentarfeltet — "comment" er vanlig redigering,
     // "lost" fordi tapt-flyten også kan legge til tekst i kommentaren.
     // Mangler helt for CSV-importerte deals, som ikke logger en aktivitet.
