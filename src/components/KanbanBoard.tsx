@@ -85,10 +85,14 @@ export default function KanbanBoard({
     optimistic.some((d) => d.stage === String(stage.id))
   );
   const displayStages = isDragging ? stages : nonEmptyStages;
+  // Tavlevisningen speiler rekkefølgen (siste fase først, til venstre) —
+  // listevisningen (DealsTable) bruker samme "stages"-referanse uendret, så
+  // dette påvirker kun kolonnerekkefølgen her.
+  const orderedStages = [...displayStages].reverse();
 
   return (
     <div className="flex gap-3 overflow-x-auto pb-4">
-      {displayStages.map((stage) => {
+      {orderedStages.map((stage) => {
         const items = optimistic.filter((d) => d.stage === String(stage.id));
         const sum = items.reduce((acc, d) => acc + (d.value ?? 0), 0);
         const isOver = dragOver === String(stage.id);
