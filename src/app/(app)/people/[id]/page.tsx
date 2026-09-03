@@ -26,6 +26,7 @@ import { getTags } from "@/lib/tags.server";
 import CompanyLogo from "@/components/CompanyLogo";
 import Avatar from "@/components/Avatar";
 import DeletePersonButton from "@/components/DeletePersonButton";
+import PersonCompanyRoleInput from "@/components/PersonCompanyRoleInput";
 import ExportPersonDataButton from "@/components/ExportPersonDataButton";
 import TagsEditor from "@/components/TagsEditor";
 import { ArrowLeft, Mail, Phone, Plus, Trash2, TriangleAlert } from "lucide-react";
@@ -163,9 +164,14 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                     >
                       {l.companyName}
                     </Link>
-                    <p className="text-[12px] text-ink-soft">
-                      {l.role || "Ingen rolle satt"} · siden {formatDate(l.since)}
-                    </p>
+                    <div className="flex items-center gap-1 text-[12px] text-ink-soft">
+                      <PersonCompanyRoleInput
+                        personId={personId}
+                        companyId={l.companyId}
+                        initialRole={l.role}
+                      />
+                      <span className="shrink-0">· siden {formatDate(l.since)}</span>
+                    </div>
                   </div>
                   <form action={unlinkPersonFromCompany.bind(null, personId, l.companyId, undefined)}>
                     <button

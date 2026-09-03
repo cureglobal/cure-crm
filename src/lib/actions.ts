@@ -2477,6 +2477,24 @@ export async function linkPersonToCompany(personId: number, formData: FormData) 
   revalidatePath(`/people/${personId}`);
 }
 
+// Endrer tittel/rolle på en allerede eksisterende selskapstilknytning —
+// "Rolle"-feltet i linkPersonToCompany over settes bare ved selve
+// tilknytningen, og hadde ingen vei tilbake for å rette den i etterkant.
+export async function updatePersonCompanyRole(
+  personId: number,
+  companyId: number,
+  formData: FormData
+) {
+  await requireUser();
+  const role = String(formData.get("role") ?? "").trim() || null;
+  await db
+    .update(companyPeople)
+    .set({ role })
+    .where(and(eq(companyPeople.personId, personId), eq(companyPeople.companyId, companyId)));
+  revalidateDealViews();
+  revalidatePath(`/people/${personId}`);
+}
+
 export async function unlinkPersonFromCompany(
   personId: number,
   companyId: number,
