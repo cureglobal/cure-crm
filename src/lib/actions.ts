@@ -628,6 +628,17 @@ export async function createDeal(formData: FormData) {
     content: email ? `Deal opprettet fra ${email}` : "Deal opprettet",
   });
 
+  const tagIds = formData
+    .getAll("tagIds")
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n));
+  if (tagIds.length > 0) {
+    await db
+      .insert(dealTags)
+      .values(tagIds.map((tagId) => ({ dealId: deal.id, tagId })))
+      .onConflictDoNothing();
+  }
+
   revalidateDealViews(deal.id);
   const slug = (await getDealSlugMap()).get(deal.id) ?? deal.id;
   redirect(`/leads/${slug}`);

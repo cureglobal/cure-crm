@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { getTags } from "@/lib/tags.server";
 import { formatDateTime, formatMoney, relativeDay, startOfDay } from "@/lib/format";
 import { effectiveProbability } from "@/lib/dealProbability";
 import NewDealButton from "@/components/NewDealButton";
@@ -75,8 +76,16 @@ export default async function Dashboard() {
   // Uavhengige spørringer — hentes parallelt i stedet for i serie
   // (produksjon går mot en ekstern Turso-database, så hvert await er en
   // ekte nettverkstur).
-  const [allDeals, stages, pendingRequests, companyOptionsRaw, pipelineRows, slugMap, recent] =
-    await Promise.all([
+  const [
+    allDeals,
+    stages,
+    pendingRequests,
+    companyOptionsRaw,
+    pipelineRows,
+    slugMap,
+    recent,
+    dealTagOptions,
+  ] = await Promise.all([
       db
         .select({
           id: deals.id,
@@ -139,6 +148,7 @@ export default async function Dashboard() {
         .leftJoin(users, eq(activities.userId, users.id))
         .orderBy(desc(activities.createdAt))
         .limit(8),
+      getTags("deal"),
     ]);
   const companyOptions = companyOptionsRaw.map((c) => ({
     id: c.id,
@@ -242,7 +252,11 @@ export default async function Dashboard() {
           <h1 className="text-[26px] font-semibold tracking-tight">{greeting(me.name)}</h1>
           <p className="mt-1 text-ink-soft">Her er status i salgsarbeidet.</p>
         </div>
-        <NewDealButton companies={companyOptions} pipelines={pipelineOptions} />
+        <NewDealButton
+          companies={companyOptions}
+          pipelines={pipelineOptions}
+          tags={dealTagOptions.map((t) => ({ id: t.id, label: t.label }))}
+        />
       </div>
 
       {pendingRequests.length > 0 && (

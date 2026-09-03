@@ -33,6 +33,7 @@ export default function NewDealButton({
   companies = [],
   pipelines,
   pipelineId,
+  tags = [],
 }: {
   companies?: CompanyOption[];
   pipelines: { id: number; name: string }[];
@@ -41,6 +42,7 @@ export default function NewDealButton({
   // velger hvis det finnes mer enn én pipeline (brukes fra dashboardet, som
   // ikke har noen "gjeldende" pipeline å arve fra).
   pipelineId?: number;
+  tags?: { id: number; label: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const [selectedPipelineId, setSelectedPipelineId] = useState(pipelineId ?? pipelines[0]?.id ?? 1);
@@ -49,6 +51,13 @@ export default function NewDealButton({
   );
   const [companySearch, setCompanySearch] = useState("");
   const [selected, setSelected] = useState<CompanyOption | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+
+  function toggleTag(id: number) {
+    setSelectedTagIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
 
   const [newCompanyName, setNewCompanyName] = useState("");
   const [brregHits, setBrregHits] = useState<BrregHit[]>([]);
@@ -92,6 +101,7 @@ export default function NewDealButton({
     setNewCompanyName("");
     setBrregHits([]);
     setBrregSelected(null);
+    setSelectedTagIds([]);
     setMode(companies.length > 0 ? "eksisterende" : "nytt");
   }
 
@@ -384,6 +394,31 @@ export default function NewDealButton({
                   className="field"
                 />
               </div>
+
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((t) => {
+                    const active = selectedTagIds.includes(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => toggleTag(t.id)}
+                        className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition ${
+                          active
+                            ? "bg-accent text-accent-ink"
+                            : "bg-mist/[0.05] text-ink-soft hover:bg-mist/[0.08] hover:text-ink"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                  {selectedTagIds.map((id) => (
+                    <input key={id} type="hidden" name="tagIds" value={id} />
+                  ))}
+                </div>
+              )}
 
               <input
                 name="email"

@@ -419,7 +419,12 @@ export default function PipelineView({
               className="field w-[230px] !rounded-full !py-1.5 !pl-8 text-[12.5px]"
             />
           </div>
-          <NewDealButton companies={companyOptions} pipelines={pipelines} pipelineId={pipelineId} />
+          <NewDealButton
+            companies={companyOptions}
+            pipelines={pipelines}
+            pipelineId={pipelineId}
+            tags={tags}
+          />
         </div>
       </div>
 
