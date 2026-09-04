@@ -1234,7 +1234,10 @@ export async function updateBusinessUnitTarget(
 ): Promise<{ ok: boolean; message: string }> {
   await requireUser();
   const totalAmount = Number(String(formData.get("totalAmount") ?? "").replace(/\D/g, ""));
-  if (!Number.isFinite(totalAmount)) {
+  const manualActualAmount = Number(
+    String(formData.get("manualActualAmount") ?? "0").replace(/\D/g, "") || "0"
+  );
+  if (!Number.isFinite(totalAmount) || !Number.isFinite(manualActualAmount)) {
     return { ok: false, message: "Ugyldig tall." };
   }
 
@@ -1242,9 +1245,12 @@ export async function updateBusinessUnitTarget(
     where: and(eq(businessUnitTargets.year, year), eq(businessUnitTargets.businessUnitId, businessUnitId)),
   });
   if (existing) {
-    await db.update(businessUnitTargets).set({ totalAmount }).where(eq(businessUnitTargets.id, existing.id));
+    await db
+      .update(businessUnitTargets)
+      .set({ totalAmount, manualActualAmount })
+      .where(eq(businessUnitTargets.id, existing.id));
   } else {
-    await db.insert(businessUnitTargets).values({ year, businessUnitId, totalAmount });
+    await db.insert(businessUnitTargets).values({ year, businessUnitId, totalAmount, manualActualAmount });
   }
   revalidatePath("/settings");
   revalidatePath("/statistikk");

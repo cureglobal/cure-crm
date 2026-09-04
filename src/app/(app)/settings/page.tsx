@@ -362,6 +362,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 businessUnitId: u.id,
                 name: u.name,
                 totalAmount: t?.totalAmount ?? 0,
+                manualActualAmount: t?.manualActualAmount ?? 0,
               };
             })}
           />

@@ -262,6 +262,7 @@ const CREATE_STATEMENTS = [
     q2_weight INTEGER NOT NULL DEFAULT 25,
     q3_weight INTEGER NOT NULL DEFAULT 25,
     q4_weight INTEGER NOT NULL DEFAULT 25,
+    manual_actual_amount INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     UNIQUE(year, business_unit_id)
   )`,
@@ -395,6 +396,12 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     profit: "INTEGER",
     fiscal_year: "TEXT",
     brreg_synced_at: "INTEGER",
+  },
+  business_unit_targets: {
+    // Reelt solgt beløp registrert manuelt (f.eks. fra før dette ble
+    // sporet i CRM-et) — legges OVENPÅ det appen selv teller opp fra
+    // vunnet-deals for samme selskap, se statistikk/page.tsx.
+    manual_actual_amount: "INTEGER NOT NULL DEFAULT 0",
   },
 };
 

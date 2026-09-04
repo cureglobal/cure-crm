@@ -380,13 +380,33 @@ export default async function Dashboard() {
                   <li key={a.id} className="flex gap-3 text-[13px]">
                     <span
                       className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
-                        a.type === "won" ? "bg-success" : "bg-ink-faint"
+                        a.type === "won"
+                          ? "bg-success"
+                          : a.type === "lost"
+                            ? "bg-danger"
+                            : "bg-ink-faint"
                       }`}
                     />
                     <div className="min-w-0">
-                      <p className={a.type === "won" ? "text-success-ink" : "text-ink"}>
+                      <p
+                        className={
+                          a.type === "won"
+                            ? "text-success-ink"
+                            : a.type === "lost"
+                              ? "text-danger"
+                              : "text-ink"
+                        }
+                      >
                         <span className="font-medium">{a.userName ?? "System"}</span>{" "}
-                        <span className={a.type === "won" ? "text-success-ink" : "text-ink-soft"}>
+                        <span
+                          className={
+                            a.type === "won"
+                              ? "text-success-ink"
+                              : a.type === "lost"
+                                ? "text-danger"
+                                : "text-ink-soft"
+                          }
+                        >
                           {a.content}
                         </span>
                       </p>

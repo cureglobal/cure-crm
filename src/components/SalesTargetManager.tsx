@@ -28,6 +28,10 @@ export interface BusinessUnitTargetRow {
   businessUnitId: number;
   name: string;
   totalAmount: number;
+  // Reelt solgt beløp lagt inn manuelt (f.eks. fra før det ble sporet i
+  // CRM-et) — legges oppå det appen selv teller opp fra vunnet-deals for
+  // samme selskap.
+  manualActualAmount: number;
 }
 
 function QuarterWeightInputs({
@@ -69,11 +73,13 @@ function BusinessUnitRow({ unit, year }: { unit: BusinessUnitTargetRow; year: nu
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(formatNumberInput(unit.totalAmount));
+  const [manualActual, setManualActual] = useState(formatNumberInput(unit.manualActualAmount));
 
   function save() {
     setError(null);
     const fd = new FormData();
     fd.set("totalAmount", total);
+    fd.set("manualActualAmount", manualActual);
     startTransition(async () => {
       const res = await updateBusinessUnitTarget(year, unit.businessUnitId, fd);
       if (!res.ok) setError(res.message);
@@ -82,26 +88,41 @@ function BusinessUnitRow({ unit, year }: { unit: BusinessUnitTargetRow; year: nu
 
   return (
     <div className="rounded-xl bg-mist/[0.03] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-medium">{unit.name}</span>
-        <div className="flex items-center gap-2">
+      <p className="mb-2 text-[13px] font-medium">{unit.name}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-ink-faint">Årsmål</span>
           <input
             value={total}
             onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))}
             inputMode="numeric"
             placeholder="0"
-            className="field !w-36 !py-1.5 text-right text-[13px]"
+            className="field !py-1.5 text-[13px]"
           />
-          <button
-            onClick={save}
-            disabled={pending}
-            className="btn btn-secondary !py-1.5 !text-[12px]"
-          >
-            Lagre
-          </button>
-        </div>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-ink-faint">Solgt hittil (manuelt)</span>
+          <input
+            value={manualActual}
+            onChange={(e) => setManualActual(e.target.value.replace(/[^\d]/g, ""))}
+            inputMode="numeric"
+            placeholder="0"
+            className="field !py-1.5 text-[13px]"
+          />
+        </label>
       </div>
+      <p className="mt-1.5 text-[11px] text-ink-faint">
+        «Solgt hittil» legges oppå det appen selv teller fra vunnet-deals — brukes for salg som
+        ikke er registrert som deal her.
+      </p>
       {error && <p className="mt-1.5 text-[11.5px] text-danger">{error}</p>}
+      <button
+        onClick={save}
+        disabled={pending}
+        className="btn btn-secondary mt-2 !py-1 !text-[12px]"
+      >
+        Lagre
+      </button>
     </div>
   );
 }

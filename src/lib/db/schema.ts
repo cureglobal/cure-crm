@@ -497,6 +497,10 @@ export const businessUnitTargets = sqliteTable("business_unit_targets", {
   q2Weight: integer("q2_weight").notNull().default(25),
   q3Weight: integer("q3_weight").notNull().default(25),
   q4Weight: integer("q4_weight").notNull().default(25),
+  // Reelt solgt beløp registrert manuelt (f.eks. fra før dette ble sporet i
+  // CRM-et) — legges oppå det appen selv teller opp fra vunnet-deals for
+  // samme selskap, se statistikk/page.tsx.
+  manualActualAmount: integer("manual_actual_amount").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

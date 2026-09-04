@@ -260,7 +260,14 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
   const quarterActuals = [0, 1, 2, 3].map((q) =>
     monthlyActualValues.slice(q * 3, q * 3 + 3).reduce((a, b) => a + b, 0)
   );
-  const totalActual = monthlyActualValues.reduce((a, b) => a + b, 0);
+  // Manuelt registrert "solgt hittil" per selskap (Innstillinger) legges
+  // oppå månedstallene over — det er salg som ikke er sporet som deal her,
+  // så det telles ikke allerede med i monthActual()-summen.
+  const manualActualTotal = businessUnitTargetRows.reduce(
+    (acc, t) => acc + t.manualActualAmount,
+    0
+  );
+  const totalActual = monthlyActualValues.reduce((a, b) => a + b, 0) + manualActualTotal;
   const quarterWeights = salesTarget
     ? [salesTarget.q1Weight, salesTarget.q2Weight, salesTarget.q3Weight, salesTarget.q4Weight]
     : [25, 25, 25, 25];
@@ -292,7 +299,9 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     .map((t) => ({
       name: businessUnitRowsAll.find((u) => u.id === t.businessUnitId)?.name ?? "Ukjent selskap",
       target: t.totalAmount,
-      actual: actualByBusinessUnit.get(t.businessUnitId) ?? 0,
+      // Vunnet-deals registrert i denne appen + manuelt registrert "solgt
+      // hittil" (Innstillinger) for salg som ikke er sporet som deal her.
+      actual: (actualByBusinessUnit.get(t.businessUnitId) ?? 0) + t.manualActualAmount,
     }));
 
   function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
