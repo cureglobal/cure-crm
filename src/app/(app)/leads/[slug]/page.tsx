@@ -277,7 +277,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
         </div>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-8 flex flex-wrap items-center gap-3">
         <StageSelect
           dealId={deal.id}
           stage={deal.stage}
@@ -285,6 +285,31 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
           stages={stages}
           lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
         />
+        <form action={setFollowUpBound} className="flex items-center gap-2">
+          <input
+            type="date"
+            name="followUpAt"
+            defaultValue={toDateInputValue(deal.followUpAt)}
+            className="field !w-auto !py-2 text-[13px]"
+          />
+          <button type="submit" className="btn btn-secondary !py-2 !text-[13px]">
+            Lagre oppfølging
+          </button>
+        </form>
+        {rel && (
+          <span
+            className={`text-[13px] font-medium ${
+              rel.tone === "overdue"
+                ? "text-danger"
+                : rel.tone === "today"
+                  ? "text-warning-ink"
+                  : "text-ink-soft"
+            }`}
+          >
+            {rel.tone === "overdue" ? "Forfalt: " : "Neste oppfølging: "}
+            {rel.label}
+          </span>
+        )}
       </div>
 
       <div className="mb-8">
@@ -311,35 +336,6 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.25fr]">
         {/* Venstre kolonne */}
         <div className="flex flex-col gap-6">
-          <section className="card p-6">
-            <h2 className="mb-3 text-[15px] font-semibold tracking-tight">Oppfølging</h2>
-            <form action={setFollowUpBound} className="flex items-center gap-2">
-              <input
-                type="date"
-                name="followUpAt"
-                defaultValue={toDateInputValue(deal.followUpAt)}
-                className="field flex-1"
-              />
-              <button type="submit" className="btn btn-secondary">
-                Lagre
-              </button>
-            </form>
-            {rel && (
-              <p
-                className={`mt-3 text-[13px] font-medium ${
-                  rel.tone === "overdue"
-                    ? "text-danger"
-                    : rel.tone === "today"
-                      ? "text-warning-ink"
-                      : "text-ink-soft"
-                }`}
-              >
-                {rel.tone === "overdue" ? "Forfalt: " : "Neste oppfølging: "}
-                {rel.label}
-              </p>
-            )}
-          </section>
-
           {otherDeals.length > 0 && (
             <section className="card p-6">
               <h2 className="mb-3 text-[15px] font-semibold tracking-tight">
@@ -543,6 +539,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
             )}
           </section>
 
+          {(dialogEvents.length > 0 || messages.length > 0) && (
           <section className="card p-6">
             <DialogLog
               companyId={company.id}
@@ -556,17 +553,12 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
               }))}
             />
 
+            {messages.length > 0 && (
             <div className="mt-5 border-t border-line pt-5">
               <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink-soft">
                 <Mail size={14} />
                 E-post
               </h3>
-              {messages.length === 0 ? (
-                <p className="py-2 text-[13px] text-ink-faint">
-                  Ingen e-poster logget ennå. Koble til e-postkontoen din under Innstillinger,
-                  så matches dialog med kontaktene automatisk.
-                </p>
-              ) : (
                 <div className="flex flex-col gap-5">
                   {dialogOwners.map((ownerId) => {
                   const ownerMessages = messages.filter((m) => m.ownerUserId === ownerId);
@@ -622,9 +614,10 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
                   );
                   })}
                 </div>
-              )}
             </div>
+            )}
           </section>
+          )}
 
           <section className="card p-6">
             <h2 className="mb-3 text-[15px] font-semibold tracking-tight">Notater og aktivitet</h2>

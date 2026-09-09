@@ -46,6 +46,71 @@ function BillingTypeToggle({
   );
 }
 
+function BulkRatePopover({ lines, dealId }: { lines: DealLineItem[]; dealId: number }) {
+  const [open, setOpen] = useState(false);
+  const [rate, setRate] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function apply() {
+    if (!rate) return;
+    startTransition(async () => {
+      await Promise.all(
+        lines.map((line) => {
+          const data = new FormData();
+          data.set("title", line.title);
+          data.set("hours", String(line.hours));
+          data.set("rate", rate);
+          data.set("billingType", line.billingType);
+          data.set("months", line.billingType === "recurring" ? String(line.months ?? 12) : "");
+          return updateDealLine(line.id, dealId, data);
+        })
+      );
+      setOpen(false);
+      setRate("");
+    });
+  }
+
+  return (
+    <span className="relative text-right">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Endre timepris for alle rader"
+        className="transition hover:text-ink"
+      >
+        Timepris
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-40 mt-1.5 w-52 rounded-xl border border-line bg-surface p-3 text-left normal-case shadow-pop">
+            <p className="mb-2 text-[11px] font-medium tracking-normal text-ink-faint">
+              Ny timepris for alle rader
+            </p>
+            <input
+              autoFocus
+              value={rate}
+              onChange={(e) => setRate(e.target.value.replace(/[^\d]/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && apply()}
+              inputMode="numeric"
+              placeholder="Timepris"
+              className="field !py-1.5 text-right text-[13px]"
+            />
+            <button
+              type="button"
+              onClick={apply}
+              disabled={pending || !rate}
+              className="btn btn-primary mt-2 w-full !py-1.5 !text-[12.5px] disabled:opacity-60"
+            >
+              Bruk på alle rader
+            </button>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 function LineRow({ line, dealId }: { line: DealLineItem; dealId: number }) {
   const [pending, startTransition] = useTransition();
   const [billingType, setBillingType] = useState<"once" | "recurring">(line.billingType);
@@ -113,7 +178,7 @@ function LineRow({ line, dealId }: { line: DealLineItem; dealId: number }) {
           value={billingType}
           onChange={(v) => {
             setBillingType(v);
-            save({ billingType: v, months: v === "recurring" ? String(line.months ?? 1) : "" });
+            save({ billingType: v, months: v === "recurring" ? String(line.months ?? 12) : "" });
           }}
         />
         {billingType === "recurring" && (
@@ -123,7 +188,7 @@ function LineRow({ line, dealId }: { line: DealLineItem; dealId: number }) {
               name="months"
               type="number"
               min={1}
-              defaultValue={line.months ?? 1}
+              defaultValue={line.months ?? 12}
               onBlur={() => save()}
               className="field !w-14 !py-1 text-center text-[12px]"
             />
@@ -156,7 +221,7 @@ export default function DealLines({
         <div className="mb-1 grid grid-cols-[1fr_76px_96px_100px_28px] gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
           <span>Fase</span>
           <span className="text-right">Timer</span>
-          <span className="text-right">Timepris</span>
+          <BulkRatePopover lines={lines} dealId={dealId} />
           <span className="text-right">Sum</span>
           <span />
         </div>
@@ -229,7 +294,7 @@ export default function DealLines({
                 name="months"
                 type="number"
                 min={1}
-                defaultValue={1}
+                defaultValue={12}
                 className="field !w-14 !py-1 text-center text-[12px]"
               />
               måneder
