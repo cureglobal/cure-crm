@@ -21,7 +21,6 @@ import { requireUser } from "@/lib/auth";
 import {
   addPersonToCompany,
   unlinkPersonFromCompany,
-  setFollowUp,
   updateDealDetails,
   addDealTag,
   removeDealTag,
@@ -44,6 +43,7 @@ import AccessRequestCard from "@/components/AccessRequestCard";
 import SendQuoteButton from "@/components/SendQuoteButton";
 import DialogLog from "@/components/DialogLog";
 import DealOwners from "@/components/DealOwners";
+import FollowUpField from "@/components/FollowUpField";
 import DealTitleEdit from "@/components/DealTitleEdit";
 import AddNoteForm from "@/components/AddNoteForm";
 import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock } from "lucide-react";
@@ -217,7 +217,6 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   const rel = deal.followUpAt ? relativeDay(deal.followUpAt) : null;
 
   const addContactBound = addPersonToCompany.bind(null, company.id, dealId);
-  const setFollowUpBound = setFollowUp.bind(null, dealId);
   const updateDetailsBound = updateDealDetails.bind(null, dealId);
 
   return (
@@ -285,17 +284,7 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
           stages={stages}
           lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
         />
-        <form action={setFollowUpBound} className="flex items-center gap-2">
-          <input
-            type="date"
-            name="followUpAt"
-            defaultValue={toDateInputValue(deal.followUpAt)}
-            className="field !w-auto !py-2 text-[13px]"
-          />
-          <button type="submit" className="btn btn-secondary !py-2 !text-[13px]">
-            Lagre oppfølging
-          </button>
-        </form>
+        <FollowUpField dealId={deal.id} initialValue={toDateInputValue(deal.followUpAt)} />
         {rel && (
           <span
             className={`text-[13px] font-medium ${
