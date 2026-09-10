@@ -377,6 +377,11 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",
     avatar_data_url: "TEXT",
+    // Når bildet sist ble byttet. Brukes som cache-nøkkel i URL-en til
+    // /api/avatar/[id] slik at listesidene kan peke på bildet i stedet for
+    // å bake hele base64-strengen inn i svaret — se src/lib/avatar.ts.
+    // NULL betyr "ingen bilde"; se backfillAvatarUpdatedAt for eksisterende.
+    avatar_updated_at: "INTEGER",
     onboarding_seen_at: "INTEGER",
     business_unit_id: "INTEGER",
     last_seen_at: "INTEGER",
@@ -742,6 +747,18 @@ async function backfillStageProbabilityDefaults(client: Client) {
   }
 }
 
+// Bilder som allerede lå i basen da avatar_updated_at ble innført har ingen
+// tidsstempel. URL-bygging tolker NULL som "ingen bilde", så de ville blitt
+// usynlige. Setter et stempel på dem én gang; idempotent, siden WHERE-en
+// ikke lenger matcher noe etter første kjøring.
+async function backfillAvatarUpdatedAt(client: Client) {
+  await client.execute({
+    sql: `UPDATE users SET avatar_updated_at = ?
+          WHERE avatar_data_url IS NOT NULL AND avatar_updated_at IS NULL`,
+    args: [Date.now()],
+  });
+}
+
 async function addMissingColumns(client: Client) {
   for (const [table, columns] of Object.entries(EXPECTED_COLUMNS)) {
     const exists = await client.execute({
@@ -790,6 +807,8 @@ export async function migrate(client: Client) {
   for (const stmt of CREATE_STATEMENTS) await client.execute(stmt);
   // Må kjøre før indeksene, som kan peke på kolonner lagt til her.
   await addMissingColumns(client);
+  // Må kjøre etter at avatar_updated_at-kolonnen over finnes.
+  await backfillAvatarUpdatedAt(client);
   // Må kjøre før indeksene — ombyggingen dropper dem sammen med tabellen.
   await dropDealsOwnerNotNull(client);
   for (const stmt of INDEX_STATEMENTS) await client.execute(stmt);

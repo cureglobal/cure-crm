@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { avatarUrlFor } from "@/lib/avatar";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
 import { getTags } from "@/lib/tags.server";
@@ -26,7 +27,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <>
       <AppShell
-        user={{ name: user.name, email: user.email, avatarDataUrl: user.avatarDataUrl }}
+        user={{
+          name: user.name,
+          email: user.email,
+          avatarUrl: avatarUrlFor(user.id, user.avatarUpdatedAt),
+        }}
         logoutAction={logout}
         stages={stages}
         pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))}

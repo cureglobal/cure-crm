@@ -359,7 +359,12 @@ export async function updateAvatar(userId: number, formData: FormData) {
   if (me.id !== userId && !me.isAdmin) return;
   const avatar = String(formData.get("avatar") ?? "");
   if (!avatar.startsWith("data:image/") || avatar.length > MAX_IMAGE_DATA_URL_LENGTH) return;
-  await db.update(users).set({ avatarDataUrl: avatar }).where(eq(users.id, userId));
+  // avatarUpdatedAt er cache-nøkkelen i bilde-URL-en (se src/lib/avatar.ts).
+  // Uten at den settes her ville nettleseren fortsatt vist det gamle bildet.
+  await db
+    .update(users)
+    .set({ avatarDataUrl: avatar, avatarUpdatedAt: new Date() })
+    .where(eq(users.id, userId));
   revalidatePath("/settings");
   revalidatePath("/", "layout");
 }

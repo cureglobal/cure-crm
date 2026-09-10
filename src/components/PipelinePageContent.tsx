@@ -1,6 +1,7 @@
 import { desc, eq, asc, inArray } from "drizzle-orm";
-import { db, deals as dealsTable, companies, users, activities, dealLines } from "@/lib/db";
+import { db, deals as dealsTable, companies, users, userColumns, activities, dealLines } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { avatarUrlFor } from "@/lib/avatar";
 import { toDateInputValue } from "@/lib/format";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
@@ -68,10 +69,7 @@ export default async function PipelinePageContent({
       .from(dealsTable)
       .innerJoin(companies, eq(dealsTable.companyId, companies.id))
       .orderBy(desc(dealsTable.updatedAt)),
-    db.query.users.findMany({
-      columns: { id: true, name: true, avatarDataUrl: true },
-      orderBy: [asc(users.name)],
-    }),
+    db.select(userColumns).from(users).orderBy(asc(users.name)),
     db.query.dealOwners.findMany(),
     getTags("deal"),
     db.query.dealTags.findMany(),
@@ -98,7 +96,7 @@ export default async function PipelinePageContent({
   ]);
 
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
-  const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
+  const ownerAvatars = new Map(allUsers.map((u) => [u.id, avatarUrlFor(u.id, u.avatarUpdatedAt)]));
 
   const coOwnerIdsByDeal = new Map<number, number[]>();
   for (const r of coOwnerRows) {
@@ -168,7 +166,11 @@ export default async function PipelinePageContent({
     <PipelineView
       rows={dealRows}
       stages={stages}
-      owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
+      owners={allUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        avatarUrl: avatarUrlFor(u.id, u.avatarUpdatedAt),
+      }))}
       businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name }))}
       lostReasons={lostReasons.map((r) => ({ id: r.id, label: r.label }))}
       currentUserId={me.id}

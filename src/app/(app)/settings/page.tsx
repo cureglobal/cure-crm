@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db, emailAccounts, calendarAccounts, companies } from "@/lib/db";
+import { db, emailAccounts, calendarAccounts, companies, users, userColumns } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines } from "@/lib/pipelines.server";
@@ -88,7 +89,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   ] = await Promise.all([
     db.query.emailAccounts.findFirst({ where: eq(emailAccounts.userId, me.id) }),
     db.query.calendarAccounts.findFirst({ where: eq(calendarAccounts.userId, me.id) }),
-    db.query.users.findMany({ columns: { passwordHash: false } }),
+    db.select(userColumns).from(users),
     // Kun til opptelling (unverifiedCount) — trenger ikke resten av
     // selskapsradene (Brreg-feltene) for det.
     db.query.companies.findMany({
@@ -589,7 +590,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 <AvatarUpload
                   userId={u.id}
                   name={u.name}
-                  avatarDataUrl={u.avatarDataUrl}
+                  avatarUrl={avatarUrlFor(u.id, u.avatarUpdatedAt)}
                   size={36}
                   editable
                 />

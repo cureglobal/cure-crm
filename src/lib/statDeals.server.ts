@@ -1,13 +1,14 @@
 import { asc } from "drizzle-orm";
-import { db, users } from "@/lib/db";
+import { db, users, userColumns } from "@/lib/db";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
+import { avatarUrlFor } from "@/lib/avatar";
 import { effectiveProbability } from "@/lib/dealProbability";
 import type { Deal, Stage } from "@/lib/db/schema";
 import type { StatDealRow } from "@/components/StatDealsList";
 
 export interface DealListContext {
   companyById: Map<number, { name: string; logoUrl: string | null }>;
-  ownerById: Map<number, { name: string; avatarDataUrl: string | null }>;
+  ownerById: Map<number, { name: string; avatarUrl: string | null }>;
   slugMap: Map<number, string>;
 }
 
@@ -16,15 +17,14 @@ export interface DealListContext {
 export async function getDealListContext(): Promise<DealListContext> {
   const [allCompanies, allUsers, slugMap] = await Promise.all([
     db.query.companies.findMany({ columns: { id: true, name: true, logoUrl: true } }),
-    db.query.users.findMany({
-      columns: { id: true, name: true, avatarDataUrl: true },
-      orderBy: [asc(users.name)],
-    }),
+    db.select(userColumns).from(users).orderBy(asc(users.name)),
     getDealSlugMap(),
   ]);
   return {
     companyById: new Map(allCompanies.map((c) => [c.id, { name: c.name, logoUrl: c.logoUrl }])),
-    ownerById: new Map(allUsers.map((u) => [u.id, { name: u.name, avatarDataUrl: u.avatarDataUrl }])),
+    ownerById: new Map(
+      allUsers.map((u) => [u.id, { name: u.name, avatarUrl: avatarUrlFor(u.id, u.avatarUpdatedAt) }])
+    ),
     slugMap,
   };
 }
@@ -47,7 +47,7 @@ export function toStatDealRow(
     logoUrl: company?.logoUrl ?? null,
     dealTitle: deal.title,
     ownerName: owner?.name ?? "",
-    ownerAvatarUrl: owner?.avatarDataUrl ?? null,
+    ownerAvatarUrl: owner?.avatarUrl ?? null,
     value: deal.value,
     probability: effectiveProbability(deal, stageById),
     closedAt: closedAtMs,

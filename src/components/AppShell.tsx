@@ -33,7 +33,7 @@ export default function AppShell({
   initialUnreadCount,
   children,
 }: {
-  user: { name: string; email: string; avatarDataUrl: string | null };
+  user: { name: string; email: string; avatarUrl: string | null };
   logoutAction: () => void | Promise<void>;
   stages: Stage[];
   pipelines: { id: number; name: string }[];
@@ -167,7 +167,7 @@ export default function AppShell({
           >
             <Avatar
               name={user.name}
-              imageUrl={user.avatarDataUrl}
+              imageUrl={user.avatarUrl}
               size={32}
               title={collapsed ? `${user.name} · ${user.email}` : user.name}
             />

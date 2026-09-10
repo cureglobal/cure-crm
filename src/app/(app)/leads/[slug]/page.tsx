@@ -16,7 +16,9 @@ import {
   contactEvents,
   dealOwners,
   dealTags,
+  userColumns,
 } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import {
   addPersonToCompany,
@@ -89,17 +91,19 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
     getDealSlugMap(),
     deal.ownerId == null
       ? Promise.resolve(null)
-      : db.query.users.findFirst({ where: eq(users.id, deal.ownerId) }),
+      : db
+          .select(userColumns)
+          .from(users)
+          .where(eq(users.id, deal.ownerId))
+          .limit(1)
+          .then((r) => r[0] ?? null),
     db
-      .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
+      .select({ id: users.id, name: users.name, avatarUpdatedAt: users.avatarUpdatedAt })
       .from(dealOwners)
       .innerJoin(users, eq(dealOwners.userId, users.id))
       .where(eq(dealOwners.dealId, dealId))
       .orderBy(asc(dealOwners.createdAt)),
-    db.query.users.findMany({
-      columns: { id: true, name: true, avatarDataUrl: true },
-      orderBy: [asc(users.name)],
-    }),
+    db.select(userColumns).from(users).orderBy(asc(users.name)),
     getStages(),
     getLostReasons(),
     getTags("deal"),
@@ -264,14 +268,18 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
                     : {
                         id: deal.ownerId,
                         name: owner?.name ?? "Ukjent",
-                        avatarDataUrl: owner?.avatarDataUrl ?? null,
+                        avatarUrl: avatarUrlFor(deal.ownerId, owner?.avatarUpdatedAt ?? null),
                       }
                 }
-                coOwners={coOwnerRows}
+                coOwners={coOwnerRows.map((u) => ({
+                  id: u.id,
+                  name: u.name,
+                  avatarUrl: avatarUrlFor(u.id, u.avatarUpdatedAt),
+                }))}
                 allUsers={allUsers.map((u) => ({
                   id: u.id,
                   name: u.name,
-                  avatarDataUrl: u.avatarDataUrl,
+                  avatarUrl: avatarUrlFor(u.id, u.avatarUpdatedAt),
                 }))}
               />
               <span>Opprettet {formatDate(deal.createdAt)}</span>

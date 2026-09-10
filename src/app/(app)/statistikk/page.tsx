@@ -1,6 +1,7 @@
 import { asc } from "drizzle-orm";
 import Link from "next/link";
-import { db, users } from "@/lib/db";
+import { db, users, userColumns } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
@@ -31,7 +32,7 @@ interface RankedDeal {
 }
 
 interface SellerStat {
-  user: { id: number; name: string; avatarDataUrl: string | null };
+  user: { id: number; name: string; avatarUrl: string | null };
   byStage: StageBreakdown[];
   hitRate: number | null;
   soldValue: number;
@@ -126,7 +127,7 @@ function RankingSection({
               return (
                 <li key={r.user.id} className="flex items-center gap-2.5 px-1.5 py-1.5">
                   {rank}
-                  <Avatar name={r.user.name} imageUrl={r.user.avatarDataUrl} size={24} />
+                  <Avatar name={r.user.name} imageUrl={r.user.avatarUrl} size={24} />
                   {name}
                   {r.prefix}
                   {metric}
@@ -139,7 +140,7 @@ function RankingSection({
                 <details className="group">
                   <summary className="flex cursor-pointer list-none items-center gap-2.5 rounded-lg px-1.5 py-1.5 [&::-webkit-details-marker]:hidden transition hover:bg-mist/[0.04]">
                     {rank}
-                    <Avatar name={r.user.name} imageUrl={r.user.avatarDataUrl} size={24} />
+                    <Avatar name={r.user.name} imageUrl={r.user.avatarUrl} size={24} />
                     {name}
                     {r.prefix}
                     {metric}
@@ -211,10 +212,7 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     dealSlugMap,
   ] = await Promise.all([
     getPipelines(),
-    db.query.users.findMany({
-      columns: { id: true, name: true, avatarDataUrl: true },
-      orderBy: [asc(users.name)],
-    }),
+    db.select(userColumns).from(users).orderBy(asc(users.name)),
     db.query.deals.findMany(),
     getSalesTarget(salesTargetYear),
     getMonthlyActuals(salesTargetYear),
@@ -419,7 +417,9 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         .sort((a, b) => b.closedAt - a.closedAt);
 
       return {
-        user,
+        // Kun det listen trenger — bildet peker på /api/avatar/[id] i stedet
+        // for å bakes inn som base64 i svaret.
+        user: { id: user.id, name: user.name, avatarUrl: avatarUrlFor(user.id, user.avatarUpdatedAt) },
         byStage,
         hitRate,
         openValue,

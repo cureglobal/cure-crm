@@ -22,7 +22,7 @@ import {
 export interface OwnerOption {
   id: number;
   name: string;
-  avatarDataUrl: string | null;
+  avatarUrl: string | null;
 }
 
 export interface BusinessUnitOption {

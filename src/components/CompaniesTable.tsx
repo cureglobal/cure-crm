@@ -138,7 +138,7 @@ export default function CompaniesTable({
   rows: CompanyRow[];
   totalOpen: number;
   totalWon: number;
-  owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  owners: { id: number; name: string; avatarUrl: string | null }[];
   businessUnits: { id: number; name: string }[];
   tags: { id: number; label: string }[];
 }) {

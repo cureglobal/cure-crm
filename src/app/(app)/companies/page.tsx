@@ -1,5 +1,6 @@
 import { asc, eq, sql, isNotNull } from "drizzle-orm";
 import { db, companies, deals, people, companyPeople, users, contactEvents, emailMessages } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
@@ -58,7 +59,7 @@ export default async function CompaniesPage() {
       .innerJoin(people, eq(companyPeople.personId, people.id))
       .orderBy(asc(companyPeople.createdAt)),
     db
-      .select({ id: users.id, name: users.name, avatarDataUrl: users.avatarDataUrl })
+      .select({ id: users.id, name: users.name, avatarUpdatedAt: users.avatarUpdatedAt })
       .from(users)
       .orderBy(asc(users.name)),
     db.query.companyOwners.findMany(),
@@ -90,7 +91,7 @@ export default async function CompaniesPage() {
   }
 
   const ownerNames = new Map(allUsers.map((u) => [u.id, u.name]));
-  const ownerAvatars = new Map(allUsers.map((u) => [u.id, u.avatarDataUrl]));
+  const ownerAvatars = new Map(allUsers.map((u) => [u.id, avatarUrlFor(u.id, u.avatarUpdatedAt)]));
 
   const coOwnerIdsByCompany = new Map<number, number[]>();
   for (const r of coOwnerRows) {
@@ -171,7 +172,11 @@ export default async function CompaniesPage() {
         rows={rows}
         totalOpen={totalOpen}
         totalWon={totalWon}
-        owners={allUsers.map((u) => ({ id: u.id, name: u.name, avatarDataUrl: u.avatarDataUrl }))}
+        owners={allUsers.map((u) => ({
+          id: u.id,
+          name: u.name,
+          avatarUrl: avatarUrlFor(u.id, u.avatarUpdatedAt),
+        }))}
         businessUnits={businessUnitRows.map((b) => ({ id: b.id, name: b.name }))}
         tags={tagOptions.map((t) => ({ id: t.id, label: t.label }))}
       />

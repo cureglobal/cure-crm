@@ -10,6 +10,7 @@ import {
   users,
   personTags,
 } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import {
   linkPersonToCompany,
@@ -78,7 +79,8 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
             companyId: deals.companyId,
             companyName: companies.name,
             ownerName: users.name,
-            ownerAvatarUrl: users.avatarDataUrl,
+            ownerId: users.id,
+            ownerAvatarUpdatedAt: users.avatarUpdatedAt,
           })
           .from(deals)
           .innerJoin(companies, eq(deals.companyId, companies.id))
@@ -299,7 +301,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
                         {d.value ? formatMoney(d.value) : "—"}
                       </span>
                       {d.ownerName ? (
-                        <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                        <Avatar name={d.ownerName} imageUrl={avatarUrlFor(d.ownerId, d.ownerAvatarUpdatedAt)} size={22} />
                       ) : (
                         <span
                           title="Ingen eier"

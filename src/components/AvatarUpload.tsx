@@ -2,34 +2,31 @@
 
 import { useRef, useState, useTransition } from "react";
 import { updateAvatar } from "@/lib/actions";
+import { downscaleToDataUrl } from "@/lib/downscaleImage";
 import Avatar from "@/components/Avatar";
 import { Camera } from "lucide-react";
 
-const MAX_AVATAR_BYTES = 1.5 * 1024 * 1024; // 1,5 MB — rundt-tall nok til et portrett, uten å blåse opp siden
+const MAX_AVATAR_BYTES = 1.5 * 1024 * 1024; // 1,5 MB — grensen for hva som godtas som INNDATA
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
+// Bildet vises aldri større enn ~40 px, men lagres som base64 i databasen og
+// følger med i svaret hver gang brukeren hentes. 256 px er nok til skjermer
+// med høy pikseltetthet og gir typisk 15–25 kB i stedet for opptil 1 MB.
+const AVATAR_MAX_DIMENSION = 256;
 
 export default function AvatarUpload({
   userId,
   name,
-  avatarDataUrl,
+  avatarUrl,
   size = 36,
   editable = true,
 }: {
   userId: number;
   name: string;
-  avatarDataUrl: string | null;
+  avatarUrl: string | null;
   size?: number;
   editable?: boolean;
 }) {
-  const [preview, setPreview] = useState(avatarDataUrl);
+  const [preview, setPreview] = useState(avatarUrl);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -40,7 +37,10 @@ export default function AvatarUpload({
       setError("Bildet er for stort (maks 1,5 MB).");
       return;
     }
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await downscaleToDataUrl(file, {
+      maxDimension: AVATAR_MAX_DIMENSION,
+      format: "jpeg",
+    });
     setPreview(dataUrl);
     const fd = new FormData();
     fd.set("avatar", dataUrl);

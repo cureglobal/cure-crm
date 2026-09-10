@@ -10,8 +10,15 @@ export const users = sqliteTable("users", {
   signature: text("signature"),
   // Design brukeren har valgt for grensesnittet sitt: 'lys' | 'dark' | 'elguide'.
   theme: text("theme").notNull().default("lys"),
-  // Profilbilde som data-URL (samme mønster som referanseprosjektenes screenshot).
+  // Profilbilde som data-URL. Hentes ALDRI i lister eller sidespørringer —
+  // bildene er opptil ~1 MB base64 hver, og å sende dem med hver sidelasting
+  // var appens største ytelsesproblem. Les kun denne kolonnen i
+  // /api/avatar/[id], som serverer bildet med lang cache. Alt annet bruker
+  // avatarUpdatedAt til å bygge URL-en — se src/lib/avatar.ts.
   avatarDataUrl: text("avatar_data_url"),
+  // Når profilbildet sist ble byttet; NULL = ingen bilde. Fungerer som
+  // cache-nøkkel i bilde-URL-en, slik at et nytt bilde gir en ny URL.
+  avatarUpdatedAt: integer("avatar_updated_at", { mode: "timestamp_ms" }),
   // Hvilket av våre egne aksjeselskap (Cure AS, Cure Christiania AS, …)
   // brukeren jobber i — se business_units-tabellen under.
   businessUnitId: integer("business_unit_id"),
@@ -520,6 +527,27 @@ export const activities = sqliteTable("activities", {
 });
 
 export type User = typeof users.$inferSelect;
+
+// Alle kolonner på users UNNTATT de to som ikke har noe å gjøre i et vanlig
+// sideoppslag: avatarDataUrl (opptil ~1 MB base64 — hentes via
+// /api/avatar/[id]) og passwordHash (trengs kun i innloggingen selv).
+// Bruk denne i stedet for db.query.users.findMany()/findFirst(), som ellers
+// drar med seg begge deler i hvert eneste svar.
+export const userColumns = {
+  id: users.id,
+  name: users.name,
+  email: users.email,
+  isAdmin: users.isAdmin,
+  signature: users.signature,
+  theme: users.theme,
+  avatarUpdatedAt: users.avatarUpdatedAt,
+  businessUnitId: users.businessUnitId,
+  onboardingSeenAt: users.onboardingSeenAt,
+  lastSeenAt: users.lastSeenAt,
+  createdAt: users.createdAt,
+} as const;
+
+export type AppUser = Omit<User, "avatarDataUrl" | "passwordHash">;
 export type Company = typeof companies.$inferSelect;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type LostReason = typeof lostReasons.$inferSelect;

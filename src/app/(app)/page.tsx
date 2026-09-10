@@ -100,12 +100,9 @@ export default async function Dashboard() {
           companyName: companies.name,
           logoUrl: companies.logoUrl,
           ownerId: deals.ownerId,
-          ownerName: users.name,
-          ownerAvatarUrl: users.avatarDataUrl,
         })
         .from(deals)
-        .innerJoin(companies, eq(deals.companyId, companies.id))
-        .leftJoin(users, eq(deals.ownerId, users.id)),
+        .innerJoin(companies, eq(deals.companyId, companies.id)),
       getStages(),
       // Innsynsforespørsler til meg — lenker til nyeste deal på selskapet.
       db

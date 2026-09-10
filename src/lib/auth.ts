@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import { db, users, type User } from "@/lib/db";
+import { db, users, userColumns, type AppUser } from "@/lib/db";
 import { eq } from "drizzle-orm";
 
 const COOKIE = "crm_session";
@@ -41,14 +41,17 @@ export async function destroySession() {
 // request ellers siden getCurrentUser kalles på så godt som hver side/action.
 const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
 
-export const getCurrentUser = cache(async (): Promise<User | null> => {
+export const getCurrentUser = cache(async (): Promise<AppUser | null> => {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
     const uid = payload.uid as number;
-    const user = await db.query.users.findFirst({ where: eq(users.id, uid) });
+    // Eksplisitte kolonner, ikke findFirst: den hentet også profilbildet
+    // (~1 MB base64) på hver eneste side og hver eneste server action.
+    const rows = await db.select(userColumns).from(users).where(eq(users.id, uid)).limit(1);
+    const user = rows[0];
     if (!user) return null;
     if (!user.lastSeenAt || Date.now() - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
       await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, uid));
@@ -59,7 +62,7 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   }
 });
 
-export async function requireUser(): Promise<User> {
+export async function requireUser(): Promise<AppUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   return user;

@@ -110,7 +110,7 @@ function Row({
   deal: DealRow;
   selected: boolean;
   onToggle: (shiftKey: boolean) => void;
-  owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  owners: { id: number; name: string; avatarUrl: string | null }[];
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
@@ -275,7 +275,7 @@ export default function DealsTable({
 }: {
   rows: DealRow[];
   stages: Stage[];
-  owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  owners: { id: number; name: string; avatarUrl: string | null }[];
   lostReasons: LostReasonOption[];
   tags: { id: number; label: string }[];
   groupByStage?: boolean;

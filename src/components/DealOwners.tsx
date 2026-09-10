@@ -8,7 +8,7 @@ import { Plus, X, Check, Star, TriangleAlert } from "lucide-react";
 export interface OwnerOption {
   id: number;
   name: string;
-  avatarDataUrl: string | null;
+  avatarUrl: string | null;
 }
 
 export default function DealOwners({
@@ -82,7 +82,7 @@ export default function DealOwners({
         <span className="group relative">
           <Avatar
             name={primaryOwner.name}
-            imageUrl={primaryOwner.avatarDataUrl}
+            imageUrl={primaryOwner.avatarUrl}
             size={20}
             title={`${primaryOwner.name} (hovedeier)`}
           />
@@ -105,7 +105,7 @@ export default function DealOwners({
       )}
       {coOwners.map((o) => (
         <span key={o.id} className="group relative">
-          <Avatar name={o.name} imageUrl={o.avatarDataUrl} size={20} title={o.name} />
+          <Avatar name={o.name} imageUrl={o.avatarUrl} size={20} title={o.name} />
           <button
             disabled={pending}
             onClick={() => startTransition(async () => { await removeDealOwner(dealId, o.id); })}
@@ -154,7 +154,7 @@ export default function DealOwners({
                       >
                         {checked && <Check size={11} strokeWidth={3} />}
                       </span>
-                      <Avatar name={u.name} imageUrl={u.avatarDataUrl} size={18} />
+                      <Avatar name={u.name} imageUrl={u.avatarUrl} size={18} />
                       <span className="min-w-0 flex-1 truncate">{u.name}</span>
                       {isMain && (
                         <span className="shrink-0 text-[10.5px] text-ink-faint">Hovedeier</span>

@@ -42,6 +42,48 @@ staging-miljø — kun ett Railway-miljø (`production`), rett mot `main`.
    `addMissingColumns` svelger `duplicate column name`-feil av samme grunn
    (to prosesser kan begge se en kolonne som fraværende og begge forsøke å
    legge den til).
+4. **Databasen kjører i WAL-modus** (satt i `src/lib/db/index.ts`). Uten WAL
+   tar hver skriving en eksklusiv lås på hele fila, så alle som leser
+   blokkeres mens én person lagrer. Følgen for kopiering/backup: databasen
+   er nå tre filer — `crm.db`, `crm.db-wal` og `crm.db-shm`. Kopierer du kun
+   `crm.db` mens appen kjører, får du en database som mangler de nyeste
+   skrivingene. Kjør `PRAGMA wal_checkpoint(TRUNCATE);` først, eller kopier
+   alle tre.
+5. **Slett alltid `crm.db-wal` og `crm.db-shm` før du legger tilbake en
+   kopi av `crm.db`.** Ligger det en gammel WAL-fil ved siden av, spilles
+   den av oppå fila du nettopp la inn, og du sitter igjen med den GAMLE
+   databasen — i verste fall en tom en. (Skjedde under ytelsesarbeidet:
+   en 5 MB produksjonskopi ble til en tom database på 335 kB.)
+
+## Ytelse — les før du legger til en spørring
+
+Appen føltes treg fordi listesidene sendte profilbilder som base64 i selve
+siden. Bildene ligger som data-URL i `users.avatar_data_url` (opptil ~1 MB
+per bruker), og fordi spørringene hentet hele brukerraden, fulgte bildet med
+i hver eneste rad i hver eneste sidelasting. Målt på ekte data:
+
+| Side          | Før       | Etter   |
+| ------------- | --------- | ------- |
+| `/leads`      | 153,5 MB  | 331 kB  |
+| `/statistikk` | 39,5 MB   | 168 kB  |
+| `/companies`  | 27,1 MB   | 2,1 MB  |
+| `/` (forsiden)| 2,2 MB    | 157 kB  |
+
+Reglene som holder det slik:
+
+1. **Hent aldri `avatarDataUrl` i en side- eller listespørring.** Bruk
+   `userColumns` fra `src/lib/db/schema.ts` i stedet for
+   `db.query.users.findMany()`/`findFirst()` — den utelater både bildet og
+   passordhashen. Bildet leses kun i `/api/avatar/[id]`.
+2. **Bygg bilde-URL-en med `avatarUrlFor(userId, avatarUpdatedAt)`** fra
+   `src/lib/avatar.ts`. Nettleseren cacher bildet i et år; `avatarUpdatedAt`
+   i URL-en sørger for at et nytt bilde likevel vises med én gang.
+3. **Alt som lastes opp skaleres ned i nettleseren først**
+   (`src/lib/downscaleImage.ts`, maks 256 px). Uten det havner et
+   ukomprimert kamerabilde i databasen for godt.
+4. `/companies` er fortsatt 2,1 MB fordi den henter alle 893 selskapene og
+   rendrer hele tabellen. Det er ikke bilder — det er rader. Neste steg der
+   er paginering eller virtualisering, ikke flere spørringsjusteringer.
 
 ## Sikkerhet
 

@@ -2,19 +2,17 @@
 
 import { useRef, useState, useTransition } from "react";
 import { updateCompanyLogo } from "@/lib/actions";
+import { downscaleToDataUrl } from "@/lib/downscaleImage";
 import CompanyLogo from "@/components/CompanyLogo";
 import { Camera } from "lucide-react";
 
-const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
+const MAX_LOGO_BYTES = 1.5 * 1024 * 1024; // grensen for hva som godtas som INNDATA
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
+// Logoen lagres som base64 i companies-raden, og companies-listen henter
+// logoUrl for alle selskapene på én gang. En ukomprimert logo ville derfor
+// blitt sendt med hver visning av bedriftslisten. PNG for å beholde
+// gjennomsiktighet — logoer ligger ofte rett på et kort uten egen bakgrunn.
+const LOGO_MAX_DIMENSION = 256;
 
 export default function CompanyLogoUpload({
   companyId,
@@ -40,7 +38,10 @@ export default function CompanyLogoUpload({
       setError("Bildet er for stort (maks 1,5 MB).");
       return;
     }
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await downscaleToDataUrl(file, {
+      maxDimension: LOGO_MAX_DIMENSION,
+      format: "png",
+    });
     setPreview(dataUrl);
     const fd = new FormData();
     fd.set("logo", dataUrl);

@@ -21,7 +21,7 @@ export default function CompanyOwnerCell({
   ownerName: string;
   ownerAvatarUrl: string | null;
   coOwnerIds: number[];
-  owners: { id: number; name: string; avatarDataUrl: string | null }[];
+  owners: { id: number; name: string; avatarUrl: string | null }[];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -134,7 +134,7 @@ export default function CompanyOwnerCell({
                       >
                         {checked && <Check size={11} strokeWidth={3} />}
                       </span>
-                      <Avatar name={o.name} imageUrl={o.avatarDataUrl} size={18} />
+                      <Avatar name={o.name} imageUrl={o.avatarUrl} size={18} />
                       <span className="min-w-0 flex-1 truncate">{o.name}</span>
                       {isMain && (
                         <span className="shrink-0 text-[10.5px] text-ink-faint">Hovedeier</span>

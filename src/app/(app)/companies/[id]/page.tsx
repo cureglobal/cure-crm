@@ -13,7 +13,9 @@ import {
   emailAccounts,
   emailAccessGrants,
   companyTags,
+  userColumns,
 } from "@/lib/db";
+import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import {
   addPersonToCompany,
@@ -87,7 +89,8 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         comment: deals.comment,
         updatedAt: deals.updatedAt,
         ownerName: users.name,
-        ownerAvatarUrl: users.avatarDataUrl,
+        ownerId: users.id,
+        ownerAvatarUpdatedAt: users.avatarUpdatedAt,
       })
       .from(deals)
       .leftJoin(users, eq(deals.ownerId, users.id))
@@ -136,10 +139,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       .leftJoin(users, eq(contactEvents.userId, users.id))
       .where(eq(contactEvents.companyId, companyId))
       .orderBy(desc(contactEvents.occurredAt)),
-    db.query.users.findMany({
-      columns: { id: true, name: true, avatarDataUrl: true },
-      orderBy: [asc(users.name)],
-    }),
+    db.select(userColumns).from(users).orderBy(asc(users.name)),
     // Alle personer i systemet, ikke bare de allerede koblet til dette
     // selskapet — man skal kunne velge en hovedkontakt som ennå ikke er
     // knyttet hit, og da kobles de automatisk (se updateCompany).
@@ -267,7 +267,11 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           <div className="mt-1 flex flex-wrap items-center gap-3 text-[13px] text-ink-soft">
             {companyOwner && (
               <span className="inline-flex items-center gap-1.5">
-                <Avatar name={companyOwner.name} imageUrl={companyOwner.avatarDataUrl} size={18} />
+                <Avatar
+                  name={companyOwner.name}
+                  imageUrl={avatarUrlFor(companyOwner.id, companyOwner.avatarUpdatedAt)}
+                  size={18}
+                />
                 {companyOwner.name}
               </span>
             )}
@@ -398,7 +402,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                           {d.value ? formatMoney(d.value) : "—"}
                         </span>
                         {d.ownerName ? (
-                          <Avatar name={d.ownerName} imageUrl={d.ownerAvatarUrl} size={22} />
+                          <Avatar name={d.ownerName} imageUrl={avatarUrlFor(d.ownerId, d.ownerAvatarUpdatedAt)} size={22} />
                         ) : (
                           <span
                             title="Ingen eier"
