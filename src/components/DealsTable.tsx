@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   updateDealInline,
@@ -293,6 +293,14 @@ export default function DealsTable({
     dealId: number;
     stageId: string;
   } | null>(null);
+  // Flytter raden til ny fase med én gang man slipper, i stedet for å vente
+  // på at serveren svarer og siden revaliderer — samme mønster som
+  // KanbanBoard.tsx bruker for tavlevisningen.
+  const [optimisticRows, applyMove] = useOptimistic(
+    rows,
+    (state, move: { id: number; stage: string }) =>
+      state.map((r) => (r.id === move.id ? { ...r, stage: move.stage } : r))
+  );
 
   function onSort(key: SortKey) {
     setSort((s) =>
@@ -301,15 +309,18 @@ export default function DealsTable({
   }
 
   const sorted = useMemo(() => {
-    if (!sort) return rows;
-    return [...rows].sort((a, b) => compare(a, b, sort));
-  }, [rows, sort]);
+    if (!sort) return optimisticRows;
+    return [...optimisticRows].sort((a, b) => compare(a, b, sort));
+  }, [optimisticRows, sort]);
 
   const allVisibleSelected = sorted.length > 0 && sorted.every((r) => selected.has(r.id));
 
   // Vis nåværende fase/eier i bulk-velgerne kun når hele det valgte utvalget
   // deler samme verdi — ellers er "nåværende" udefinert for et blandet utvalg.
-  const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
+  const selectedRows = useMemo(
+    () => optimisticRows.filter((r) => selected.has(r.id)),
+    [optimisticRows, selected]
+  );
   const currentStageId =
     selectedRows.length > 0 && selectedRows.every((r) => r.stage === selectedRows[0].stage)
       ? selectedRows[0].stage
@@ -391,7 +402,7 @@ export default function DealsTable({
     setDragOverStageId(null);
     const dealId = Number(e.dataTransfer.getData("text/deal-id"));
     if (!dealId) return;
-    const deal = rows.find((r) => r.id === dealId);
+    const deal = optimisticRows.find((r) => r.id === dealId);
     const stageId = String(stage.id);
     if (!deal || deal.stage === stageId) return;
     if (stage.isLost) {
@@ -400,6 +411,7 @@ export default function DealsTable({
     }
     if (stage.isWon) celebrateWin(`${deal.companyName} · ${deal.title}`);
     startTransition(async () => {
+      applyMove({ id: dealId, stage: stageId });
       await updateDealStage(dealId, stageId);
     });
   }
@@ -409,6 +421,7 @@ export default function DealsTable({
     const { dealId, stageId } = pendingLostDrop;
     setPendingLostDrop(null);
     startTransition(async () => {
+      applyMove({ id: dealId, stage: stageId });
       await markDealLost(dealId, stageId, lostReasonId, comment);
     });
   }
@@ -632,7 +645,45 @@ export default function DealsTable({
             );
           })
         ) : (
-          <ul>
+          <>
+            {isDragging && (
+              // Flat visning har ingen faseseksjoner å slippe i (man slipper
+              // normalt oppå en annen rad, som havner i den radens fase) —
+              // uten denne raden er det umulig å flytte til en fase som
+              // ingen synlig rad står i akkurat nå. Samme "Slipp her"-idé
+              // som de tomme gruppene i gruppert visning, bare som piller.
+              <div className="flex flex-wrap gap-2 border-b border-line bg-canvas/95 px-5 py-3 backdrop-blur-xl">
+                {stages.map((s) => {
+                  const stageId = String(s.id);
+                  const isOver = dragOverStageId === stageId;
+                  return (
+                    <div
+                      key={s.id}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverStageId(stageId);
+                      }}
+                      onDragLeave={() =>
+                        setDragOverStageId((cur) => (cur === stageId ? null : cur))
+                      }
+                      onDrop={(e) => handleDrop(s, e)}
+                      className={`flex items-center gap-1.5 rounded-full border-2 border-dashed px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                        isOver
+                          ? "border-accent/50 bg-accent-soft/40 text-accent"
+                          : "border-line text-ink-faint"
+                      }`}
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: s.color }}
+                      />
+                      {s.label}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <ul>
             {sorted.map((deal) => {
               const dealStage = stages.find((s) => String(s.id) === deal.stage);
               return (
@@ -659,7 +710,8 @@ export default function DealsTable({
                 />
               );
             })}
-          </ul>
+            </ul>
+          </>
         )}
       </div>
 
