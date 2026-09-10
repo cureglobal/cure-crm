@@ -24,18 +24,34 @@ globalForDb.__libsqlClient = client;
 // `npm run db:migrate` manuelt i stedet (se scripts/migrate.ts), for å unngå
 // at flere samtidige kalde starter kjører ALTER TABLE mot hverandre.
 if (url.startsWith("file:")) {
+  // MÅ settes først. `next build` kjører flere byggeprosesser parallelt som
+  // alle åpner den samme ferske fila samtidig, og uten busy_timeout feiler
+  // den første låsekrangelen momentant med SQLITE_BUSY i stedet for å vente.
+  await client.execute("PRAGMA busy_timeout = 5000");
+
   // WAL i stedet for standard rollback-journal. Uten WAL tar hver skriving
   // en eksklusiv lås på hele databasefila, så alle som leser blokkeres mens
   // én person lagrer — merkbart på et Railway-volum, der hver fsync går til
   // en nettverksdisk. WAL lar lesere jobbe videre under skriving.
-  // Innstillingen lagres i selve fila og overlever restart, men settes hver
-  // gang siden en fersk database (lokalt, i bygget) starter i "delete".
-  await client.execute("PRAGMA journal_mode = WAL");
+  //
+  // Å BYTTE journalmodus krever en eksklusiv lås på hele fila. Når flere
+  // byggeprosesser starter samtidig, kan en av dem tape kappløpet selv med
+  // busy_timeout. Det er harmløst: modusen lagres i selve fila, så det
+  // holder at én prosess vinner. Å la feilen boble opp ville derimot
+  // velte hele bygget — som er nøyaktig det som skjedde.
+  try {
+    await client.execute("PRAGMA journal_mode = WAL");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("SQLITE_BUSY") && !message.includes("database is locked")) throw err;
+  }
+
   // NORMAL fsync'er ved checkpoint i stedet for ved hver eneste commit.
   // Trygt sammen med WAL: en krasj kan miste de aller siste transaksjonene,
   // men databasen kan ikke bli korrupt. Dette er per tilkobling, ikke lagret
-  // i fila, så det må settes ved hver oppstart.
+  // i fila, så det må settes ved hver oppstart. Krever ingen fillås.
   await client.execute("PRAGMA synchronous = NORMAL");
+
   await migrate(client);
 }
 
