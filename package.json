@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "share": "./scripts/share.sh",
-    "db:migrate": "node --experimental-strip-types scripts/migrate.ts"
+    "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "db:backup": "./scripts/backup.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

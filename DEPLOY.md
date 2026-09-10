@@ -131,14 +131,28 @@ litestream restore -o crm.db \
 litestream restore -timestamp 2026-09-10T12:00:00Z -o crm.db s3://...   # tilbake i tid
 ```
 
-### Manuelt øyeblikksbilde
-
-`VACUUM INTO` gir én konsistent fil, WAL inkludert — i motsetning til å
-kopiere `crm.db` alene, som mister de nyeste skrivingene:
+### Manuelt øyeblikksbilde — `npm run db:backup`
 
 ```bash
-railway ssh --service cure-crm
-node -e "require('@libsql/client').createClient({url:'file:/app/data/crm.db'}).execute(\"VACUUM INTO '/tmp/crm-backup.db'\")"
+npm run db:backup
+```
+
+Tar en kopi av produksjonsdatabasen og legger den i R2 under `manual/`.
+Krever kun innlogget `railway` og `wrangler` — **ingen R2-nøkler**, så den
+virker selv om Litestream ikke er satt opp ennå. Kjør den før du gjør noe
+risikabelt med dataene.
+
+Skriptet bruker `VACUUM INTO`, som gir én konsistent fil med WAL-en
+inkludert — å kopiere `crm.db` alene ville mistet de nyeste skrivingene.
+Det stopper med feil hvis kopien er mistenkelig liten eller
+`integrity_check` ikke sier `ok`, slik at man ikke sitter igjen med en fil
+som *ser ut* som en sikkerhetskopi.
+
+Hent en kopi tilbake:
+
+```bash
+npx wrangler r2 object list cure-crm-backup --remote      # se hva som finnes
+npx wrangler r2 object get cure-crm-backup/manual/<fil>.db --remote --file crm.db
 ```
 
 ## Vanlige CLI-kommandoer
