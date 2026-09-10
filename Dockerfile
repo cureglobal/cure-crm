@@ -36,8 +36,12 @@ ARG LITESTREAM_VERSION=0.5.17
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends curl ca-certificates; \
+    # Litestream navngir 64-bits Intel-bygget "x86_64", mens Debian kaller
+    # samme arkitektur "amd64". Bommer man her, får man 404 fra GitHub — og
+    # den feilen dukker kun opp på amd64, ikke når man bygger lokalt på en
+    # Apple Silicon-maskin (arm64), der navnene tilfeldigvis er like.
     case "$(dpkg --print-architecture)" in \
-      amd64) lsarch=amd64 ;; \
+      amd64) lsarch=x86_64 ;; \
       arm64) lsarch=arm64 ;; \
       *) echo "Litestream: ustøttet arkitektur $(dpkg --print-architecture)" >&2; exit 1 ;; \
     esac; \
