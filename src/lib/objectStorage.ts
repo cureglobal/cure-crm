@@ -9,7 +9,11 @@ import { AwsClient } from "aws4fetch";
 // Bøtta er cure-crm-media — ikke cure-crm-backup, som Litestream eier.
 // Samme R2-nøkler brukes til begge (se DEPLOY.md).
 
-const BUCKET = "cure-crm-media";
+// Kan overstyres med R2_MEDIA_BUCKET. Kjører man appen lokalt mot
+// produksjonsnøklene, skriver den ellers rett inn i produksjonsbøtta — det
+// skjedde under utviklingen av dette og etterlot fjorten foreldreløse filer.
+// Sett R2_MEDIA_BUCKET til noe annet når du tester mot ekte data.
+const BUCKET = process.env.R2_MEDIA_BUCKET ?? "cure-crm-media";
 
 function endpoint(): string | null {
   const host = process.env.R2_ENDPOINT;

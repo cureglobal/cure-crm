@@ -132,6 +132,14 @@ spørring som ikke eksplisitt utelot kolonnen. Nå ligger de i R2-bøtta
 Begge rutene krever innlogging og cacher i ett år. Bytter man bilde, får det
 en ny nøkkel (og dermed ny URL), og den gamle fila slettes fra R2.
 
+Flyttingen kjøres automatisk ved oppstart (`src/instrumentation.ts`), i
+bakgrunnen slik at den ikke forsinker serveren. Er alt flyttet, er den tre
+tellinger som ikke finner noe.
+
+> Kjører du appen lokalt med produksjonsnøklene, skriver den rett inn i
+> produksjonsbøtta. Sett `R2_MEDIA_BUCKET` til en annen bøtte når du tester
+> mot ekte data — ellers blir det liggende igjen filer ingen peker på.
+
 Flyttingen av eksisterende bilder gjøres én gang med `npm run migrate:images`
 (trygg å kjøre om igjen — rader som alt er flyttet hoppes over). Etterpå
 krymper `VACUUM` selve fila; her gikk den fra 4 584 kB til 856 kB.
