@@ -9,7 +9,8 @@
     "lint": "eslint",
     "share": "./scripts/share.sh",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
-    "db:backup": "./scripts/backup.sh"
+    "db:backup": "./scripts/backup.sh",
+    "perf:check": "node --experimental-strip-types scripts/perf-check.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

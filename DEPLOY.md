@@ -81,9 +81,27 @@ Reglene som holder det slik:
 3. **Alt som lastes opp skaleres ned i nettleseren først**
    (`src/lib/downscaleImage.ts`, maks 256 px). Uten det havner et
    ukomprimert kamerabilde i databasen for godt.
-4. `/companies` er fortsatt 2,1 MB fordi den henter alle 893 selskapene og
-   rendrer hele tabellen. Det er ikke bilder — det er rader. Neste steg der
-   er paginering eller virtualisering, ikke flere spørringsjusteringer.
+4. Lange lister rendrer bare de 60 øverste radene og henter flere ved
+   rulling (`src/lib/useIncrementalRender.ts`). All data ligger fortsatt i
+   nettleseren, så søk og sortering er uendret — men nettleserens egen
+   Ctrl+F finner ikke rader som ennå ikke er rendret.
+
+### `npm run perf:check`
+
+Vaktposten som fanger regresjoner i punkt 1–3. Den bygger et syntetisk
+datasett med fella i seg — åtte brukere med profilbilder på 700 kB — og
+feiler hvis en side blir større enn budsjettet sitt:
+
+```bash
+npm run build && npm run perf:check
+```
+
+Krever ingen produksjonsdata. Sjekken er testet mot den ekte feilen: legger
+man profilbildene tilbake i pipeline-spørringen, går `/leads` fra 383 kB til
+313 000 kB og sjekken feiler med beskjed om hva som er galt.
+
+Justér budsjettene i skriptet hvis appen vokser reelt — men behandle et
+hopp i størrelsesorden som en feil, ikke som vekst.
 
 ## Sikkerhet
 
