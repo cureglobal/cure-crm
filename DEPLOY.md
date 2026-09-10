@@ -94,10 +94,52 @@ Reglene som holder det slik:
 - Sikkerhetsheadere (CSP, HSTS, X-Frame-Options m.fl.) settes i
   `next.config.ts`. CSP tillater `unsafe-inline` for script/style fremfor
   nonces, siden nonces krever at hele appen rendres dynamisk.
-- **Ingen backup av databasen.** Den bor kun på Railway-volumet. Går
-  volumet tapt, er dataene borte. Ikke løst ennå.
+- Sikkerhetskopi: se eget avsnitt under.
 - Ingen selvregistrering etter at første bruker er opprettet — kun admin kan
   legge til nye brukere (Innstillinger).
+
+## Sikkerhetskopi (Litestream → Cloudflare R2)
+
+Databasen bodde tidligere kun på Railway-volumet. Forsvant volumet, var alt
+borte. Nå replikerer **Litestream** SQLite-fila fortløpende til R2-bøtta
+`cure-crm-backup` i Cloudflare-kontoen «Cure». Litestream starter appen som
+sin egen underprosess (`entrypoint.sh`), så replikeringen lever nøyaktig
+like lenge som appen.
+
+Mangler nøklene under, starter appen som før — bare uten sikkerhetskopi.
+Det står i oppstartsloggen hvilken av delene som skjer.
+
+### Nøkler som må være satt i Railway
+
+- `R2_ACCESS_KEY_ID` og `R2_SECRET_ACCESS_KEY` — fra et R2 API-token
+  (Cloudflare → R2 → API → «Manage API tokens» → Create, med
+  **Object Read & Write** kun på `cure-crm-backup`)
+- `R2_ENDPOINT` — `<account-id>.r2.cloudflarestorage.com`
+  (uten `https://`)
+
+### Hente data tilbake
+
+Går volumet tapt, skjer det av seg selv: `-restore-if-db-not-exists` i
+entrypointet ser at `/app/data/crm.db` mangler og henter ned siste versjon
+før appen starter. Ingen manuelle steg.
+
+Trenger du en kopi lokalt, eller å rulle tilbake til et tidspunkt:
+
+```bash
+litestream restore -o crm.db \
+  s3://cure-crm-backup/crm?endpoint=<account-id>.r2.cloudflarestorage.com
+litestream restore -timestamp 2026-09-10T12:00:00Z -o crm.db s3://...   # tilbake i tid
+```
+
+### Manuelt øyeblikksbilde
+
+`VACUUM INTO` gir én konsistent fil, WAL inkludert — i motsetning til å
+kopiere `crm.db` alene, som mister de nyeste skrivingene:
+
+```bash
+railway ssh --service cure-crm
+node -e "require('@libsql/client').createClient({url:'file:/app/data/crm.db'}).execute(\"VACUUM INTO '/tmp/crm-backup.db'\")"
+```
 
 ## Vanlige CLI-kommandoer
 

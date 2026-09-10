@@ -1,0 +1,22 @@
+# Kontinuerlig sikkerhetskopi av SQLite-databasen til Cloudflare R2.
+#
+# Litestream følger med på WAL-fila og laster opp endringene fortløpende, så
+# tapet ved en katastrofe er sekunder — ikke "siden i går". Databasen bodde
+# tidligere KUN på Railway-volumet: forsvant volumet, var alt borte.
+#
+# Kjøres av entrypoint.sh, som starter appen som underprosess av Litestream.
+# Mangler variablene under, starter appen som før — uten sikkerhetskopi.
+# Se DEPLOY.md for hvordan man oppretter nøklene og henter data tilbake.
+
+access-key-id: ${R2_ACCESS_KEY_ID}
+secret-access-key: ${R2_SECRET_ACCESS_KEY}
+
+dbs:
+  - path: /app/data/crm.db
+    replica:
+      type: s3
+      bucket: cure-crm-backup
+      path: crm
+      # R2 har ingen regioner, men S3-klienten krever at feltet er satt.
+      region: auto
+      endpoint: ${R2_ENDPOINT}

@@ -29,6 +29,27 @@ ENV PORT=3000
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs
 
+# Litestream replikerer SQLite-fila til Cloudflare R2 fortløpende — se
+# litestream.yml og DEPLOY.md. Binæren hentes ferdigbygget; arkitekturen
+# leses av imaget selv, siden Railway kan bygge på både amd64 og arm64.
+ARG LITESTREAM_VERSION=0.5.17
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) lsarch=amd64 ;; \
+      arm64) lsarch=arm64 ;; \
+      *) echo "Litestream: ustøttet arkitektur $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/litestream.tar.gz \
+      "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${lsarch}.tar.gz"; \
+    tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream; \
+    rm /tmp/litestream.tar.gz; \
+    apt-get purge -y curl; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*; \
+    litestream version
+
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
@@ -39,6 +60,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/better-sqlite3 ./nod
 # Volumet monteres som root ved oppstart uansett hva som chownes i byggesteget,
 # så eierskap må settes på nytt av entrypointet hver gang containeren starter.
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+COPY litestream.yml /etc/litestream.yml
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
