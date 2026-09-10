@@ -6,6 +6,15 @@ export function parsePeriodeParam(v: unknown): Periode {
   return v === "kvartal" || v === "ar" || v === "egendefinert" ? v : "30";
 }
 
+// Hvordan Statistikk-siden bryter tallene ned: samlet på tvers av alle
+// pipelines (standard), side om side per pipeline, eller side om side per
+// eget selskap (business_units).
+export type Gruppering = "samlet" | "pipeline" | "selskap";
+
+export function parseGrupperingParam(v: unknown): Gruppering {
+  return v === "pipeline" || v === "selskap" ? v : "samlet";
+}
+
 export function periodRange(periode: Periode, fra: string, til: string): { start: Date; end: Date } {
   const now = new Date();
   if (periode === "egendefinert") {
@@ -31,12 +40,14 @@ export function periodRange(periode: Periode, fra: string, til: string): { start
 
 // Bygger query-strengen som brukes til å lenke fra Statistikk-tallene til
 // detaljlistene under, slik at listen viser nøyaktig samme periode/pipeline
-// som tallet ble regnet ut fra.
+// som tallet ble regnet ut fra. pipelineId utelates i "samlet"/"selskap"-
+// visning (ingen enkelt pipeline er valgt der) — detaljlistene tolker det
+// som "alle pipelines".
 export function statistikkQuery(params: {
   periode: Periode;
   fra: string;
   til: string;
-  pipelineId: number;
+  pipelineId?: number;
 }): string {
   const qs = new URLSearchParams();
   qs.set("periode", params.periode);
@@ -44,6 +55,6 @@ export function statistikkQuery(params: {
     if (params.fra) qs.set("fra", params.fra);
     if (params.til) qs.set("til", params.til);
   }
-  qs.set("pipeline", String(params.pipelineId));
+  if (params.pipelineId != null) qs.set("pipeline", String(params.pipelineId));
   return qs.toString();
 }

@@ -410,6 +410,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     profit: "INTEGER",
     fiscal_year: "TEXT",
     brreg_synced_at: "INTEGER",
+    color: "TEXT NOT NULL DEFAULT '#8e8e93'",
   },
   business_unit_targets: {
     // Reelt solgt beløp registrert manuelt (f.eks. fra før dette ble

@@ -70,9 +70,13 @@ export async function updateBusinessUnit(id: number, formData: FormData) {
   if (formData.has("orgNumber")) {
     set.orgNumber = String(formData.get("orgNumber") ?? "").replace(/\D/g, "") || null;
   }
+  if (formData.has("color")) {
+    set.color = String(formData.get("color") ?? "").trim();
+  }
   if (Object.keys(set).length === 0) return;
   await db.update(businessUnits).set(set).where(eq(businessUnits.id, id));
   revalidatePath("/settings");
+  revalidatePath("/statistikk");
 }
 
 export async function deleteBusinessUnit(

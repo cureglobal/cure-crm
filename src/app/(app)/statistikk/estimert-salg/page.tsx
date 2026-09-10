@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
-import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
+import { getPipelines } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
 import { effectiveProbability } from "@/lib/dealProbability";
 import { getDealListContext, toStatDealRow } from "@/lib/statDeals.server";
@@ -15,11 +15,11 @@ export default async function EstimertSalgPage({
 
   const pipelines = await getPipelines();
   const pipelineParam = typeof params.pipeline === "string" ? Number(params.pipeline) : NaN;
-  const pipelineId = pipelines.some((p) => p.id === pipelineParam)
-    ? pipelineParam
-    : await getDefaultPipelineId();
+  // Ingen pipeline i URL-en = "samlet" (standard på Statistikk-siden nå) —
+  // vis på tvers av alle pipelines i stedet for å anta én bestemt.
+  const pipelineId = pipelines.some((p) => p.id === pipelineParam) ? pipelineParam : null;
 
-  const stages = await getStages(pipelineId);
+  const stages = await getStages(pipelineId ?? undefined);
   const pipelineStageIds = new Set(stages.map((s) => String(s.id)));
   const wonStageIds = new Set(stages.filter((s) => s.isWon).map((s) => String(s.id)));
   const lostStageIds = new Set(stages.filter((s) => s.isLost).map((s) => String(s.id)));

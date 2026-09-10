@@ -504,6 +504,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               units={businessUnitRows.map((u) => ({
                 id: u.id,
                 name: u.name,
+                color: u.color,
                 orgNumber: u.orgNumber,
                 orgName: u.orgName,
                 brregVerified: u.brregVerified,

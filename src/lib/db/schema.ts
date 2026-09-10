@@ -61,6 +61,9 @@ export const businessUnits = sqliteTable("business_units", {
   profit: integer("profit"),
   fiscalYear: text("fiscal_year"),
   brregSyncedAt: integer("brreg_synced_at", { mode: "timestamp_ms" }),
+  // Brukes til å fargekode selgere etter hvilket selskap de tilhører i
+  // selger-rangeringene på Statistikk-siden — samme idé som stages.color.
+  color: text("color").notNull().default("#8e8e93"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),

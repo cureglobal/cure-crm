@@ -10,6 +10,12 @@ const PERIODS: { key: "30" | "kvartal" | "ar"; label: string }[] = [
   { key: "ar", label: "I år" },
 ];
 
+const GRUPPERINGER: { key: "samlet" | "pipeline" | "selskap"; label: string }[] = [
+  { key: "samlet", label: "Samlet" },
+  { key: "pipeline", label: "Per pipeline" },
+  { key: "selskap", label: "Per selskap" },
+];
+
 function defaultCustomRange() {
   const now = new Date();
   const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -20,24 +26,22 @@ export default function StatistikkPeriodPicker({
   periode,
   fra,
   til,
-  pipelines,
-  pipelineId,
+  gruppering,
 }: {
   periode: "30" | "kvartal" | "ar" | "egendefinert";
   fra: string;
   til: string;
-  pipelines: { id: number; name: string }[];
-  pipelineId: number;
+  gruppering: "samlet" | "pipeline" | "selskap";
 }) {
   const router = useRouter();
   const [fraOpen, setFraOpen] = useState(false);
   const [tilOpen, setTilOpen] = useState(false);
 
-  function go(next: { periode?: string; fra?: string; til?: string; pipeline?: number }) {
+  function go(next: { periode?: string; fra?: string; til?: string; gruppering?: string }) {
     const nextPeriode = next.periode ?? periode;
     const sp = new URLSearchParams();
     sp.set("periode", nextPeriode);
-    sp.set("pipeline", String(next.pipeline ?? pipelineId));
+    sp.set("gruppering", next.gruppering ?? gruppering);
     if (nextPeriode === "egendefinert") {
       sp.set("fra", next.fra ?? fra);
       sp.set("til", next.til ?? til);
@@ -57,22 +61,20 @@ export default function StatistikkPeriodPicker({
 
   return (
     <div className="flex flex-col items-end gap-2">
-      {pipelines.length > 1 && (
-        <div className="flex rounded-full bg-mist/[0.05] p-1">
-          {pipelines.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => go({ pipeline: p.id })}
-              className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition ${
-                pipelineId === p.id ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex rounded-full bg-mist/[0.05] p-1">
+        {GRUPPERINGER.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            onClick={() => go({ gruppering: g.key })}
+            className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition ${
+              gruppering === g.key ? "bg-surface shadow-card" : "text-ink-soft hover:text-ink"
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex rounded-full bg-mist/[0.05] p-1">
         {PERIODS.map((p) => (

@@ -11,9 +11,15 @@ import {
 } from "@/lib/actions";
 import { Plus, Trash2, Wand2, BadgeCheck } from "lucide-react";
 
+const SWATCHES = [
+  "#8e8e93", "#0071e3", "#5e5ce6", "#bf5af2", "#ff375f", "#ff453a",
+  "#ff9f0a", "#ffd60a", "#30d158", "#64d2ff", "#5ac8fa", "#a2845e",
+];
+
 export interface BusinessUnitRow {
   id: number;
   name: string;
+  color: string;
   orgNumber: string | null;
   orgName: string | null;
   brregVerified: boolean;
@@ -26,12 +32,14 @@ function UnitRow({
   unit,
   onSaveName,
   onSaveOrgNumber,
+  onSaveColor,
   onSynced,
   onRemove,
 }: {
   unit: BusinessUnitRow;
   onSaveName: (id: number, name: string) => void;
   onSaveOrgNumber: (id: number, orgNumber: string) => void;
+  onSaveColor: (id: number, color: string) => void;
   onSynced: (id: number, summary: BusinessUnitBrregSummary) => void;
   onRemove: (id: number) => void;
 }) {
@@ -60,6 +68,23 @@ function UnitRow({
   return (
     <li className="rounded-xl bg-mist/[0.03] px-3 py-2">
       <div className="flex items-center gap-2">
+        <div className="group relative shrink-0">
+          <span
+            className="block h-5 w-5 rounded-full ring-1 ring-black/10"
+            style={{ background: unit.color }}
+            title="Farge — brukes til å skille selgere per selskap på Statistikk"
+          />
+          <div className="absolute left-0 top-6 z-30 hidden w-[168px] flex-wrap gap-1.5 rounded-xl border border-line bg-surface p-2 shadow-card group-hover:flex">
+            {SWATCHES.map((c) => (
+              <button
+                key={c}
+                onClick={() => onSaveColor(unit.id, c)}
+                className="h-5 w-5 rounded-full ring-1 ring-black/10"
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
         <input
           defaultValue={unit.name}
           onBlur={(e) => onSaveName(unit.id, e.target.value)}
@@ -135,6 +160,13 @@ export default function BusinessUnitsManager({ units: initial }: { units: Busine
     startTransition(() => updateBusinessUnit(id, fd));
   }
 
+  function saveColor(id: number, color: string) {
+    setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, color } : u)));
+    const fd = new FormData();
+    fd.set("color", color);
+    startTransition(() => updateBusinessUnit(id, fd));
+  }
+
   function applySynced(id: number, summary: BusinessUnitBrregSummary) {
     setUnits((prev) =>
       prev.map((u) =>
@@ -180,6 +212,7 @@ export default function BusinessUnitsManager({ units: initial }: { units: Busine
           {
             id: created.id,
             name: created.name,
+            color: created.color,
             orgNumber: null,
             orgName: null,
             brregVerified: false,
@@ -206,6 +239,7 @@ export default function BusinessUnitsManager({ units: initial }: { units: Busine
             unit={u}
             onSaveName={saveName}
             onSaveOrgNumber={saveOrgNumber}
+            onSaveColor={saveColor}
             onSynced={applySynced}
             onRemove={remove}
           />
