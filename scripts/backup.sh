@@ -52,3 +52,4 @@ echo
 echo "Ferdig: r2://$BUCKET/manual/crm-$STAMP.db"
 echo "Hent den ned igjen med:"
 echo "  npx wrangler r2 object get $BUCKET/manual/crm-$STAMP.db --remote --file crm.db"
+echo "(wrangler kan ikke liste bøtta — oversikten finnes i Cloudflare-dashbordet)"

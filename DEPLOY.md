@@ -151,9 +151,13 @@ som *ser ut* som en sikkerhetskopi.
 Hent en kopi tilbake:
 
 ```bash
-npx wrangler r2 object list cure-crm-backup --remote      # se hva som finnes
 npx wrangler r2 object get cure-crm-backup/manual/<fil>.db --remote --file crm.db
 ```
+
+Filnavnet skrives ut av `npm run db:backup` når kopien tas. Trenger du en
+oversikt over hva som ligger der, finnes den i dashbordet — `wrangler` kan
+laste opp og ned enkeltfiler, men ikke liste innholdet i en bøtte:
+<https://dash.cloudflare.com/d95d98e082afd7e756cea2e70a3c72f8/r2/default/buckets/cure-crm-backup>
 
 ## Vanlige CLI-kommandoer
 
