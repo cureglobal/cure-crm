@@ -1,6 +1,6 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
-import { db, users, userColumns } from "@/lib/db";
+import { db, users, userColumns, deals as dealsTable, dealLines as dealLinesTable } from "@/lib/db";
 import { avatarUrlFor } from "@/lib/avatar";
 import { requireUser } from "@/lib/auth";
 import { getStages } from "@/lib/stages.server";
@@ -8,7 +8,12 @@ import { getPipelines, getDefaultPipelineId } from "@/lib/pipelines.server";
 import { formatMoney } from "@/lib/format";
 import { effectiveProbability } from "@/lib/dealProbability";
 import { parsePeriodeParam, periodRange, statistikkQuery } from "@/lib/statistikkPeriod";
-import { getSalesTarget, getMonthlyActuals, getBusinessUnitTargets } from "@/lib/salesTarget.server";
+import {
+  getSalesTarget,
+  getMonthlyActuals,
+  getBusinessUnitTargets,
+  getRecurringTargets,
+} from "@/lib/salesTarget.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
 import Avatar from "@/components/Avatar";
@@ -210,6 +215,8 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     businessUnitRowsAll,
     allCompaniesEverywhere,
     dealSlugMap,
+    recurringTargetRows,
+    recurringLinesEverywhere,
   ] = await Promise.all([
     getPipelines(),
     db.select(userColumns).from(users).orderBy(asc(users.name)),
@@ -221,6 +228,23 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     getBusinessUnits(),
     db.query.companies.findMany({ columns: { id: true, name: true, businessUnitId: true } }),
     getDealSlugMap(),
+    getRecurringTargets(),
+    // Regner "dagens recurring" for recurring-målet under — kun timer×pris
+    // (den MÅNEDLIGE verdien), ALDRI ganget med months (det ville gitt
+    // kontraktens totalverdi, ikke løpende inntekt), se DealLines.tsx.
+    // Vunnet-fase og selskaps-filtrering skjer i JS etterpå, siden
+    // wonStageIdsEverywhere/businessUnitIdByCompany ikke er klare før
+    // resten av batchen er hentet.
+    db
+      .select({
+        hours: dealLinesTable.hours,
+        rate: dealLinesTable.rate,
+        dealStage: dealsTable.stage,
+        companyId: dealsTable.companyId,
+      })
+      .from(dealLinesTable)
+      .innerJoin(dealsTable, eq(dealLinesTable.dealId, dealsTable.id))
+      .where(eq(dealLinesTable.billingType, "recurring")),
   ]);
   const companyNameById = new Map(allCompaniesEverywhere.map((c) => [c.id, c.name]));
 
@@ -304,6 +328,25 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
       // hittil" (Innstillinger) for salg som ikke er sporet som deal her.
       actual: (actualByBusinessUnit.get(t.businessUnitId) ?? 0) + t.manualActualAmount,
     }));
+
+  // "Dagens recurring" per selskap — kun vunnet-deals, uavhengig av når de
+  // ble vunnet (en recurring-avtale vunnet i fjor gir fortsatt løpende
+  // inntekt i dag; ingen "avtalen er avsluttet"-felt finnes å filtrere på).
+  const recurringMonthlyByBusinessUnit = new Map<number, number>();
+  for (const line of recurringLinesEverywhere) {
+    if (!wonStageIdsEverywhere.has(line.dealStage)) continue;
+    const buId = businessUnitIdByCompany.get(line.companyId);
+    if (buId == null) continue;
+    recurringMonthlyByBusinessUnit.set(
+      buId,
+      (recurringMonthlyByBusinessUnit.get(buId) ?? 0) + line.hours * line.rate
+    );
+  }
+  const recurringTargetDisplay = recurringTargetRows.map((t) => ({
+    name: businessUnitRowsAll.find((u) => u.id === t.businessUnitId)?.name ?? "Ukjent selskap",
+    target: t.monthlyCostTarget,
+    actual: recurringMonthlyByBusinessUnit.get(t.businessUnitId) ?? 0,
+  }));
 
   function avgLeadTimeDays(list: (typeof allDeals)[number][]): number | null {
     if (list.length === 0) return null;
@@ -527,46 +570,52 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
         />
       </div>
 
-      {totalTarget > 0 && (
+      {(totalTarget > 0 || recurringTargetDisplay.length > 0) && (
         <section className="card mb-4 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-[13.5px] font-semibold tracking-tight">
               <Flag size={15} className="text-accent" />
               Salgsmål {salesTargetYear}
             </h2>
-            <span className="text-[13px] font-medium tabular-nums">
-              {formatMoney(totalActual) || "0kr"} / {formatMoney(totalTarget) || "0kr"}
-              <span className="ml-1.5 text-ink-soft">
-                ({Math.round((totalActual / totalTarget) * 100)} %)
+            {totalTarget > 0 && (
+              <span className="text-[13px] font-medium tabular-nums">
+                {formatMoney(totalActual) || "0kr"} / {formatMoney(totalTarget) || "0kr"}
+                <span className="ml-1.5 text-ink-soft">
+                  ({Math.round((totalActual / totalTarget) * 100)} %)
+                </span>
               </span>
-            </span>
+            )}
           </div>
-          <div className="mb-4 h-2 overflow-hidden rounded-full bg-mist/[0.08]">
-            <div
-              className="h-full rounded-full bg-accent"
-              style={{ width: `${Math.min(100, (totalActual / totalTarget) * 100)}%` }}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {["Q1", "Q2", "Q3", "Q4"].map((label, i) => {
-              const target = quarterTargets[i];
-              const actual = quarterActuals[i];
-              const pct = target > 0 ? Math.round((actual / target) * 100) : 0;
-              return (
-                <div key={label} className="rounded-xl bg-mist/[0.03] p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
-                    {label} · {quarterWeights[i]}%
-                  </p>
-                  <p className="mt-1 text-[14px] font-semibold tabular-nums">
-                    {formatMoney(actual) || "0kr"}
-                  </p>
-                  <p className="text-[11.5px] text-ink-soft">
-                    av {formatMoney(target) || "0kr"} ({pct} %)
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+          {totalTarget > 0 && (
+            <>
+              <div className="mb-4 h-2 overflow-hidden rounded-full bg-mist/[0.08]">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${Math.min(100, (totalActual / totalTarget) * 100)}%` }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {["Q1", "Q2", "Q3", "Q4"].map((label, i) => {
+                  const target = quarterTargets[i];
+                  const actual = quarterActuals[i];
+                  const pct = target > 0 ? Math.round((actual / target) * 100) : 0;
+                  return (
+                    <div key={label} className="rounded-xl bg-mist/[0.03] p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                        {label} · {quarterWeights[i]}%
+                      </p>
+                      <p className="mt-1 text-[14px] font-semibold tabular-nums">
+                        {formatMoney(actual) || "0kr"}
+                      </p>
+                      <p className="text-[11.5px] text-ink-soft">
+                        av {formatMoney(target) || "0kr"} ({pct} %)
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {businessUnitTargetDisplay.length > 0 && (
             <div className="mt-4 border-t border-line pt-4">
@@ -591,9 +640,46 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
               </div>
             </div>
           )}
+
+          {recurringTargetDisplay.length > 0 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                Recurring vs. månedlige kostnader
+              </p>
+              <div className="flex flex-col gap-3">
+                {recurringTargetDisplay.map((r) => {
+                  const pct = r.target > 0 ? Math.round((r.actual / r.target) * 100) : 0;
+                  const gap = Math.max(0, r.target - r.actual);
+                  return (
+                    <div key={r.name} className="rounded-xl bg-mist/[0.03] p-3">
+                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[12.5px] font-medium">Recurring {r.name}</p>
+                        <span className="text-[12.5px] font-semibold tabular-nums">
+                          {formatMoney(r.actual) || "0kr"} / {formatMoney(r.target) || "0kr"}
+                          <span className="ml-1.5 text-ink-soft">({pct} %)</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-mist/[0.08]">
+                        <div
+                          className="h-full rounded-full bg-accent"
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-[11.5px] text-ink-soft">
+                        {gap > 0
+                          ? `${formatMoney(gap)} igjen for å dekke kostnadene`
+                          : "Kostnadene er dekket 🎉"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
+      <h2 className="mb-3 text-[15px] font-semibold tracking-tight">Nøkkeltall</h2>
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile
           label="Sum i pipeline"

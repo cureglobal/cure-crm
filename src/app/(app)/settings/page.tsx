@@ -7,7 +7,12 @@ import { getPipelines } from "@/lib/pipelines.server";
 import { getBusinessUnits } from "@/lib/businessUnits.server";
 import { getLostReasons } from "@/lib/lostReasons.server";
 import { getTags } from "@/lib/tags.server";
-import { getSalesTarget, getMonthlyActuals, getBusinessUnitTargets } from "@/lib/salesTarget.server";
+import {
+  getSalesTarget,
+  getMonthlyActuals,
+  getBusinessUnitTargets,
+  getRecurringTargets,
+} from "@/lib/salesTarget.server";
 import { isGoogleCalendarConfigured } from "@/lib/googleCalendar";
 import {
   addUser,
@@ -30,6 +35,7 @@ import CollapsibleSection from "@/components/CollapsibleSection";
 import type { StageRow } from "@/components/StagesManager";
 import BusinessUnitsManager from "@/components/BusinessUnitsManager";
 import SalesTargetManager from "@/components/SalesTargetManager";
+import RecurringTargetManager from "@/components/RecurringTargetManager";
 import LostReasonsManager from "@/components/LostReasonsManager";
 import TagsManager from "@/components/TagsManager";
 import UserBusinessUnitSelect from "@/components/UserBusinessUnitSelect";
@@ -86,6 +92,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     salesTarget,
     monthlyActualRows,
     businessUnitTargetRows,
+    recurringTargetRows,
   ] = await Promise.all([
     db.query.emailAccounts.findFirst({ where: eq(emailAccounts.userId, me.id) }),
     db.query.calendarAccounts.findFirst({ where: eq(calendarAccounts.userId, me.id) }),
@@ -106,6 +113,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
     getSalesTarget(salesTargetYear),
     getMonthlyActuals(salesTargetYear),
     getBusinessUnitTargets(salesTargetYear),
+    getRecurringTargets(),
   ]);
   const unverifiedCount = unverifiedCompanies.length;
 
@@ -373,6 +381,20 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             })}
           />
         </CollapsibleSection>
+        <div className="mt-5 border-t border-line pt-5">
+          <RecurringTargetManager
+            targets={recurringTargetRows.map((t) => ({
+              id: t.id,
+              businessUnitId: t.businessUnitId,
+              businessUnitName:
+                businessUnitRows.find((u) => u.id === t.businessUnitId)?.name ?? "Ukjent",
+              monthlyCostTarget: t.monthlyCostTarget,
+            }))}
+            availableBusinessUnits={businessUnitRows
+              .filter((u) => !recurringTargetRows.some((t) => t.businessUnitId === u.id))
+              .map((u) => ({ id: u.id, name: u.name }))}
+          />
+        </div>
       </section>
 
       <section className="card mb-6 p-6">

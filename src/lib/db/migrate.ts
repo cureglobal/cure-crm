@@ -266,6 +266,12 @@ const CREATE_STATEMENTS = [
     created_at INTEGER NOT NULL,
     UNIQUE(year, business_unit_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS recurring_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_unit_id INTEGER NOT NULL UNIQUE REFERENCES business_units(id) ON DELETE CASCADE,
+    monthly_cost_target INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

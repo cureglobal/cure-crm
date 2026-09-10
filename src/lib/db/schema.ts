@@ -525,6 +525,23 @@ export const businessUnitTargets = sqliteTable("business_unit_targets", {
     .$defaultFn(() => new Date()),
 });
 
+// Løpende driftsmål (ikke årstall-scoped, i motsetning til sales_targets):
+// hvor mye recurring-inntekt (løpende, faste avtaler) et selskap trenger
+// for å dekke sine månedlige kostnader. "Dagens recurring" regnes alltid
+// live fra deal-linjene (se statistikk/page.tsx) — bare kostnadsmålet
+// lagres her.
+export const recurringTargets = sqliteTable("recurring_targets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  businessUnitId: integer("business_unit_id")
+    .notNull()
+    .unique()
+    .references(() => businessUnits.id, { onDelete: "cascade" }),
+  monthlyCostTarget: integer("monthly_cost_target").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   dealId: integer("deal_id")
@@ -589,3 +606,4 @@ export type ReferenceProject = typeof referenceProjects.$inferSelect;
 export type SalesTarget = typeof salesTargets.$inferSelect;
 export type MonthlyActual = typeof monthlyActuals.$inferSelect;
 export type BusinessUnitTarget = typeof businessUnitTargets.$inferSelect;
+export type RecurringTarget = typeof recurringTargets.$inferSelect;

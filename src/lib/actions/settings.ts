@@ -28,6 +28,7 @@ import {
   salesTargets,
   monthlyActuals,
   businessUnitTargets,
+  recurringTargets,
   notifications } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getDealSlugMap } from "@/lib/dealSlugs.server";
@@ -484,6 +485,44 @@ export async function updateBusinessUnitTarget(
   revalidatePath("/settings");
   revalidatePath("/statistikk");
   return { ok: true, message: "Salgsmål oppdatert." };
+}
+
+// Løpende driftsmål — recurring-inntekt (regnes live fra deal-linjer, se
+// statistikk/page.tsx) mot et manuelt satt kostnadsmål, per selskap. Ikke
+// årstall-scoped, se recurringTargets i schema.ts.
+export async function upsertRecurringTarget(
+  businessUnitId: number,
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
+  await requireUser();
+  const monthlyCostTarget = Number(
+    String(formData.get("monthlyCostTarget") ?? "").replace(/\D/g, "")
+  );
+  if (!Number.isFinite(monthlyCostTarget) || monthlyCostTarget <= 0) {
+    return { ok: false, message: "Ugyldig tall." };
+  }
+
+  const existing = await db.query.recurringTargets.findFirst({
+    where: eq(recurringTargets.businessUnitId, businessUnitId),
+  });
+  if (existing) {
+    await db
+      .update(recurringTargets)
+      .set({ monthlyCostTarget })
+      .where(eq(recurringTargets.id, existing.id));
+  } else {
+    await db.insert(recurringTargets).values({ businessUnitId, monthlyCostTarget });
+  }
+  revalidatePath("/settings");
+  revalidatePath("/statistikk");
+  return { ok: true, message: "Recurring-mål oppdatert." };
+}
+
+export async function deleteRecurringTarget(id: number) {
+  await requireUser();
+  await db.delete(recurringTargets).where(eq(recurringTargets.id, id));
+  revalidatePath("/settings");
+  revalidatePath("/statistikk");
 }
 
 
