@@ -105,6 +105,23 @@ man profilbildene tilbake i pipeline-spørringen, går `/leads` fra 383 kB til
 Justér budsjettene i skriptet hvis appen vokser reelt — men behandle et
 hopp i størrelsesorden som en feil, ikke som vekst.
 
+## Server actions
+
+Alle mutasjoner er server actions. De lå i én fil på 4 120 linjer; nå ligger
+de i `src/lib/actions/`, delt etter domene (deals, companies, people, users,
+settings, estimates, imports, email, calendar, notifications, savedViews,
+search). Største fil er 900 linjer.
+
+`src/lib/actions.ts` er en ren re-eksport, så importene i komponentene er
+uendret: `import { updateDeal } from "@/lib/actions"`. Legger du til en ny
+action, legg den i modulen den hører til — barrelen plukker den opp av seg
+selv.
+
+`actions/_shared.ts` har hjelperne flere moduler trenger (blant annet
+`revalidateDealViews`, som brukes nesten overalt). Den har med vilje ikke
+`"use server"`: en slik fil kan bare eksportere async-funksjoner, og denne
+inneholder også konstanter og synkrone hjelpere.
+
 ## Sikkerhet
 
 - Innlogging er rate-limitet (`src/lib/rateLimit.ts`): 5 feil på 10 min låser
