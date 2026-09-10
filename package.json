@@ -10,12 +10,14 @@
     "share": "./scripts/share.sh",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
     "db:backup": "./scripts/backup.sh",
-    "perf:check": "node --experimental-strip-types scripts/perf-check.mjs"
+    "perf:check": "node --experimental-strip-types scripts/perf-check.mjs",
+    "migrate:images": "node --experimental-strip-types scripts/migrate-images.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
     "@libsql/client": "^0.17.4",
     "@react-pdf/renderer": "^4.6.0",
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",

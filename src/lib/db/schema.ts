@@ -16,6 +16,10 @@ export const users = sqliteTable("users", {
   // /api/avatar/[id], som serverer bildet med lang cache. Alt annet bruker
   // avatarUpdatedAt til å bygge URL-en — se src/lib/avatar.ts.
   avatarDataUrl: text("avatar_data_url"),
+  // Nøkkelen til bildet i R2 (bøtta cure-crm-media). Dette er stedet bilder
+  // hører hjemme; avatarDataUrl over er kun igjen for rader som ennå ikke er
+  // flyttet — se scripts/migrate-images.ts.
+  avatarObjectKey: text("avatar_object_key"),
   // Når profilbildet sist ble byttet; NULL = ingen bilde. Fungerer som
   // cache-nøkkel i bilde-URL-en, slik at et nytt bilde gir en ny URL.
   avatarUpdatedAt: integer("avatar_updated_at", { mode: "timestamp_ms" }),
@@ -167,7 +171,12 @@ export const companies = sqliteTable("companies", {
   name: text("name").notNull(),
   domain: text("domain"),
   website: text("website"),
+  // Enten en ekstern favicon-URL (auto-utledet fra nettstedet) eller en
+  // intern /api/media/…-lenke når noen har lastet opp en egen logo. Alltid
+  // en URL — aldri base64, se logoObjectKey.
   logoUrl: text("logo_url"),
+  // Satt når logoen er en opplastet fil i R2. Ruta /api/media serverer den.
+  logoObjectKey: text("logo_object_key"),
   // Felter hentet fra Brønnøysundregistrene (data.brreg.no), unntatt telefon
   // som ikke finnes i deres API og derfor fylles inn manuelt.
   // `name` er kallenavnet vi bruker internt (f.eks. «AdO Arena»), `orgName` er
@@ -452,7 +461,10 @@ export const referenceProjects = sqliteTable("reference_projects", {
   name: text("name").notNull(),
   url: text("url"),
   notes: text("notes"),
-  screenshot: text("screenshot"), // data-URL (base64), valgfritt
+  // URL til skjermbildet — /api/media/… når det er lastet opp. Het tidligere
+  // en rå base64 data-URL; se screenshotObjectKey.
+  screenshot: text("screenshot"),
+  screenshotObjectKey: text("screenshot_object_key"),
   phaseHours: text("phase_hours"), // JSON: Record<PhaseKey, {estimert?, faktisk?}>
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -547,7 +559,9 @@ export const userColumns = {
   createdAt: users.createdAt,
 } as const;
 
-export type AppUser = Omit<User, "avatarDataUrl" | "passwordHash">;
+// Brukeren slik resten av appen ser henne: uten bildedataene (som hentes
+// via /api/avatar) og uten passordhashen.
+export type AppUser = Omit<User, "avatarDataUrl" | "avatarObjectKey" | "passwordHash">;
 export type Company = typeof companies.$inferSelect;
 export type BusinessUnit = typeof businessUnits.$inferSelect;
 export type LostReason = typeof lostReasons.$inferSelect;

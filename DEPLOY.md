@@ -78,9 +78,11 @@ Reglene som holder det slik:
 2. **Bygg bilde-URL-en med `avatarUrlFor(userId, avatarUpdatedAt)`** fra
    `src/lib/avatar.ts`. Nettleseren cacher bildet i et år; `avatarUpdatedAt`
    i URL-en sørger for at et nytt bilde likevel vises med én gang.
-3. **Alt som lastes opp skaleres ned i nettleseren først**
-   (`src/lib/downscaleImage.ts`, maks 256 px). Uten det havner et
-   ukomprimert kamerabilde i databasen for godt.
+3. **Opplastede bilder ligger i R2, ikke i databasen.** Profilbilder,
+   firmalogoer og skjermbilder lagres i bøtta `cure-crm-media`; raden har
+   bare en nøkkel. De skaleres i tillegg ned i nettleseren først
+   (`src/lib/downscaleImage.ts`, maks 256 px). Legg ALDRI base64 tilbake i
+   en kolonne — bruk `putObject()` i `src/lib/objectStorage.ts`.
 4. Lange lister rendrer bare de 60 øverste radene og henter flere ved
    rulling (`src/lib/useIncrementalRender.ts`). All data ligger fortsatt i
    nettleseren, så søk og sortering er uendret — men nettleserens egen
@@ -115,6 +117,24 @@ hopp i størrelsesorden som en feil, ikke som vekst.
 - Sikkerhetskopi: se eget avsnitt under.
 - Ingen selvregistrering etter at første bruker er opprettet — kun admin kan
   legge til nye brukere (Innstillinger).
+
+## Bilder i R2
+
+Opplastede bilder lå tidligere som base64 data-URL rett i databasen. Sju
+profilbilder utgjorde 3,8 MB av en database på 4,9 MB, og fulgte med i hver
+spørring som ikke eksplisitt utelot kolonnen. Nå ligger de i R2-bøtta
+`cure-crm-media`, og raden har bare en nøkkel:
+
+- `users.avatar_object_key` — serveres av `/api/avatar/[id]`
+- `companies.logo_object_key` — `logo_url` peker på `/api/media/…`
+- `reference_projects.screenshot_object_key` — samme mønster
+
+Begge rutene krever innlogging og cacher i ett år. Bytter man bilde, får det
+en ny nøkkel (og dermed ny URL), og den gamle fila slettes fra R2.
+
+Flyttingen av eksisterende bilder gjøres én gang med `npm run migrate:images`
+(trygg å kjøre om igjen — rader som alt er flyttet hoppes over). Etterpå
+krymper `VACUUM` selve fila; her gikk den fra 4 584 kB til 856 kB.
 
 ## Sikkerhetskopi (Litestream → Cloudflare R2)
 

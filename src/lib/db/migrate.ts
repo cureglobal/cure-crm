@@ -355,8 +355,10 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     brreg_synced_at: "INTEGER",
     primary_contact_id: "INTEGER",
     business_unit_id: "INTEGER",
+    logo_object_key: "TEXT",
   },
   people: { notes: "TEXT" },
+  reference_projects: { screenshot_object_key: "TEXT" },
   deals: {
     comment: "TEXT",
     lost_reason_id: "INTEGER",
@@ -377,6 +379,7 @@ const EXPECTED_COLUMNS: Record<string, Record<string, string>> = {
     signature: "TEXT",
     theme: "TEXT NOT NULL DEFAULT 'lys'",
     avatar_data_url: "TEXT",
+    avatar_object_key: "TEXT",
     // Når bildet sist ble byttet. Brukes som cache-nøkkel i URL-en til
     // /api/avatar/[id] slik at listesidene kan peke på bildet i stedet for
     // å bake hele base64-strengen inn i svaret — se src/lib/avatar.ts.

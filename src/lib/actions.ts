@@ -1,6 +1,13 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
+import {
+  putObject,
+  deleteObject,
+  decodeDataUrl,
+  extensionFor,
+} from "@/lib/objectStorage";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -354,17 +361,52 @@ export async function updateUserName(userId: number, formData: FormData) {
 // ikke noen som kaller server-handlingen direkte med et større bilde.
 const MAX_IMAGE_DATA_URL_LENGTH = 2.1 * 1024 * 1024;
 
+// Tar imot en data-URL fra klienten (allerede nedskalert i nettleseren, se
+// src/lib/downscaleImage.ts), legger bildet i R2 og gir tilbake nøkkelen og
+// URL-en det skal serveres på. Selve bytene skal ALDRI i databasen — det var
+// dét som gjorde appen treg.
+//
+// Det tilfeldige leddet i nøkkelen gjør at et nytt bilde alltid får en ny
+// URL (så nettleseren ikke viser det gamle), og at nøklene ikke kan gjettes.
+async function storeUploadedImage(
+  dataUrl: string,
+  prefix: string
+): Promise<{ key: string; url: string } | null> {
+  if (!dataUrl.startsWith("data:image/") || dataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) return null;
+  const decoded = decodeDataUrl(dataUrl);
+  if (!decoded) return null;
+  const key = `${prefix}/${randomUUID()}.${extensionFor(decoded.contentType)}`;
+  await putObject(key, decoded.body, decoded.contentType);
+  return { key, url: `/api/media/${key}` };
+}
+
 export async function updateAvatar(userId: number, formData: FormData) {
   const me = await requireUser();
   if (me.id !== userId && !me.isAdmin) return;
   const avatar = String(formData.get("avatar") ?? "");
-  if (!avatar.startsWith("data:image/") || avatar.length > MAX_IMAGE_DATA_URL_LENGTH) return;
+  const stored = await storeUploadedImage(avatar, `avatars/${userId}`);
+  if (!stored) return;
+
+  // Rydd bort det forrige bildet, ellers samler det seg opp filer i R2 som
+  // ingenting peker på.
+  const previous = await db
+    .select({ key: users.avatarObjectKey })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
   // avatarUpdatedAt er cache-nøkkelen i bilde-URL-en (se src/lib/avatar.ts).
   // Uten at den settes her ville nettleseren fortsatt vist det gamle bildet.
+  // avatarDataUrl nulles: bildet bor i R2 nå, ikke i raden.
   await db
     .update(users)
-    .set({ avatarDataUrl: avatar, avatarUpdatedAt: new Date() })
+    .set({ avatarObjectKey: stored.key, avatarDataUrl: null, avatarUpdatedAt: new Date() })
     .where(eq(users.id, userId));
+
+  const oldKey = previous[0]?.key;
+  // Feiler slettingen, er bildet likevel byttet — en foreldreløs fil i R2 er
+  // ikke verdt å velte handlingen for.
+  if (oldKey && oldKey !== stored.key) await deleteObject(oldKey).catch(() => {});
   revalidatePath("/settings");
   revalidatePath("/", "layout");
 }
@@ -536,7 +578,16 @@ export async function deleteUser(
     .update(notifications)
     .set({ actorUserId: null })
     .where(eq(notifications.actorUserId, userId));
+  // Profilbildet ligger i R2 og forsvinner ikke av seg selv når raden gjør det.
+  const avatarKey = (
+    await db
+      .select({ key: users.avatarObjectKey })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+  )[0]?.key;
   await db.delete(users).where(eq(users.id, userId));
+  if (avatarKey) await deleteObject(avatarKey).catch(() => {});
   revalidatePath("/settings");
   return { ok: true, message: "Brukeren ble slettet." };
 }
@@ -2094,7 +2145,12 @@ export async function createReferenceProject(formData: FormData) {
   if (!name) return;
   const url = String(formData.get("url") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const screenshot = String(formData.get("screenshot") ?? "").trim() || null;
+  const screenshotRaw = String(formData.get("screenshot") ?? "").trim();
+  // Kan være tom (valgfritt felt) eller allerede en URL fra et tidligere
+  // lagret prosjekt; kun ekte data-URL-er skal lastes opp på nytt.
+  const storedShot = screenshotRaw.startsWith("data:image/")
+    ? await storeUploadedImage(screenshotRaw, "reference")
+    : null;
 
   const phaseHours: Record<string, { estimert?: number; faktisk?: number }> = {};
   for (const phase of PHASES) {
@@ -2114,7 +2170,8 @@ export async function createReferenceProject(formData: FormData) {
     name,
     url,
     notes,
-    screenshot,
+    screenshot: storedShot?.url ?? null,
+    screenshotObjectKey: storedShot?.key ?? null,
     phaseHours: Object.keys(phaseHours).length > 0 ? JSON.stringify(phaseHours) : null,
   });
 
@@ -2123,7 +2180,16 @@ export async function createReferenceProject(formData: FormData) {
 
 export async function deleteReferenceProject(id: number) {
   await requireUser();
+  // Hent nøkkelen før raden forsvinner, ellers blir bildet liggende i R2
+  // uten at noe peker på det.
+  const existing = await db
+    .select({ key: referenceProjects.screenshotObjectKey })
+    .from(referenceProjects)
+    .where(eq(referenceProjects.id, id))
+    .limit(1);
   await db.delete(referenceProjects).where(eq(referenceProjects.id, id));
+  const key = existing[0]?.key;
+  if (key) await deleteObject(key).catch(() => {});
   revalidatePath("/estimat");
 }
 
@@ -2809,8 +2875,24 @@ export async function createCompany(formData: FormData) {
 export async function updateCompanyLogo(companyId: number, formData: FormData) {
   await requireUser();
   const logo = String(formData.get("logo") ?? "");
-  if (!logo.startsWith("data:image/") || logo.length > MAX_IMAGE_DATA_URL_LENGTH) return;
-  await db.update(companies).set({ logoUrl: logo }).where(eq(companies.id, companyId));
+  const stored = await storeUploadedImage(logo, `logos/${companyId}`);
+  if (!stored) return;
+
+  const previous = await db
+    .select({ key: companies.logoObjectKey })
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+
+  // logoUrl holder alltid en URL — her en intern /api/media-lenke. Dermed
+  // trenger ingen av listevisningene å vite at bildet ligger i R2.
+  await db
+    .update(companies)
+    .set({ logoUrl: stored.url, logoObjectKey: stored.key })
+    .where(eq(companies.id, companyId));
+
+  const oldKey = previous[0]?.key;
+  if (oldKey && oldKey !== stored.key) await deleteObject(oldKey).catch(() => {});
   revalidatePath(`/companies/${companyId}`);
   revalidateDealViews();
 }

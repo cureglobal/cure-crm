@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
 import { db, users } from "@/lib/db";
+import { getObject, decodeDataUrl } from "@/lib/objectStorage";
 
 // Serverer profilbildet som en vanlig bildeforespørsel i stedet for at hver
 // sidelasting drar med seg base64-strengen. Dette er det ENESTE stedet som
@@ -15,23 +16,6 @@ import { db, users } from "@/lib/db";
 // ikke mellomliggende cacher hos Railway eller andre.
 const CACHE_CONTROL = "private, max-age=31536000, immutable";
 
-function decodeDataUrl(dataUrl: string): { body: ArrayBuffer; contentType: string } | null {
-  // Formatet er "data:<mime>;base64,<payload>". Alt annet (f.eks. en gammel
-  // rad med en ekstern http-URL) hører ikke hjemme her. [\s\S] i stedet for
-  // .-med-s-flagget, som krever et nyere mål enn tsconfig er satt til.
-  const match = /^data:([\w.+/-]+);base64,([\s\S]*)$/.exec(dataUrl);
-  if (!match) return null;
-  try {
-    const buf = Buffer.from(match[2], "base64");
-    // Buffer deler minne med en større pool, så det må skjæres ut en egen
-    // ArrayBuffer — ellers sendes naboens bytes med i svaret.
-    const body = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    return { contentType: match[1], body };
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(_request: Request, ctx: RouteContext<"/api/avatar/[id]">) {
   // Innlogging kreves, men uten omdirigering: en <img> som får en
   // innloggingsside i retur viser bare et ødelagt bilde uansett.
@@ -42,14 +26,29 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/avatar/[id]
   if (!Number.isInteger(userId)) return new Response(null, { status: 404 });
 
   const row = await db
-    .select({ avatarDataUrl: users.avatarDataUrl })
+    .select({ objectKey: users.avatarObjectKey, avatarDataUrl: users.avatarDataUrl })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
+  if (!row[0]) return new Response(null, { status: 404 });
 
-  const dataUrl = row[0]?.avatarDataUrl;
+  // Normalveien: bildet ligger i R2.
+  if (row[0].objectKey) {
+    const object = await getObject(row[0].objectKey);
+    if (!object) return new Response(null, { status: 404 });
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": object.contentType,
+        "Content-Length": String(object.body.byteLength),
+        "Cache-Control": CACHE_CONTROL,
+      },
+    });
+  }
+
+  // Reserveløsning for rader som ennå ikke er flyttet ut av databasen (se
+  // scripts/migrate-images.ts). Kan fjernes når alle rader har en nøkkel.
+  const dataUrl = row[0].avatarDataUrl;
   if (!dataUrl) return new Response(null, { status: 404 });
-
   const decoded = decodeDataUrl(dataUrl);
   if (!decoded) return new Response(null, { status: 404 });
 
