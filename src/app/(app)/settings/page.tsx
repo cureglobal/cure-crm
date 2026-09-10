@@ -88,8 +88,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   ] = await Promise.all([
     db.query.emailAccounts.findFirst({ where: eq(emailAccounts.userId, me.id) }),
     db.query.calendarAccounts.findFirst({ where: eq(calendarAccounts.userId, me.id) }),
-    db.query.users.findMany(),
-    db.query.companies.findMany({ where: eq(companies.brregVerified, false) }),
+    db.query.users.findMany({ columns: { passwordHash: false } }),
+    // Kun til opptelling (unverifiedCount) — trenger ikke resten av
+    // selskapsradene (Brreg-feltene) for det.
+    db.query.companies.findMany({
+      columns: { id: true },
+      where: eq(companies.brregVerified, false),
+    }),
     getStages(),
     getPipelines(),
     getBusinessUnits(),

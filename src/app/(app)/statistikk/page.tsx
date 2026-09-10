@@ -211,14 +211,17 @@ export default async function StatistikkPage({ searchParams }: PageProps<"/stati
     dealSlugMap,
   ] = await Promise.all([
     getPipelines(),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.users.findMany({
+      columns: { id: true, name: true, avatarDataUrl: true },
+      orderBy: [asc(users.name)],
+    }),
     db.query.deals.findMany(),
     getSalesTarget(salesTargetYear),
     getMonthlyActuals(salesTargetYear),
-    db.query.stages.findMany(),
+    getStages(),
     getBusinessUnitTargets(salesTargetYear),
     getBusinessUnits(),
-    db.query.companies.findMany(),
+    db.query.companies.findMany({ columns: { id: true, name: true, businessUnitId: true } }),
     getDealSlugMap(),
   ]);
   const companyNameById = new Map(allCompaniesEverywhere.map((c) => [c.id, c.name]));

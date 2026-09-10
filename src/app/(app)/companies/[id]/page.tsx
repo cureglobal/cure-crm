@@ -136,7 +136,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       .leftJoin(users, eq(contactEvents.userId, users.id))
       .where(eq(contactEvents.companyId, companyId))
       .orderBy(desc(contactEvents.occurredAt)),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.users.findMany({
+      columns: { id: true, name: true, avatarDataUrl: true },
+      orderBy: [asc(users.name)],
+    }),
     // Alle personer i systemet, ikke bare de allerede koblet til dette
     // selskapet — man skal kunne velge en hovedkontakt som ennå ikke er
     // knyttet hit, og da kobles de automatisk (se updateCompany).
@@ -162,7 +165,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         })
       : Promise.resolve([]),
     dialogOwners.length
-      ? db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
+      ? db.query.users.findMany({
+          columns: { id: true, name: true },
+          where: inArray(users.id, dialogOwners),
+        })
       : Promise.resolve([]),
   ]);
   const ownerNameById = new Map(ownerUsers.map((u) => [u.id, u.name]));

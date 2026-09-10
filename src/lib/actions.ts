@@ -257,7 +257,17 @@ function revalidateDealViews(dealId?: number) {
   revalidatePath("/leads/[slug]", "page");
   revalidatePath("/companies");
   revalidatePath("/companies/[id]", "page");
-  revalidatePath("/people");
+  if (dealId) revalidatePath(`/leads/${dealId}`);
+}
+
+// Lettere variant for endringer som kun vises på selve deal-siden og i
+// Pipeline-lista (deal-tagger) — verken dashboardet eller selskapssiden
+// viser deal-tagger noe sted, så de trenger ikke revalideres her. Bruk
+// revalidateDealViews() for alt som KAN vises andre steder (f.eks.
+// followUpAt/comment/kontaktlogg, som selskapssiden viser direkte).
+function revalidateDealTagViews(dealId?: number) {
+  revalidatePath("/leads");
+  revalidatePath("/leads/[slug]", "page");
   if (dealId) revalidatePath(`/leads/${dealId}`);
 }
 
@@ -1086,13 +1096,13 @@ export async function reorderTags(orderedIds: number[]) {
 export async function addDealTag(dealId: number, tagId: number) {
   await requireUser();
   await db.insert(dealTags).values({ dealId, tagId }).onConflictDoNothing();
-  revalidateDealViews(dealId);
+  revalidateDealTagViews(dealId);
 }
 
 export async function removeDealTag(dealId: number, tagId: number) {
   await requireUser();
   await db.delete(dealTags).where(and(eq(dealTags.dealId, dealId), eq(dealTags.tagId, tagId)));
-  revalidateDealViews(dealId);
+  revalidateDealTagViews(dealId);
 }
 
 // Brukes fra bulk-verktøylinjen i Pipeline-listen — legger til (ikke
@@ -1104,7 +1114,7 @@ export async function bulkAddDealTag(dealIds: number[], tagId: number) {
     .insert(dealTags)
     .values(dealIds.map((dealId) => ({ dealId, tagId })))
     .onConflictDoNothing();
-  revalidateDealViews();
+  revalidateDealTagViews();
 }
 
 export async function addPersonTag(personId: number, tagId: number) {

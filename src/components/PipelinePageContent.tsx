@@ -68,7 +68,10 @@ export default async function PipelinePageContent({
       .from(dealsTable)
       .innerJoin(companies, eq(dealsTable.companyId, companies.id))
       .orderBy(desc(dealsTable.updatedAt)),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.users.findMany({
+      columns: { id: true, name: true, avatarDataUrl: true },
+      orderBy: [asc(users.name)],
+    }),
     db.query.dealOwners.findMany(),
     getTags("deal"),
     db.query.dealTags.findMany(),

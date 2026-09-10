@@ -15,8 +15,11 @@ export interface DealListContext {
 // (sum/estimert/lead time) — hentes én gang per side.
 export async function getDealListContext(): Promise<DealListContext> {
   const [allCompanies, allUsers, slugMap] = await Promise.all([
-    db.query.companies.findMany(),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.companies.findMany({ columns: { id: true, name: true, logoUrl: true } }),
+    db.query.users.findMany({
+      columns: { id: true, name: true, avatarDataUrl: true },
+      orderBy: [asc(users.name)],
+    }),
     getDealSlugMap(),
   ]);
   return {

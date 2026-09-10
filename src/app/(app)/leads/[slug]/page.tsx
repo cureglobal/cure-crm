@@ -50,18 +50,16 @@ import { ArrowLeft, Globe, Mail, Phone, Trash2, Lock } from "lucide-react";
 import { getStages } from "@/lib/stages.server";
 import { stageDot, stageLabel } from "@/lib/stages";
 import { getLostReasons } from "@/lib/lostReasons.server";
-import { getDealSlugMap, resolveDealSlugToId } from "@/lib/dealSlugs.server";
+import { getDealSlugMap, resolveDealSlugToDeal } from "@/lib/dealSlugs.server";
 import { getTags } from "@/lib/tags.server";
 import TagsEditor from "@/components/TagsEditor";
 
 export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
   const me = await requireUser();
   const { slug } = await params;
-  const dealId = await resolveDealSlugToId(slug);
-  if (dealId == null) notFound();
-
-  const deal = await db.query.deals.findFirst({ where: eq(deals.id, dealId) });
+  const deal = await resolveDealSlugToDeal(slug);
   if (!deal) notFound();
+  const dealId = deal.id;
 
   // Alt under er uavhengig av hverandre bortsett fra "grants"/"ownerUsers"
   // lenger ned (som trenger dialogOwners fra messages) — hentes parallelt i
@@ -98,7 +96,10 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
       .innerJoin(users, eq(dealOwners.userId, users.id))
       .where(eq(dealOwners.dealId, dealId))
       .orderBy(asc(dealOwners.createdAt)),
-    db.query.users.findMany({ orderBy: [asc(users.name)] }),
+    db.query.users.findMany({
+      columns: { id: true, name: true, avatarDataUrl: true },
+      orderBy: [asc(users.name)],
+    }),
     getStages(),
     getLostReasons(),
     getTags("deal"),
@@ -209,7 +210,10 @@ export default async function DealPage({ params }: PageProps<"/leads/[slug]">) {
         })
       : Promise.resolve([]),
     dialogOwners.length
-      ? db.query.users.findMany({ where: inArray(users.id, dialogOwners) })
+      ? db.query.users.findMany({
+          columns: { id: true, name: true },
+          where: inArray(users.id, dialogOwners),
+        })
       : Promise.resolve([]),
   ]);
   const ownerNameById = new Map(ownerUsers.map((u) => [u.id, u.name]));
