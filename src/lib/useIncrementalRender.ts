@@ -28,13 +28,19 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 export function useIncrementalRender<T>(items: T[]) {
   const [limit, setLimit] = useState(INITIAL_COUNT);
+  const [seenItems, setSeenItems] = useState(items);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Nytt søk eller ny sortering betyr en ny liste å se på — da skal man
   // begynne på toppen igjen, ikke arve rullehøyden fra forrige liste.
-  useEffect(() => {
+  //
+  // Justeres under render, ikke i en useEffect: en effekt ville først latt
+  // React tegne den gamle grensen og deretter tvunget en ny render. Dette er
+  // Reacts anbefalte mønster for tilstand som må følge en prop.
+  if (items !== seenItems) {
+    setSeenItems(items);
     setLimit(INITIAL_COUNT);
-  }, [items]);
+  }
 
   useEffect(() => {
     const el = sentinelRef.current;
