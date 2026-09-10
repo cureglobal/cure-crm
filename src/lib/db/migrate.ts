@@ -786,12 +786,36 @@ async function addMissingColumns(client: Client) {
   }
 }
 
+// Alle seed-funksjonene under følger mønsteret "finnes raden? hvis ikke,
+// sett den inn". Hver for seg er det riktig, men `next build` kjører
+// byggeprosessene parallelt (22 stykker på Railway), og alle migrerer mot
+// den samme ferske fila. To prosesser kan da begge se raden som fraværende
+// og begge sette den inn — enten et hardt UNIQUE-brudd som velter bygget
+// (saved_views.slug), eller, verre, to sett standardfaser uten feilmelding.
+//
+// BEGIN IMMEDIATE tar skrivelåsen med én gang, ikke først ved første
+// skriving, så "sjekk" og "sett inn" blir udelelig på tvers av prosesser.
+// De som taper kappløpet venter på låsen (se busy_timeout), kjører så det
+// samme blokka og finner alt på plass.
+async function withWriteLock(client: Client, fn: () => Promise<void>) {
+  await client.execute("BEGIN IMMEDIATE");
+  try {
+    await fn();
+  } catch (err) {
+    await client.execute("ROLLBACK").catch(() => {});
+    throw err;
+  }
+  await client.execute("COMMIT");
+}
+
 export async function migrate(client: Client) {
   // next build kjører flere byggeprosesser parallelt, som hver importerer
   // denne modulen og migrerer samtidig mot samme lokale fil. Uten
   // busy_timeout feiler samtidige skrivinger momentant med SQLITE_BUSY i
   // stedet for å vente på hverandre.
-  await client.execute("PRAGMA busy_timeout = 5000");
+  // Romsligere enn før: seedingen under holder skrivelåsen mens den kjører,
+  // og med 22 byggeprosesser i kø rekker ikke alle igjennom på fem sekunder.
+  await client.execute("PRAGMA busy_timeout = 15000");
   await client.execute("PRAGMA foreign_keys = ON");
 
   // Fanget FØR CREATE_STATEMENTS/addMissingColumns kjører, slik at vi vet om
@@ -818,21 +842,24 @@ export async function migrate(client: Client) {
   await client.execute("DROP INDEX IF EXISTS idx_contact_events_company");
   await client.execute("DROP INDEX IF EXISTS idx_notifications_user");
   // Må kjøre etter at både stages- og deals-tabellen finnes.
-  await seedStagesAndMigrateLegacy(client);
-  if (!hadProbabilityColumn) await backfillStageProbabilityDefaults(client);
-  // Må kjøre etter at pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
-  // (addMissingColumns) og fasene over finnes.
-  await seedPipelinesAndBackfillStages(client);
-  // Må kjøre etter at active_days-kolonnen (addMissingColumns) finnes.
-  await backfillActiveDays(client);
-  await seedActiveLastWeekView(client);
-  // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
-  await seedBusinessUnits(client);
-  await seedLostReasons(client);
-  await seedTags(client);
-  await seedSalesTarget(client);
-  await seedMonthlyActuals(client);
-  await seedBusinessUnitTargets(client);
-  // Må kjøre etter at contact_events-tabellen finnes.
-  await cleanupSyntheticContactEvents(client);
+  // Én prosess om gangen — se withWriteLock. Rekkefølgen inni er uendret.
+  await withWriteLock(client, async () => {
+    await seedStagesAndMigrateLegacy(client);
+    if (!hadProbabilityColumn) await backfillStageProbabilityDefaults(client);
+    // Må kjøre etter at pipelines-tabellen, stages.pipeline_id/saved_views.pipeline_id
+    // (addMissingColumns) og fasene over finnes.
+    await seedPipelinesAndBackfillStages(client);
+    // Må kjøre etter at active_days-kolonnen (addMissingColumns) finnes.
+    await backfillActiveDays(client);
+    await seedActiveLastWeekView(client);
+    // Må kjøre etter at business_units-tabellen og users/companies-kolonnene finnes.
+    await seedBusinessUnits(client);
+    await seedLostReasons(client);
+    await seedTags(client);
+    await seedSalesTarget(client);
+    await seedMonthlyActuals(client);
+    await seedBusinessUnitTargets(client);
+    // Må kjøre etter at contact_events-tabellen finnes.
+    await cleanupSyntheticContactEvents(client);
+  });
 }
