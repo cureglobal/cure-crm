@@ -18,6 +18,7 @@ import TagFilterPicker, {
   type TagFilterValue,
 } from "@/components/TagFilterPicker";
 import { useRangeToggle } from "@/lib/useRangeToggle";
+import { useIncrementalRender } from "@/lib/useIncrementalRender";
 import { ArrowDown, ArrowUp, Mail, Phone, Plus, Search, Trash2, X } from "lucide-react";
 
 export interface PersonRow {
@@ -234,6 +235,10 @@ export default function PeopleTable({
 
   const toggleOne = useRangeToggle(setSelected, visible);
 
+  // Bare de øverste radene rendres først — se useIncrementalRender. Søk,
+  // sortering og "velg alle" jobber fortsatt på hele `visible`.
+  const { rendered, sentinelRef, hiddenCount } = useIncrementalRender(visible);
+
   function clearSelection() {
     setSelected(new Set());
     setConfirmingDelete(false);
@@ -424,7 +429,7 @@ export default function PeopleTable({
             </p>
           ) : (
             <ul>
-              {visible.map((p, i) => (
+              {rendered.map((p, i) => (
                 <PersonRowItem
                   key={p.id}
                   person={p}
@@ -433,6 +438,13 @@ export default function PeopleTable({
                 />
               ))}
             </ul>
+          )}
+          {/* Treffes av IntersectionObserver-en og henter neste bunke rader. */}
+          <div ref={sentinelRef} aria-hidden="true" />
+          {hiddenCount > 0 && (
+            <p className="px-5 py-4 text-center text-[13px] text-ink-faint">
+              Viser {rendered.length} av {visible.length} — bla videre for flere
+            </p>
           )}
         </div>
       </div>

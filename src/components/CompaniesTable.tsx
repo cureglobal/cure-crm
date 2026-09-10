@@ -13,6 +13,7 @@ import TagFilterPicker, {
   type TagFilterValue,
 } from "@/components/TagFilterPicker";
 import { useRangeToggle } from "@/lib/useRangeToggle";
+import { useIncrementalRender } from "@/lib/useIncrementalRender";
 import {
   bulkDeleteCompanies,
   bulkSetCompanyOwner,
@@ -220,6 +221,10 @@ export default function CompaniesTable({
   }
 
   const toggleOne = useRangeToggle(setSelected, visible);
+
+  // Bare de øverste radene rendres først — se useIncrementalRender. Søk,
+  // sortering og "velg alle" jobber fortsatt på hele `visible`.
+  const { rendered, sentinelRef, hiddenCount } = useIncrementalRender(visible);
 
   function clearSelection() {
     setSelected(new Set());
@@ -466,7 +471,7 @@ export default function CompaniesTable({
           </p>
         ) : (
           <ul>
-            {visible.map((c, i) => {
+            {rendered.map((c, i) => {
               const companyTags = c.tagIds
                 .map((id) => tags.find((t) => t.id === id))
                 .filter((t): t is { id: number; label: string } => t != null);
@@ -562,6 +567,13 @@ export default function CompaniesTable({
               );
             })}
           </ul>
+        )}
+        {/* Treffes av IntersectionObserver-en og henter neste bunke rader. */}
+        <div ref={sentinelRef} aria-hidden="true" />
+        {hiddenCount > 0 && (
+          <p className="px-5 py-4 text-center text-[13px] text-ink-faint">
+            Viser {rendered.length} av {visible.length} — bla videre for flere
+          </p>
         )}
         </div>
       </div>
