@@ -127,19 +127,31 @@ like lenge som appen.
 Mangler nøklene under, starter appen som før — bare uten sikkerhetskopi.
 Det står i oppstartsloggen hvilken av delene som skjer.
 
-### Nøkler som må være satt i Railway
+### Nøkler (satt i Railway)
 
-- `R2_ACCESS_KEY_ID` og `R2_SECRET_ACCESS_KEY` — fra et R2 API-token
-  (Cloudflare → R2 → API → «Manage API tokens» → Create, med
-  **Object Read & Write** kun på `cure-crm-backup`)
-- `R2_ENDPOINT` — `<account-id>.r2.cloudflarestorage.com`
+- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` — hentet fra 1Password-oppføringen
+  **Cloudflare (Cure)**, feltene «Global R2 Buckets Key ID» og
+  «Global R2 Buckets Secret Key»
+- `R2_ENDPOINT` — `d95d98e082afd7e756cea2e70a3c72f8.r2.cloudflarestorage.com`
   (uten `https://`)
+
+> **Å rydde opp i:** nøklene som brukes nå er *globale* — de gir tilgang til
+> ALLE R2-bøttene i Cure-kontoen (`cure-clients`, `cure-videos`,
+> `cure-webflow-files` …), ikke bare `cure-crm-backup`. Kommer noen inn i
+> CRM-serveren, får de dermed også alt det andre. Litestream trenger kun
+> skrivetilgang til én bøtte. Lag et eget token i Cloudflare → R2 → API med
+> **Object Read & Write** begrenset til `cure-crm-backup`, bytt de to
+> variablene, og redeploy. Alt annet kan stå som det er.
 
 ### Hente data tilbake
 
 Går volumet tapt, skjer det av seg selv: `-restore-if-db-not-exists` i
 entrypointet ser at `/app/data/crm.db` mangler og henter ned siste versjon
 før appen starter. Ingen manuelle steg.
+
+Verifisert 10.09.2026: gjenoppretting fra R2 ga en database med
+`integrity_check ok`, 398 deals, 893 selskaper, 688 personer og 8 brukere —
+identisk med produksjon.
 
 Trenger du en kopi lokalt, eller å rulle tilbake til et tidspunkt:
 
