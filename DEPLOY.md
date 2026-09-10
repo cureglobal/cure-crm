@@ -27,6 +27,13 @@ staging-miljø — kun ett Railway-miljø (`production`), rett mot `main`.
   binder Next.js-serveren seg kun til IPv4 og alt blir 502
   ("Application failed to respond")
 - `PORT=3000`
+- `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` — brukes både
+  til sikkerhetskopi (Litestream) og til opplastede bilder. Mangler de,
+  starter appen som før, men uten sikkerhetskopi og uten mulighet til å
+  laste opp bilder. Se «Sikkerhetskopi» og «Bilder i R2».
+- `R2_MEDIA_BUCKET` — valgfri. Overstyrer bildebøtta (`cure-crm-media`).
+  Sett den til `cure-crm-media-dev` når du kjører lokalt mot ekte nøkler,
+  ellers skriver du inn i produksjonsbøtta.
 
 ## Ting som var vanskelige å få riktig (les før du endrer Dockerfile)
 
@@ -234,9 +241,35 @@ oversikt over hva som ligger der, finnes den i dashbordet — `wrangler` kan
 laste opp og ned enkeltfiler, men ikke liste innholdet i en bøtte:
 <https://dash.cloudflare.com/d95d98e082afd7e756cea2e70a3c72f8/r2/default/buckets/cure-crm-backup>
 
+## Åpne punkter
+
+Ting som er kjent og bevisst utsatt, ikke glemt:
+
+1. **VACUUM produksjonsdatabasen.** Bildene er flyttet ut, men de frigjorte
+   sidene er ikke gjenvunnet ennå — fila er ~5,6 MB der den kunne vært
+   ~0,9 MB. Kosmetisk; plassen gjenbrukes etter hvert som data vokser.
+   Krever `railway ssh`, som har vært ustabil.
+2. **Bytt de globale R2-nøklene** til et token begrenset til
+   `cure-crm-backup` (se «Nøkler» over). Nøklene som brukes nå gir tilgang
+   til alle R2-bøttene i Cure-kontoen.
+3. **Det finnes ikke noe staging-miljø.** Railway-prosjektet har ett miljø,
+   `production`, og `main` går rett dit. Kombinert med at det ikke finnes
+   tester, er hver deploy et forsøk i produksjon. Et andre Railway-miljø med
+   eget volum ville vært en liten jobb.
+4. **Ingen tester.** `npm run perf:check` fanger opp at sidene ikke svulmer,
+   men ingenting sjekker at innlogging, oppretting av deal eller fasebytte
+   faktisk virker.
+
+`npm run db:backup` er avhengig av `railway ssh`. Er SSH nede, feiler den —
+med vilje, i stedet for å laste opp en tom fil. Litestream er ikke avhengig
+av SSH og replikerer uansett.
+
 ## Vanlige CLI-kommandoer
 
 ```bash
+npm run db:backup                               # kopi av produksjonsbasen til R2
+npm run perf:check                              # sjekk at sidene holder seg små
+npm run migrate:images                          # flytt bilder til R2 (skjer også ved oppstart)
 railway status                                  # oversikt
 railway logs --deployment                       # runtime-logg
 railway logs --build <deployment-id>             # bygglogg for en spesifikk deploy
